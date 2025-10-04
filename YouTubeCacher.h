@@ -14,7 +14,7 @@
 #define MIN_WINDOW_WIDTH    500
 #define MIN_WINDOW_HEIGHT   350
 #define DEFAULT_WIDTH       550
-#define DEFAULT_HEIGHT      400
+#define DEFAULT_HEIGHT      420
 
 // Layout constants
 #define BUTTON_PADDING      80

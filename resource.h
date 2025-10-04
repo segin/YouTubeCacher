@@ -12,6 +12,8 @@
 #define IDC_BUTTON3       1008
 #define IDC_DOWNLOAD_BTN  1009
 #define IDC_GETINFO_BTN   1010
+#define IDC_DOWNLOAD_GROUP 1011
+#define IDC_OFFLINE_GROUP  1012
 
 // Dialog and Menu Resource IDs
 #define IDD_MAIN_DIALOG   101

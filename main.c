@@ -37,22 +37,29 @@ void ResizeControls(HWND hDlg) {
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
     
-    // Calculate shared button position (same padding as list buttons)
-    int buttonX = width - BUTTON_PADDING;
+    // Calculate button position
+    int buttonX = width - 135;
+    int sideButtonX = width - 90;
     
-    // Resize URL text field (leave space for buttons with same padding)
-    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 45, 12, buttonX - 55, TEXT_FIELD_HEIGHT, SWP_NOZORDER);
+    // Resize Download video group box
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 10, 10, width - 20, 70, SWP_NOZORDER);
     
-    // Position URL buttons (same X position as list buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 10, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 36, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
+    // Resize URL text field (within download group)
+    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 27, buttonX - 65, TEXT_FIELD_HEIGHT, SWP_NOZORDER);
     
-    // Resize listbox (leave space for side buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 10, 70, buttonX - 20, height - 80, SWP_NOZORDER);
+    // Position URL buttons (within download group)
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 25, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 51, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
     
-    // Position side buttons (same X position as URL buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, buttonX, 70, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, buttonX, 105, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
+    // Resize Offline videos group box
+    SetWindowPos(GetDlgItem(hDlg, IDC_OFFLINE_GROUP), NULL, 10, 90, width - 20, height - 100, SWP_NOZORDER);
+    
+    // Resize listbox (within offline group, leave space for side buttons)
+    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, 130, sideButtonX - 30, height - 150, SWP_NOZORDER);
+    
+    // Position side buttons (within offline group)
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, 130, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 165, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
 }
 
 // Dialog procedure function
