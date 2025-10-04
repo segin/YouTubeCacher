@@ -7,7 +7,7 @@ CFLAGS = -Wall -Wextra -Werror -std=c99
 LDFLAGS = -lgdi32 -luser32 -lkernel32
 
 # Target executable
-TARGET = window.exe
+TARGET = YouTubeCacher.exe
 
 # Source files
 SOURCES = main.c uri.c
