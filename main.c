@@ -15,18 +15,24 @@ HBRUSH hCurrentBrush = NULL;
 
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
-    if (OpenClipboard(hDlg)) {
-        HANDLE hData = GetClipboardData(CF_TEXT);
-        if (hData != NULL) {
-            char* clipText = (char*)GlobalLock(hData);
-            if (clipText != NULL && IsYouTubeURL(clipText)) {
-                SetDlgItemText(hDlg, IDC_TEXT_FIELD, clipText);
-                hCurrentBrush = hBrushLightGreen;
-                InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+    // Only check clipboard if text field is empty
+    char currentText[MAX_BUFFER_SIZE];
+    GetDlgItemText(hDlg, IDC_TEXT_FIELD, currentText, sizeof(currentText));
+    
+    if (strlen(currentText) == 0) {
+        if (OpenClipboard(hDlg)) {
+            HANDLE hData = GetClipboardData(CF_TEXT);
+            if (hData != NULL) {
+                char* clipText = (char*)GlobalLock(hData);
+                if (clipText != NULL && IsYouTubeURL(clipText)) {
+                    SetDlgItemText(hDlg, IDC_TEXT_FIELD, clipText);
+                    hCurrentBrush = hBrushLightGreen;
+                    InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+                }
+                GlobalUnlock(hData);
             }
-            GlobalUnlock(hData);
+            CloseClipboard();
         }
-        CloseClipboard();
     }
 }
 
@@ -44,22 +50,22 @@ void ResizeControls(HWND hDlg) {
     // Resize Download video group box (taller)
     SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 10, 10, width - 20, 80, SWP_NOZORDER);
     
-    // Resize URL text field (within download group) - aligned with label
-    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 30, buttonX - 65, TEXT_FIELD_HEIGHT, SWP_NOZORDER);
+    // Resize URL text field (within download group) - aligned with label, taller
+    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 30, buttonX - 65, 22, SWP_NOZORDER);
     
-    // Position URL buttons (within download group) - reduced margin
-    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 28, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 54, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
+    // Position URL buttons (within download group) - reduced margin, taller
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 28, BUTTON_WIDTH, 26, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 56, BUTTON_WIDTH, 26, SWP_NOZORDER);
     
     // Resize Offline videos group box (adjusted for taller download group)
     SetWindowPos(GetDlgItem(hDlg, IDC_OFFLINE_GROUP), NULL, 10, 100, width - 20, height - 110, SWP_NOZORDER);
     
-    // Resize listbox (within offline group, leave space for side buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, 140, sideButtonX - 30, height - 160, SWP_NOZORDER);
+    // Resize listbox (within offline group, leave space for side buttons and labels)
+    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, 135, sideButtonX - 30, height - 155, SWP_NOZORDER);
     
-    // Position side buttons (within offline group)
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, 140, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 175, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
+    // Position side buttons (within offline group) - taller
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, 135, BUTTON_WIDTH, 32, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 170, BUTTON_WIDTH, 32, SWP_NOZORDER);
 }
 
 // Dialog procedure function
@@ -112,11 +118,38 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             return 0;
         }
         
+        case WM_ACTIVATE:
+            if (LOWORD(wParam) != WA_INACTIVE) {
+                // Window is being activated, check clipboard
+                CheckClipboardForYouTubeURL(hDlg);
+            }
+            break;
+            
         case WM_CTLCOLOREDIT:
             if ((HWND)lParam == GetDlgItem(hDlg, IDC_TEXT_FIELD)) {
                 HDC hdc = (HDC)wParam;
-                SetBkColor(hdc, GetSysColor(COLOR_WINDOW));
+                // Set the background color based on current brush
+                if (hCurrentBrush == hBrushLightGreen) {
+                    SetBkColor(hdc, COLOR_LIGHT_GREEN);
+                } else if (hCurrentBrush == hBrushLightBlue) {
+                    SetBkColor(hdc, COLOR_LIGHT_BLUE);
+                } else if (hCurrentBrush == hBrushLightTeal) {
+                    SetBkColor(hdc, COLOR_LIGHT_TEAL);
+                } else {
+                    SetBkColor(hdc, COLOR_WHITE);
+                }
                 return (INT_PTR)hCurrentBrush;
+            }
+            break;
+            
+        case WM_KEYDOWN:
+            // Handle Ctrl+A for select all in text field
+            if (wParam == 'A' && GetKeyState(VK_CONTROL) < 0) {
+                HWND hFocus = GetFocus();
+                if (hFocus == GetDlgItem(hDlg, IDC_TEXT_FIELD)) {
+                    SendMessage(hFocus, EM_SETSEL, 0, -1);
+                    return TRUE;
+                }
             }
             break;
             
