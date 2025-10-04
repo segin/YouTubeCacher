@@ -14,10 +14,14 @@
 
 #define IDD_MAIN_DIALOG   101
 
+// Global variable for command line URL
+char cmdLineURL[1024] = {0};
+
 // Global variables for text field colors
 HBRUSH hBrushWhite = NULL;
 HBRUSH hBrushLightGreen = NULL;
 HBRUSH hBrushLightBlue = NULL;
+HBRUSH hBrushLightTeal = NULL;
 HBRUSH hCurrentBrush = NULL;
 
 BOOL IsYouTubeURL(const char* url) {
@@ -51,30 +55,31 @@ void ResizeControls(HWND hDlg) {
     int height = rect.bottom - rect.top;
     
     // Resize URL text field (leave space for buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 45, 10, width - 175, 14, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 45, 12, width - 200, 20, SWP_NOZORDER);
     
-    // Position URL buttons
-    int buttonX = width - 125;
-    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 8, 60, 18, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 28, 60, 18, SWP_NOZORDER);
+    // Position URL buttons (aligned to right)
+    int buttonX = width - 145;
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 10, 70, 24, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 36, 70, 24, SWP_NOZORDER);
     
     // Resize listbox (leave space for side buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 10, 95, width - 100, height - 105, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 10, 90, width - 100, height - 100, SWP_NOZORDER);
     
-    // Position side buttons
+    // Position side buttons (aligned to right)
     int sideButtonX = width - 80;
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, 95, 70, 25, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 125, 70, 25, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, 90, 70, 30, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 125, 70, 30, SWP_NOZORDER);
 }
 
 // Dialog procedure function
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
-        case WM_INITDIALOG:
+        case WM_INITDIALOG: {
             // Create brushes for text field colors
             hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
             hBrushLightGreen = CreateSolidBrush(RGB(220, 255, 220));
             hBrushLightBlue = CreateSolidBrush(RGB(220, 220, 255));
+            hBrushLightTeal = CreateSolidBrush(RGB(220, 255, 255));
             hCurrentBrush = hBrushWhite;
             
             // Initialize dialog controls
@@ -86,13 +91,21 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             SendDlgItemMessage(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)"Sample Video 2.mp4");
             SendDlgItemMessage(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)"Sample Video 3.mp4");
             
-            // Check clipboard for YouTube URL
-            CheckClipboardForYouTubeURL(hDlg);
+            // Check command line first, then clipboard
+            if (strlen(cmdLineURL) > 0) {
+                SetDlgItemText(hDlg, IDC_TEXT_FIELD, cmdLineURL);
+                hCurrentBrush = hBrushLightTeal;
+                InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+            } else {
+                // Check clipboard for YouTube URL
+                CheckClipboardForYouTubeURL(hDlg);
+            }
             
             // Set minimum window size
-            SetWindowPos(hDlg, NULL, 0, 0, 500, 350, SWP_NOMOVE | SWP_NOZORDER);
+            SetWindowPos(hDlg, NULL, 0, 0, 550, 400, SWP_NOMOVE | SWP_NOZORDER);
             
             return TRUE;
+        }
             
         case WM_SIZE:
             ResizeControls(hDlg);
@@ -100,8 +113,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
         case WM_GETMINMAXINFO: {
             MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-            mmi->ptMinTrackSize.x = 450;
-            mmi->ptMinTrackSize.y = 300;
+            mmi->ptMinTrackSize.x = 500;
+            mmi->ptMinTrackSize.y = 350;
             return 0;
         }
         
@@ -159,6 +172,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             if (hBrushWhite) DeleteObject(hBrushWhite);
             if (hBrushLightGreen) DeleteObject(hBrushLightGreen);
             if (hBrushLightBlue) DeleteObject(hBrushLightBlue);
+            if (hBrushLightTeal) DeleteObject(hBrushLightTeal);
             
             EndDialog(hDlg, 0);
             return TRUE;
@@ -167,6 +181,15 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(nCmdShow);
+    
+    // Check if command line contains YouTube URL
+    if (lpCmdLine && strlen(lpCmdLine) > 0 && IsYouTubeURL(lpCmdLine)) {
+        strncpy(cmdLineURL, lpCmdLine, sizeof(cmdLineURL) - 1);
+        cmdLineURL[sizeof(cmdLineURL) - 1] = '\0';
+    }
+    
     // Create and show the dialog
     DialogBox(hInstance, MAKEINTRESOURCE(IDD_MAIN_DIALOG), NULL, DialogProc);
     

@@ -2,7 +2,8 @@
 
 # Compiler and flags
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
+RC = windres
+CFLAGS = -Wall -Wextra -Werror -std=c99
 LDFLAGS = -lgdi32 -luser32 -lkernel32
 
 # Target executable
@@ -10,24 +11,30 @@ TARGET = window.exe
 
 # Source files
 SOURCES = main.c
+RC_SOURCE = YouTubeCacher.rc
 
 # Object files
 OBJECTS = $(SOURCES:.c=.o)
+RC_OBJECT = $(RC_SOURCE:.rc=.o)
 
 # Default target
 all: $(TARGET)
 
 # Build the executable
-$(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
+$(TARGET): $(OBJECTS) $(RC_OBJECT)
+	$(CC) $(OBJECTS) $(RC_OBJECT) -o $(TARGET) $(LDFLAGS)
 
 # Compile source files to object files
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile resource files
+%.o: %.rc
+	$(RC) $< -o $@
+
 # Clean build artifacts
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -f $(OBJECTS) $(RC_OBJECT) $(TARGET)
 
 # Run the program
 run: $(TARGET)
