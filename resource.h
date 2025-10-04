@@ -14,12 +14,17 @@
 #define IDC_GETINFO_BTN   1010
 #define IDC_DOWNLOAD_GROUP 1011
 #define IDC_OFFLINE_GROUP  1012
+#define IDC_STATIC         -1
 
 // Dialog and Menu Resource IDs
 #define IDD_MAIN_DIALOG   101
 #define IDR_MAIN_MENU     102
 
 // Menu Command IDs
+#define ID_FILE_SETTINGS  2000
 #define ID_FILE_EXIT      2001
+
+// Settings Dialog
+#define IDD_SETTINGS      103
 
 #endif // RESOURCE_H

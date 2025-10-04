@@ -68,6 +68,29 @@ void ResizeControls(HWND hDlg) {
     SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 170, BUTTON_WIDTH, 32, SWP_NOZORDER);
 }
 
+// Settings dialog procedure
+INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam);
+    
+    switch (message) {
+        case WM_INITDIALOG:
+            return TRUE;
+            
+        case WM_COMMAND:
+            switch (LOWORD(wParam)) {
+                case IDOK:
+                    EndDialog(hDlg, IDOK);
+                    return TRUE;
+                    
+                case IDCANCEL:
+                    EndDialog(hDlg, IDCANCEL);
+                    return TRUE;
+            }
+            break;
+    }
+    return FALSE;
+}
+
 // Dialog procedure function
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
@@ -155,6 +178,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
+                case ID_FILE_SETTINGS:
+                    DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SETTINGS), hDlg, SettingsDialogProc);
+                    return TRUE;
+                    
                 case ID_FILE_EXIT:
                     DestroyWindow(hDlg);
                     return TRUE;

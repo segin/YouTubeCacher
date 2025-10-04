@@ -6,6 +6,8 @@ IDR_MAIN_MENU MENU
 BEGIN
     POPUP "&File"
     BEGIN
+        MENUITEM "&Settings...", ID_FILE_SETTINGS
+        MENUITEM SEPARATOR
         MENUITEM "E&xit\tCtrl+Q", ID_FILE_EXIT
     END
 END
@@ -36,4 +38,17 @@ BEGIN
     
     PUSHBUTTON      "Play", IDC_BUTTON2, 460, 140, 70, 32
     PUSHBUTTON      "Delete", IDC_BUTTON3, 460, 175, 70, 32
+END
+
+
+// Settings Dialog
+IDD_SETTINGS DIALOGEX 0, 0, 300, 200
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT           "Settings will be implemented here.", IDC_STATIC, 20, 20, 200, 14
+    
+    DEFPUSHBUTTON   "OK", IDOK, 185, 170, 50, 20
+    PUSHBUTTON      "Cancel", IDCANCEL, 240, 170, 50, 20
 END
