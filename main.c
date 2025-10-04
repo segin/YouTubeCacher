@@ -1,22 +1,9 @@
-#include <windows.h>
 #include <string.h>
+#include "YouTubeCacher.h"
 #include "uri.h"
 
-#define IDC_TEXT_FIELD    1001
-#define IDC_LABEL1        1002
-#define IDC_LABEL2        1003
-#define IDC_LABEL3        1004
-#define IDC_LIST          1005
-#define IDC_BUTTON1       1006
-#define IDC_BUTTON2       1007
-#define IDC_BUTTON3       1008
-#define IDC_DOWNLOAD_BTN  1009
-#define IDC_GETINFO_BTN   1010
-
-#define IDD_MAIN_DIALOG   101
-
 // Global variable for command line URL
-char cmdLineURL[1024] = {0};
+char cmdLineURL[MAX_URL_LENGTH] = {0};
 
 // Global variables for text field colors
 HBRUSH hBrushWhite = NULL;
@@ -50,21 +37,22 @@ void ResizeControls(HWND hDlg) {
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
     
-    // Resize URL text field (leave space for buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 45, 12, width - 200, 20, SWP_NOZORDER);
+    // Calculate shared button position (same padding as list buttons)
+    int buttonX = width - BUTTON_PADDING;
     
-    // Position URL buttons (aligned to right)
-    int buttonX = width - 145;
-    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 10, 70, 24, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 36, 70, 24, SWP_NOZORDER);
+    // Resize URL text field (leave space for buttons with same padding)
+    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 45, 12, buttonX - 55, TEXT_FIELD_HEIGHT, SWP_NOZORDER);
+    
+    // Position URL buttons (same X position as list buttons)
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 10, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 36, BUTTON_WIDTH, BUTTON_HEIGHT_SMALL, SWP_NOZORDER);
     
     // Resize listbox (leave space for side buttons)
-    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 10, 90, width - 100, height - 100, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 10, 70, buttonX - 20, height - 80, SWP_NOZORDER);
     
-    // Position side buttons (aligned to right)
-    int sideButtonX = width - 80;
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, 90, 70, 30, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 125, 70, 30, SWP_NOZORDER);
+    // Position side buttons (same X position as URL buttons)
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, buttonX, 70, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, buttonX, 105, BUTTON_WIDTH, BUTTON_HEIGHT_LARGE, SWP_NOZORDER);
 }
 
 // Dialog procedure function
@@ -72,10 +60,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
     switch (message) {
         case WM_INITDIALOG: {
             // Create brushes for text field colors
-            hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
-            hBrushLightGreen = CreateSolidBrush(RGB(220, 255, 220));
-            hBrushLightBlue = CreateSolidBrush(RGB(220, 220, 255));
-            hBrushLightTeal = CreateSolidBrush(RGB(220, 255, 255));
+            hBrushWhite = CreateSolidBrush(COLOR_WHITE);
+            hBrushLightGreen = CreateSolidBrush(COLOR_LIGHT_GREEN);
+            hBrushLightBlue = CreateSolidBrush(COLOR_LIGHT_BLUE);
+            hBrushLightTeal = CreateSolidBrush(COLOR_LIGHT_TEAL);
             hCurrentBrush = hBrushWhite;
             
             // Initialize dialog controls
@@ -97,10 +85,13 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 CheckClipboardForYouTubeURL(hDlg);
             }
             
-            // Set minimum window size
-            SetWindowPos(hDlg, NULL, 0, 0, 550, 400, SWP_NOMOVE | SWP_NOZORDER);
+            // Set focus to the text field for immediate typing
+            SetFocus(GetDlgItem(hDlg, IDC_TEXT_FIELD));
             
-            return TRUE;
+            // Set minimum window size
+            SetWindowPos(hDlg, NULL, 0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT, SWP_NOMOVE | SWP_NOZORDER);
+            
+            return FALSE; // Return FALSE since we set focus manually
         }
             
         case WM_SIZE:
@@ -109,8 +100,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
         case WM_GETMINMAXINFO: {
             MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-            mmi->ptMinTrackSize.x = 500;
-            mmi->ptMinTrackSize.y = 350;
+            mmi->ptMinTrackSize.x = MIN_WINDOW_WIDTH;
+            mmi->ptMinTrackSize.y = MIN_WINDOW_HEIGHT;
             return 0;
         }
         
@@ -124,10 +115,14 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
+                case ID_FILE_EXIT:
+                    DestroyWindow(hDlg);
+                    return TRUE;
+                    
                 case IDC_TEXT_FIELD:
                     if (HIWORD(wParam) == EN_CHANGE) {
                         // Check if it's a paste operation with YouTube URL
-                        char buffer[1024];
+                        char buffer[MAX_BUFFER_SIZE];
                         GetDlgItemText(hDlg, IDC_TEXT_FIELD, buffer, sizeof(buffer));
                         
                         if (IsYouTubeURL(buffer) && hCurrentBrush != hBrushLightGreen) {
@@ -158,7 +153,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     break;
                     
                 case IDCANCEL:
-                    EndDialog(hDlg, LOWORD(wParam));
+                    DestroyWindow(hDlg);
                     return TRUE;
             }
             break;
@@ -170,7 +165,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             if (hBrushLightBlue) DeleteObject(hBrushLightBlue);
             if (hBrushLightTeal) DeleteObject(hBrushLightTeal);
             
-            EndDialog(hDlg, 0);
+            DestroyWindow(hDlg);
+            return TRUE;
+            
+        case WM_DESTROY:
+            PostQuitMessage(0);
             return TRUE;
     }
     return FALSE;
@@ -182,12 +181,29 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     // Check if command line contains YouTube URL
     if (lpCmdLine && strlen(lpCmdLine) > 0 && IsYouTubeURL(lpCmdLine)) {
-        strncpy(cmdLineURL, lpCmdLine, sizeof(cmdLineURL) - 1);
-        cmdLineURL[sizeof(cmdLineURL) - 1] = '\0';
+        strncpy(cmdLineURL, lpCmdLine, MAX_URL_LENGTH - 1);
+        cmdLineURL[MAX_URL_LENGTH - 1] = '\0';
     }
     
-    // Create and show the dialog
-    DialogBox(hInstance, MAKEINTRESOURCE(IDD_MAIN_DIALOG), NULL, DialogProc);
+    // Load accelerator table
+    HACCEL hAccel = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDR_MAIN_MENU));
     
-    return 0;
+    // Create the dialog as modeless to handle accelerators
+    HWND hDlg = CreateDialog(hInstance, MAKEINTRESOURCE(IDD_MAIN_DIALOG), NULL, DialogProc);
+    if (hDlg == NULL) {
+        return 0;
+    }
+    
+    ShowWindow(hDlg, nCmdShow);
+    
+    // Message loop with accelerator handling
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        if (!TranslateAccelerator(hDlg, hAccel, &msg) && !IsDialogMessage(hDlg, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+    
+    return (int)msg.wParam;
 }

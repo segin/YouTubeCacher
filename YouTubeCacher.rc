@@ -1,33 +1,37 @@
 #include <windows.h>
+#include "resource.h"
 
-#define IDC_TEXT_FIELD    1001
-#define IDC_LABEL1        1002
-#define IDC_LABEL2        1003
-#define IDC_LABEL3        1004
-#define IDC_LIST          1005
-#define IDC_BUTTON1       1006
-#define IDC_BUTTON2       1007
-#define IDC_BUTTON3       1008
-#define IDC_DOWNLOAD_BTN  1009
-#define IDC_GETINFO_BTN   1010
+// Menu resource
+IDR_MAIN_MENU MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "E&xit\tCtrl+Q", ID_FILE_EXIT
+    END
+END
 
-#define IDD_MAIN_DIALOG   101
+// Accelerator table
+IDR_MAIN_MENU ACCELERATORS
+BEGIN
+    "Q", ID_FILE_EXIT, VIRTKEY, CONTROL
+END
 
 IDD_MAIN_DIALOG DIALOGEX 0, 0, 550, 400
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
 CAPTION "YouTube Cacher"
 FONT 8, "MS Sans Serif"
+MENU IDR_MAIN_MENU
 BEGIN
     LTEXT           "URL:", IDC_LABEL1, 10, 15, 30, 14
-    EDITTEXT        IDC_TEXT_FIELD, 45, 12, 350, 20, ES_AUTOHSCROLL
-    PUSHBUTTON      "Download", IDC_DOWNLOAD_BTN, 405, 10, 70, 24
-    PUSHBUTTON      "Get Info", IDC_GETINFO_BTN, 405, 36, 70, 24
+    EDITTEXT        IDC_TEXT_FIELD, 45, 12, 350, 20, ES_AUTOHSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Download", IDC_DOWNLOAD_BTN, 470, 10, 70, 24
+    PUSHBUTTON      "Get Info", IDC_GETINFO_BTN, 470, 36, 70, 24
     
-    LTEXT           "Status: Ready", IDC_LABEL2, 10, 70, 150, 14
-    LTEXT           "Items: 0", IDC_LABEL3, 200, 70, 100, 14
+    LTEXT           "Status: Ready", IDC_LABEL2, 10, 50, 150, 14
+    LTEXT           "Items: 0", IDC_LABEL3, 200, 50, 100, 14
     
-    LISTBOX         IDC_LIST, 10, 90, 450, 280, LBS_STANDARD | LBS_NOTIFY
+    LISTBOX         IDC_LIST, 10, 70, 450, 300, LBS_STANDARD | LBS_NOTIFY
     
-    PUSHBUTTON      "Play", IDC_BUTTON2, 470, 90, 70, 30
-    PUSHBUTTON      "Delete", IDC_BUTTON3, 470, 125, 70, 30
+    PUSHBUTTON      "Play", IDC_BUTTON2, 470, 70, 70, 30
+    PUSHBUTTON      "Delete", IDC_BUTTON3, 470, 105, 70, 30
 END
