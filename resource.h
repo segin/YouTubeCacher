@@ -23,6 +23,7 @@
 // Menu Command IDs
 #define ID_FILE_SETTINGS  2000
 #define ID_FILE_EXIT      2001
+#define ID_EDIT_SELECTALL 2002
 
 // Settings Dialog
 #define IDD_SETTINGS      103

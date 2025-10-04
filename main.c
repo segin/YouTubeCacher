@@ -165,19 +165,18 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             }
             break;
             
-        case WM_KEYDOWN:
-            // Handle Ctrl+A for select all in text field
-            if (wParam == 'A' && GetKeyState(VK_CONTROL) < 0) {
-                HWND hFocus = GetFocus();
-                if (hFocus == GetDlgItem(hDlg, IDC_TEXT_FIELD)) {
-                    SendMessage(hFocus, EM_SETSEL, 0, -1);
-                    return TRUE;
-                }
-            }
-            break;
+
             
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
+                case ID_EDIT_SELECTALL: {
+                    HWND hFocus = GetFocus();
+                    if (hFocus == GetDlgItem(hDlg, IDC_TEXT_FIELD)) {
+                        SendMessage(hFocus, EM_SETSEL, 0, -1);
+                    }
+                    return TRUE;
+                }
+                    
                 case ID_FILE_SETTINGS:
                     DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SETTINGS), hDlg, SettingsDialogProc);
                     return TRUE;
@@ -245,6 +244,18 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(nCmdShow);
+    
+    // Enable DPI awareness for HiDPI support
+    typedef BOOL (WINAPI *SetProcessDPIAwareFunc)(void);
+    HMODULE hUser32 = LoadLibrary("user32.dll");
+    if (hUser32) {
+        FARPROC proc = GetProcAddress(hUser32, "SetProcessDPIAware");
+        if (proc) {
+            SetProcessDPIAwareFunc SetProcessDPIAware = (SetProcessDPIAwareFunc)(void*)proc;
+            SetProcessDPIAware();
+        }
+        FreeLibrary(hUser32);
+    }
     
     // Check if command line contains YouTube URL
     if (lpCmdLine && strlen(lpCmdLine) > 0 && IsYouTubeURL(lpCmdLine)) {

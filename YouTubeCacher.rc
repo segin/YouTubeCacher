@@ -1,6 +1,9 @@
 #include <windows.h>
 #include "resource.h"
 
+// Application manifest for HiDPI support
+1 RT_MANIFEST "YouTubeCacher.manifest"
+
 // Menu resource
 IDR_MAIN_MENU MENU
 BEGIN
@@ -16,6 +19,7 @@ END
 IDR_MAIN_MENU ACCELERATORS
 BEGIN
     "Q", ID_FILE_EXIT, VIRTKEY, CONTROL
+    "A", ID_EDIT_SELECTALL, VIRTKEY, CONTROL
 END
 
 IDD_MAIN_DIALOG DIALOGEX 0, 0, 550, 420
