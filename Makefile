@@ -10,7 +10,7 @@ LDFLAGS = -lgdi32 -luser32 -lkernel32
 TARGET = window.exe
 
 # Source files
-SOURCES = main.c
+SOURCES = main.c uri.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object files
@@ -34,7 +34,7 @@ $(TARGET): $(OBJECTS) $(RC_OBJECT)
 
 # Clean build artifacts
 clean:
-	rm -f $(OBJECTS) $(RC_OBJECT) $(TARGET)
+	rm -f $(OBJECTS) $(RC_OBJECT) $(TARGET) *.o
 
 # Run the program
 run: $(TARGET)

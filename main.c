@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <string.h>
+#include "uri.h"
 
 #define IDC_TEXT_FIELD    1001
 #define IDC_LABEL1        1002
@@ -24,12 +25,7 @@ HBRUSH hBrushLightBlue = NULL;
 HBRUSH hBrushLightTeal = NULL;
 HBRUSH hCurrentBrush = NULL;
 
-BOOL IsYouTubeURL(const char* url) {
-    return (strstr(url, "https://www.youtube.com/watch") != NULL ||
-            strstr(url, "https://youtu.be/") != NULL ||
-            strstr(url, "https://m.youtube.com/watch") != NULL ||
-            strstr(url, "https://youtube.com/watch") != NULL);
-}
+
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
     if (OpenClipboard(hDlg)) {
