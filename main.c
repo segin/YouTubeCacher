@@ -50,12 +50,12 @@ void ResizeControls(HWND hDlg) {
     // Resize Download video group box (taller)
     SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 10, 10, width - 20, 80, SWP_NOZORDER);
     
-    // Resize URL text field (within download group) - aligned with label, taller
-    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 30, buttonX - 65, 22, SWP_NOZORDER);
+    // Resize URL text field (within download group) - positioned below label
+    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 42, buttonX - 65, 22, SWP_NOZORDER);
     
-    // Position URL buttons (within download group) - reduced margin, taller
-    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 28, BUTTON_WIDTH, 26, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 56, BUTTON_WIDTH, 26, SWP_NOZORDER);
+    // Position URL buttons (within download group) - aligned with text field
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 40, BUTTON_WIDTH, 26, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 68, BUTTON_WIDTH, 26, SWP_NOZORDER);
     
     // Resize Offline videos group box (adjusted for taller download group)
     SetWindowPos(GetDlgItem(hDlg, IDC_OFFLINE_GROUP), NULL, 10, 100, width - 20, height - 110, SWP_NOZORDER);
