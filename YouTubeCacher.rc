@@ -29,14 +29,14 @@ FONT 9, "Segoe UI"
 MENU IDR_MAIN_MENU
 BEGIN
     GROUPBOX        "Download video", IDC_DOWNLOAD_GROUP, 10, 10, 530, 80
-    LTEXT           "URL:", IDC_LABEL1, 20, 25, 30, 14
+    LTEXT           "URL:", IDC_LABEL1, 20, 23, 30, 14
     EDITTEXT        IDC_TEXT_FIELD, 55, 42, 350, 22, ES_AUTOHSCROLL | WS_TABSTOP | WS_BORDER
     DEFPUSHBUTTON   "Download", IDC_DOWNLOAD_BTN, 460, 40, 70, 26
     PUSHBUTTON      "Get Info", IDC_GETINFO_BTN, 460, 68, 70, 26
     
     GROUPBOX        "Offline videos", IDC_OFFLINE_GROUP, 10, 100, 530, 310
     LTEXT           "Status: Ready", IDC_LABEL2, 20, 115, 150, 14
-    LTEXT           "Items: 0", IDC_LABEL3, 200, 115, 100, 14
+    LTEXT           "Items: 0", IDC_LABEL3, 180, 115, 100, 14
     
     LISTBOX         IDC_LIST, 20, 135, 430, 265, LBS_STANDARD | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL
     

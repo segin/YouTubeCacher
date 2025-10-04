@@ -44,28 +44,39 @@ void ResizeControls(HWND hDlg) {
     int height = rect.bottom - rect.top;
     
     // Calculate button position with proper margin
-    int buttonX = width - 90;  // Move buttons closer to right edge
+    int buttonX = width - 90;
     int sideButtonX = width - 90;
     
-    // Resize Download video group box (taller)
+    // Resize Download video group box
     SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 10, 10, width - 20, 80, SWP_NOZORDER);
     
-    // Resize URL text field (within download group) - positioned below label
+    // Position URL label (within download group)
+    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL1), NULL, 20, 28, 30, 14, SWP_NOZORDER);
+    
+    // Resize URL text field (within download group)
     SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 42, buttonX - 65, 22, SWP_NOZORDER);
     
-    // Position URL buttons (within download group) - aligned with text field
+    // Position URL buttons (within download group)
     SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 40, BUTTON_WIDTH, 26, SWP_NOZORDER);
     SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 68, BUTTON_WIDTH, 26, SWP_NOZORDER);
     
-    // Resize Offline videos group box (adjusted for taller download group)
-    SetWindowPos(GetDlgItem(hDlg, IDC_OFFLINE_GROUP), NULL, 10, 100, width - 20, height - 110, SWP_NOZORDER);
+    // Resize Offline videos group box
+    int offlineGroupY = 100;
+    SetWindowPos(GetDlgItem(hDlg, IDC_OFFLINE_GROUP), NULL, 10, offlineGroupY, width - 20, height - offlineGroupY - 10, SWP_NOZORDER);
     
-    // Resize listbox (within offline group, leave space for side buttons and labels)
-    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, 135, sideButtonX - 30, height - 155, SWP_NOZORDER);
+    // Position the status labels at the top of the offline group (inside the group box)
+    int labelY = offlineGroupY + 18;  // 18 pixels below group box top (accounting for group box border/title)
+    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL2), NULL, 20, labelY, 150, 14, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL3), NULL, 200, labelY, 100, 14, SWP_NOZORDER);
     
-    // Position side buttons (within offline group) - taller
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, 135, BUTTON_WIDTH, 32, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, 170, BUTTON_WIDTH, 32, SWP_NOZORDER);
+    // Position listbox below the labels with spacing
+    int listY = labelY + 22;  // 22 pixels below labels
+    int listHeight = height - listY - 20;  // 20 pixels from bottom
+    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, listY, sideButtonX - 30, listHeight, SWP_NOZORDER);
+    
+    // Position side buttons aligned with the listbox
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, listY, BUTTON_WIDTH, 32, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, listY + 37, BUTTON_WIDTH, 32, SWP_NOZORDER);
 }
 
 // Settings dialog procedure
