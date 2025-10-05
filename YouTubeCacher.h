@@ -49,6 +49,8 @@ void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dp
 // YtDlp operation types
 typedef enum {
     YTDLP_OP_GET_INFO,
+    YTDLP_OP_GET_TITLE,
+    YTDLP_OP_GET_DURATION,
     YTDLP_OP_DOWNLOAD,
     YTDLP_OP_VALIDATE
 } YtDlpOperation;
@@ -375,6 +377,10 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
 INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+
+// Video information retrieval functions
+BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
+void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration);
 
 // Multithreaded subprocess execution functions
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 

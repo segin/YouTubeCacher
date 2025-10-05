@@ -1214,6 +1214,127 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
     return result;
 }
 
+// Get video title and duration using yt-dlp --get-title and --get-duration flags
+BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
+    UNREFERENCED_PARAMETER(hDlg); // May be used for future UI updates during processing
+    if (!url || !title || !duration || titleSize == 0 || durationSize == 0) return FALSE;
+    
+    // Initialize output strings
+    title[0] = L'\0';
+    duration[0] = L'\0';
+    
+    // Initialize YtDlp configuration
+    YtDlpConfig config = {0};
+    if (!InitializeYtDlpConfig(&config)) {
+        return FALSE;
+    }
+    
+    // Validate yt-dlp installation
+    ValidationInfo validationInfo = {0};
+    if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
+        FreeValidationInfo(&validationInfo);
+        CleanupYtDlpConfig(&config);
+        return FALSE;
+    }
+    FreeValidationInfo(&validationInfo);
+    
+    BOOL success = FALSE;
+    
+    // Create temporary directory for operations
+    wchar_t tempDir[MAX_EXTENDED_PATH];
+    if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
+        CleanupYtDlpConfig(&config);
+        return FALSE;
+    }
+    
+    // Get video title
+    YtDlpRequest* titleRequest = CreateYtDlpRequest(YTDLP_OP_GET_TITLE, url, NULL);
+    if (titleRequest) {
+        titleRequest->tempDir = _wcsdup(tempDir);
+        
+        YtDlpResult* titleResult = ExecuteYtDlpRequest(&config, titleRequest);
+        if (titleResult && titleResult->success && titleResult->output) {
+            // Clean up the title output (remove newlines and extra whitespace)
+            wchar_t* cleanTitle = titleResult->output;
+            
+            // Remove trailing newlines and whitespace
+            size_t len = wcslen(cleanTitle);
+            while (len > 0 && (cleanTitle[len-1] == L'\n' || cleanTitle[len-1] == L'\r' || cleanTitle[len-1] == L' ')) {
+                cleanTitle[len-1] = L'\0';
+                len--;
+            }
+            
+            // Copy to output buffer
+            wcsncpy(title, cleanTitle, titleSize - 1);
+            title[titleSize - 1] = L'\0';
+            success = TRUE;
+        }
+        
+        if (titleResult) FreeYtDlpResult(titleResult);
+        FreeYtDlpRequest(titleRequest);
+    }
+    
+    // Get video duration
+    YtDlpRequest* durationRequest = CreateYtDlpRequest(YTDLP_OP_GET_DURATION, url, NULL);
+    if (durationRequest) {
+        durationRequest->tempDir = _wcsdup(tempDir);
+        
+        YtDlpResult* durationResult = ExecuteYtDlpRequest(&config, durationRequest);
+        if (durationResult && durationResult->success && durationResult->output) {
+            // Clean up the duration output (remove newlines and extra whitespace)
+            wchar_t* cleanDuration = durationResult->output;
+            
+            // Remove trailing newlines and whitespace
+            size_t len = wcslen(cleanDuration);
+            while (len > 0 && (cleanDuration[len-1] == L'\n' || cleanDuration[len-1] == L'\r' || cleanDuration[len-1] == L' ')) {
+                cleanDuration[len-1] = L'\0';
+                len--;
+            }
+            
+            // Copy to output buffer
+            wcsncpy(duration, cleanDuration, durationSize - 1);
+            duration[durationSize - 1] = L'\0';
+            
+            // If we got duration but not title, still consider it a partial success
+            if (!success && wcslen(duration) > 0) {
+                success = TRUE;
+            }
+        }
+        
+        if (durationResult) FreeYtDlpResult(durationResult);
+        FreeYtDlpRequest(durationRequest);
+    }
+    
+    // Cleanup
+    CleanupTempDirectory(tempDir);
+    CleanupYtDlpConfig(&config);
+    
+    return success;
+}
+
+// Update the video info UI fields with title and duration
+void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration) {
+    if (!hDlg) return;
+    
+    // Update video title field
+    if (title && wcslen(title) > 0) {
+        SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title);
+    } else {
+        SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Title not available");
+    }
+    
+    // Update video duration field
+    if (duration && wcslen(duration) > 0) {
+        SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, duration);
+    } else {
+        SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
+    }
+    
+    // Force redraw of the updated fields
+    InvalidateRect(GetDlgItem(hDlg, IDC_VIDEO_TITLE), NULL, TRUE);
+    InvalidateRect(GetDlgItem(hDlg, IDC_VIDEO_DURATION), NULL, TRUE);
+}
+
 void FreeYtDlpResult(YtDlpResult* result) {
     if (!result) return;
     
@@ -1316,6 +1437,22 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
                 swprintf(operationArgs, 1024, L"--dump-json --no-download \"%ls\"", url);
             } else {
                 wcscpy(operationArgs, L"--version");
+            }
+            break;
+            
+        case YTDLP_OP_GET_TITLE:
+            if (url && wcslen(url) > 0) {
+                swprintf(operationArgs, 1024, L"--get-title --no-download \"%ls\"", url);
+            } else {
+                return FALSE;
+            }
+            break;
+            
+        case YTDLP_OP_GET_DURATION:
+            if (url && wcslen(url) > 0) {
+                swprintf(operationArgs, 1024, L"--get-duration --no-download \"%ls\"", url);
+            } else {
+                return FALSE;
             }
             break;
             
@@ -2814,100 +2951,71 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                     
                 case IDC_GETINFO_BTN: {
-                    // Initialize YtDlp configuration
-                    YtDlpConfig config = {0};
-                    if (!InitializeYtDlpConfig(&config)) {
-                        ShowConfigurationError(hDlg, L"Failed to initialize yt-dlp configuration. Please check your settings.");
-                        break;
-                    }
-                    
-                    // Perform comprehensive validation
-                    ValidationInfo validationInfo = {0};
-                    if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
-                        // Show enhanced error dialog with diagnostic information
-                        wchar_t diagnosticReport[2048];
-                        swprintf(diagnosticReport, 2048, 
-                            L"yt-dlp validation failed:\n\n"
-                            L"Issue: %ls\n\n"
-                            L"Suggestions:\n%ls\n\n"
-                            L"Path checked: %ls",
-                            validationInfo.errorDetails ? validationInfo.errorDetails : L"Unknown validation error",
-                            validationInfo.suggestions ? validationInfo.suggestions : L"Please check yt-dlp installation",
-                            config.ytDlpPath);
-                        
-                        ShowValidationError(hDlg, &validationInfo);
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
-                        break;
-                    }
-                    
                     // Get URL from text field
                     wchar_t url[MAX_URL_LENGTH];
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
                     
-                    // Create YtDlp request for info operation
-                    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_INFO, 
-                                                              wcslen(url) > 0 ? url : NULL, 
-                                                              NULL);
-                    if (!request) {
-                        ShowMemoryError(hDlg, L"yt-dlp request creation");
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
+                    // Validate URL is provided
+                    if (wcslen(url) == 0) {
+                        ShowWarningMessage(hDlg, L"No URL Provided", L"Please enter a YouTube URL to get video information.");
                         break;
                     }
-                    
-                    // Create temporary directory for operation
-                    wchar_t tempDir[MAX_EXTENDED_PATH];
-                    if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
-                        ShowTempDirError(hDlg, tempDir, GetLastError());
-                        FreeYtDlpRequest(request);
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
-                        break;
-                    }
-                    request->tempDir = _wcsdup(tempDir);
                     
                     // Create progress dialog for the operation
                     ProgressDialog* progress = CreateProgressDialog(hDlg, L"Getting Video Information");
                     if (!progress) {
-                        ShowUIError(hDlg, L"progress dialog");
-                        CleanupTempDirectory(tempDir);
-                        FreeYtDlpRequest(request);
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
+                        ShowUIError(hDlg, L"progress dialog creation");
                         break;
                     }
                     
-                    // Execute the yt-dlp operation with enhanced error handling
-                    UpdateProgressDialog(progress, 10, L"Initializing yt-dlp operation...");
-                    YtDlpResult* result = ExecuteYtDlpRequest(&config, request);
+                    // Update progress
+                    UpdateProgressDialog(progress, 10, L"Retrieving video title...");
                     
-                    if (result && result->success) {
-                        UpdateProgressDialog(progress, 100, L"Operation completed successfully");
+                    // Get video title and duration
+                    wchar_t title[512] = {0};
+                    wchar_t duration[64] = {0};
+                    
+                    UpdateProgressDialog(progress, 50, L"Retrieving video information...");
+                    
+                    BOOL success = GetVideoTitleAndDuration(hDlg, url, title, sizeof(title)/sizeof(wchar_t), 
+                                                           duration, sizeof(duration)/sizeof(wchar_t));
+                    
+                    if (success) {
+                        UpdateProgressDialog(progress, 90, L"Updating interface...");
+                        
+                        // Update the UI with the retrieved information
+                        UpdateVideoInfoUI(hDlg, title, duration);
+                        
+                        UpdateProgressDialog(progress, 100, L"Video information retrieved successfully");
                         Sleep(500);
                         DestroyProgressDialog(progress);
                         
-                        // Display the video information
-                        if (result->output && wcslen(result->output) > 0) {
-                            ShowInfoMessage(hDlg, L"Video Information", result->output);
-                        } else {
-                            ShowWarningMessage(hDlg, L"No Information", L"Operation completed successfully but no information was returned.");
-                        }
+                        // Show success message with the retrieved information
+                        wchar_t successMsg[1024];
+                        swprintf(successMsg, 1024, 
+                            L"Video information retrieved successfully!\n\n"
+                            L"Title: %ls\n\n"
+                            L"Duration: %ls",
+                            wcslen(title) > 0 ? title : L"Not available",
+                            wcslen(duration) > 0 ? duration : L"Not available");
+                        
+                        ShowSuccessMessage(hDlg, L"Video Information Retrieved", successMsg);
                     } else {
-                        UpdateProgressDialog(progress, 0, L"Operation failed");
+                        UpdateProgressDialog(progress, 0, L"Failed to retrieve video information");
                         Sleep(500);
                         DestroyProgressDialog(progress);
                         
-                        // Show enhanced error dialog with comprehensive diagnostics
-                        ShowYtDlpError(hDlg, result, request);
+                        // Clear any existing video info
+                        UpdateVideoInfoUI(hDlg, L"", L"");
+                        
+                        ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
+                            L"Could not retrieve video information. Please check:\n\n"
+                            L"• The URL is valid and accessible\n"
+                            L"• yt-dlp is properly installed and configured\n"
+                            L"• You have an internet connection\n"
+                            L"• The video is not private or restricted");
                     }
                     
-                    // Cleanup resources
-                    CleanupTempDirectory(tempDir);
-                    if (result) FreeYtDlpResult(result);
-                    FreeYtDlpRequest(request);
-                    FreeValidationInfo(&validationInfo);
-                    CleanupYtDlpConfig(&config);
                     break;
                 }
                     
