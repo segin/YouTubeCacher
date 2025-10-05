@@ -42,6 +42,31 @@ void GetDefaultDownloadPath(char* path, size_t pathSize) {
     snprintf(path, pathSize, "%s\\YouTubeCacher", downloadsPath);
 }
 
+// Function to get the default yt-dlp path (check WinGet installation)
+void GetDefaultYtDlpPath(char* path, size_t pathSize) {
+    char localAppData[MAX_PATH];
+    char ytDlpPath[MAX_PATH * 2];  // Use larger buffer for long path
+    
+    // Initialize path as empty
+    path[0] = '\0';
+    
+    // Get %LocalAppData% environment variable
+    if (GetEnvironmentVariable("LOCALAPPDATA", localAppData, sizeof(localAppData)) > 0) {
+        // Construct the WinGet yt-dlp path
+        snprintf(ytDlpPath, sizeof(ytDlpPath), 
+                "%s\\Microsoft\\WinGet\\Packages\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\\yt-dlp.exe",
+                localAppData);
+        
+        // Check if the file exists
+        DWORD attributes = GetFileAttributes(ytDlpPath);
+        if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            // File exists and is not a directory, copy to output
+            strncpy(path, ytDlpPath, pathSize - 1);
+            path[pathSize - 1] = '\0';
+        }
+    }
+}
+
 // Function to create the download directory if it doesn't exist
 BOOL CreateDownloadDirectoryIfNeeded(const char* path) {
     DWORD attributes = GetFileAttributes(path);
@@ -136,6 +161,11 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     
     switch (message) {
         case WM_INITDIALOG: {
+            // Set default yt-dlp path (check WinGet installation)
+            char defaultYtDlpPath[MAX_PATH];
+            GetDefaultYtDlpPath(defaultYtDlpPath, sizeof(defaultYtDlpPath));
+            SetDlgItemText(hDlg, IDC_YTDLP_PATH, defaultYtDlpPath);
+            
             // Set default download folder path
             char defaultDownloadPath[MAX_PATH];
             GetDefaultDownloadPath(defaultDownloadPath, sizeof(defaultDownloadPath));

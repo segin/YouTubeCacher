@@ -34,6 +34,7 @@
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
 void GetDefaultDownloadPath(char* path, size_t pathSize);
+void GetDefaultYtDlpPath(char* path, size_t pathSize);
 BOOL CreateDownloadDirectoryIfNeeded(const char* path);
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
