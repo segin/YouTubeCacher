@@ -282,7 +282,7 @@ void FreeYtDlpContext(YtDlpContext* context);
 
 // Command line argument management function prototypes
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
-                             wchar_t* args, size_t argsSize);
+                             const YtDlpConfig* config, wchar_t* args, size_t argsSize);
 BOOL GetOptimizedArgsForInfo(wchar_t* args, size_t argsSize);
 BOOL GetOptimizedArgsForDownload(const wchar_t* outputPath, wchar_t* args, size_t argsSize);
 BOOL GetFallbackArgs(YtDlpOperation operation, wchar_t* args, size_t argsSize);

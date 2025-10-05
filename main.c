@@ -322,6 +322,12 @@ BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
         GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
     }
     
+    // Load custom yt-dlp arguments from registry
+    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
+        // Use empty default if not found in registry
+        config->defaultArgs[0] = L'\0';
+    }
+    
     // Set default timeout
     config->timeoutSeconds = 300; // 5 minutes
     config->tempDirStrategy = TEMP_DIR_SYSTEM;
@@ -598,7 +604,7 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     
     // Build command line arguments
     wchar_t arguments[2048];
-    if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, arguments, 2048)) {
+    if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, config, arguments, 2048)) {
         result->success = FALSE;
         result->exitCode = 1;
         result->errorMessage = _wcsdup(L"Failed to build yt-dlp arguments");
@@ -797,34 +803,50 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
 }
 
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
-                             wchar_t* args, size_t argsSize) {
+                             const YtDlpConfig* config, wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
     
-    // Build arguments based on operation type
+    // Start with custom arguments if they exist
+    wchar_t baseArgs[2048] = L"";
+    if (config && config->defaultArgs[0] != L'\0') {
+        wcscpy(baseArgs, config->defaultArgs);
+        wcscat(baseArgs, L" ");
+    }
+    
+    // Build operation-specific arguments
+    wchar_t operationArgs[1024];
     switch (operation) {
         case YTDLP_OP_GET_INFO:
             if (url && wcslen(url) > 0) {
-                swprintf(args, argsSize, L"--dump-json --no-download \"%ls\"", url);
+                swprintf(operationArgs, 1024, L"--dump-json --no-download \"%ls\"", url);
             } else {
-                wcscpy(args, L"--version");
+                wcscpy(operationArgs, L"--version");
             }
             break;
             
         case YTDLP_OP_DOWNLOAD:
             if (url && outputPath) {
-                swprintf(args, argsSize, L"-o \"%ls\\%%(title)s.%%(ext)s\" \"%ls\"", outputPath, url);
+                swprintf(operationArgs, 1024, L"-o \"%ls\\%%(title)s.%%(ext)s\" \"%ls\"", outputPath, url);
             } else {
                 return FALSE;
             }
             break;
             
         case YTDLP_OP_VALIDATE:
-            wcscpy(args, L"--version");
+            wcscpy(operationArgs, L"--version");
             break;
             
         default:
             return FALSE;
     }
+    
+    // Combine custom arguments with operation-specific arguments
+    if (wcslen(baseArgs) + wcslen(operationArgs) + 1 >= argsSize) {
+        return FALSE; // Not enough space
+    }
+    
+    wcscpy(args, baseArgs);
+    wcscat(args, operationArgs);
     
     return TRUE;
 }
