@@ -219,6 +219,7 @@ typedef struct {
 // Function prototypes
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
+void ApplyModernThemeToDialog(HWND hDlg);
 void GetDefaultDownloadPath(wchar_t* path, size_t pathSize);
 void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize);
 BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path);

@@ -458,6 +458,9 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 return TRUE;
             }
             
+            // Apply modern Windows theming to dialog and controls
+            ApplyModernThemeToDialog(hDlg);
+            
             errorDialog->hDialog = hDlg;
             errorDialog->hTabControl = GetDlgItem(hDlg, IDC_ERROR_TAB_CONTROL);
             

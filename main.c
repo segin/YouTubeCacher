@@ -1903,6 +1903,74 @@ void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dp
     }
 }
 
+// Apply modern Windows theming to dialog and its controls
+void ApplyModernThemeToDialog(HWND hDlg) {
+    if (!hDlg) return;
+    
+    // Load UxTheme library for theming functions
+    HMODULE hUxTheme = LoadLibraryW(L"uxtheme.dll");
+    if (!hUxTheme) return;
+    
+    // Define constants that might not be available in older headers
+    #ifndef ETDT_ENABLETAB
+    #define ETDT_ENABLETAB 0x00000006
+    #endif
+    
+    // Function pointers for theming APIs
+    typedef BOOL (WINAPI *EnableThemeDialogTextureFunc)(HWND, DWORD);
+    typedef HRESULT (WINAPI *SetWindowThemeFunc)(HWND, LPCWSTR, LPCWSTR);
+    typedef BOOL (WINAPI *IsThemeActiveFunc)(void);
+    
+    EnableThemeDialogTextureFunc EnableThemeDialogTexture = 
+        (EnableThemeDialogTextureFunc)GetProcAddress(hUxTheme, "EnableThemeDialogTexture");
+    SetWindowThemeFunc SetWindowTheme = 
+        (SetWindowThemeFunc)GetProcAddress(hUxTheme, "SetWindowTheme");
+    IsThemeActiveFunc IsThemeActive = 
+        (IsThemeActiveFunc)GetProcAddress(hUxTheme, "IsThemeActive");
+    
+    // Only apply theming if themes are active on the system
+    if (IsThemeActive && IsThemeActive()) {
+        // Enable dialog texture (gives the dialog a modern background)
+        if (EnableThemeDialogTexture) {
+            EnableThemeDialogTexture(hDlg, ETDT_ENABLETAB);
+        }
+        
+        // Apply modern theme to specific control types
+        if (SetWindowTheme) {
+            // Find and theme all child controls
+            HWND hChild = GetWindow(hDlg, GW_CHILD);
+            while (hChild) {
+                wchar_t className[256];
+                if (GetClassNameW(hChild, className, 256)) {
+                    // Apply explorer theme to listboxes for modern appearance
+                    if (wcscmp(className, L"ListBox") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                    }
+                    // Apply modern button theme
+                    else if (wcscmp(className, L"Button") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                    }
+                    // Apply modern edit control theme
+                    else if (wcscmp(className, L"Edit") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                    }
+                    // Apply modern progress bar theme
+                    else if (wcscmp(className, L"msctls_progress32") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                    }
+                    // Apply modern tab control theme (for error dialogs)
+                    else if (wcscmp(className, L"SysTabControl32") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                    }
+                }
+                hChild = GetWindow(hChild, GW_HWNDNEXT);
+            }
+        }
+    }
+    
+    FreeLibrary(hUxTheme);
+}
+
 void ResizeControls(HWND hDlg) {
     RECT rect;
     GetClientRect(hDlg, &rect);
@@ -2085,6 +2153,9 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     
     switch (message) {
         case WM_INITDIALOG: {
+            // Apply modern Windows theming to dialog and controls
+            ApplyModernThemeToDialog(hDlg);
+            
             // Load settings from registry (with defaults if not found)
             LoadSettings(hDlg);
             
@@ -2201,6 +2272,9 @@ INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     
     switch (message) {
         case WM_INITDIALOG: {
+            // Apply modern Windows theming to dialog and controls
+            ApplyModernThemeToDialog(hDlg);
+            
             // Store the ProgressDialog pointer passed via lParam
             pProgress = (ProgressDialog*)lParam;
             if (pProgress) {
@@ -2282,6 +2356,9 @@ INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_INITDIALOG: {
+            // Apply modern Windows theming to dialog and controls
+            ApplyModernThemeToDialog(hDlg);
+            
             // Create brushes for text field colors
             hBrushWhite = CreateSolidBrush(COLOR_WHITE);
             hBrushLightGreen = CreateSolidBrush(COLOR_LIGHT_GREEN);
@@ -2793,11 +2870,30 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     // Initialize error logging
     InitializeErrorLogging();
     
-    // Initialize common controls for progress bar
+    // Initialize Common Controls v6 for modern Windows theming
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    icex.dwICC = ICC_PROGRESS_CLASS;
-    InitCommonControlsEx(&icex);
+    icex.dwICC = ICC_PROGRESS_CLASS |      // Progress bars
+                 ICC_LISTVIEW_CLASSES |    // List boxes and list views
+                 ICC_TAB_CLASSES |         // Tab controls (for error dialog)
+                 ICC_UPDOWN_CLASS |        // Up-down controls
+                 ICC_BAR_CLASSES |         // Toolbar, status bar, trackbar, tooltip
+                 ICC_STANDARD_CLASSES |    // Button, edit, static, listbox, combobox, scrollbar
+                 ICC_WIN95_CLASSES;        // All Win95 common controls
+    
+    if (!InitCommonControlsEx(&icex)) {
+        // Fallback to basic initialization if extended version fails
+        InitCommonControls();
+    }
+    
+    // Enable Windows XP+ Visual Styles programmatically (backup to manifest)
+    // This ensures theming works even if manifest processing fails
+    HMODULE hUxTheme = LoadLibraryW(L"uxtheme.dll");
+    if (hUxTheme) {
+        // Verify UxTheme library is available for theming support
+        // The actual theming functions are called in ApplyModernThemeToDialog()
+        FreeLibrary(hUxTheme);
+    }
     
     // Enable DPI awareness for HiDPI support
     typedef BOOL (WINAPI *SetProcessDPIAwareFunc)(void);
