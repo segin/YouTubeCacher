@@ -38,4 +38,10 @@
 #define IDC_PLAYER_PATH   1020
 #define IDC_PLAYER_BROWSE 1021
 
+// Color buttons
+#define IDC_COLOR_GREEN   1023
+#define IDC_COLOR_TEAL    1024
+#define IDC_COLOR_BLUE    1025
+#define IDC_COLOR_WHITE   1026
+
 #endif // RESOURCE_H

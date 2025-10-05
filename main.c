@@ -296,6 +296,12 @@ void ResizeControls(HWND hDlg) {
     // Position progress bar below URL field
     SetWindowPos(GetDlgItem(hDlg, IDC_PROGRESS_BAR), NULL, 55, 58, buttonX - 65, 16, SWP_NOZORDER);
     
+    // Position color buttons under progress bar
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_GREEN), NULL, 55, 78, 20, 16, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_TEAL), NULL, 80, 78, 20, 16, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_BLUE), NULL, 105, 78, 20, 16, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_WHITE), NULL, 130, 78, 20, 16, SWP_NOZORDER);
+    
     // Position URL buttons (within download group) - aligned with text field and progress bar
     SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 28, BUTTON_WIDTH, 26, SWP_NOZORDER);
     SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 58, BUTTON_WIDTH, 26, SWP_NOZORDER);
@@ -478,8 +484,47 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             }
             break;
             
+        case WM_DRAWITEM: {
+            LPDRAWITEMSTRUCT lpDrawItem = (LPDRAWITEMSTRUCT)lParam;
+            if (lpDrawItem->CtlType == ODT_BUTTON) {
+                HBRUSH hBrush = NULL;
+                COLORREF color = RGB(255, 255, 255); // Default white
+                
+                // Determine color based on button ID
+                switch (lpDrawItem->CtlID) {
+                    case IDC_COLOR_GREEN:
+                        color = COLOR_LIGHT_GREEN;
+                        break;
+                    case IDC_COLOR_TEAL:
+                        color = COLOR_LIGHT_TEAL;
+                        break;
+                    case IDC_COLOR_BLUE:
+                        color = COLOR_LIGHT_BLUE;
+                        break;
+                    case IDC_COLOR_WHITE:
+                        color = COLOR_WHITE;
+                        break;
+                }
+                
+                // Create brush and fill the button
+                hBrush = CreateSolidBrush(color);
+                if (hBrush) {
+                    FillRect(lpDrawItem->hDC, &lpDrawItem->rcItem, hBrush);
+                    DeleteObject(hBrush);
+                }
+                
+                // Draw button border
+                if (lpDrawItem->itemState & ODS_SELECTED) {
+                    DrawEdge(lpDrawItem->hDC, &lpDrawItem->rcItem, EDGE_SUNKEN, BF_RECT);
+                } else {
+                    DrawEdge(lpDrawItem->hDC, &lpDrawItem->rcItem, EDGE_RAISED, BF_RECT);
+                }
+                
+                return TRUE;
+            }
+            break;
+        }
 
-            
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case ID_EDIT_SELECTALL: {
@@ -597,6 +642,26 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case IDC_BUTTON3:
                     MessageBoxW(hDlg, L"Delete functionality not implemented yet", L"Delete", MB_OK);
+                    break;
+                    
+                case IDC_COLOR_GREEN:
+                    hCurrentBrush = hBrushLightGreen;
+                    InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+                    break;
+                    
+                case IDC_COLOR_TEAL:
+                    hCurrentBrush = hBrushLightTeal;
+                    InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+                    break;
+                    
+                case IDC_COLOR_BLUE:
+                    hCurrentBrush = hBrushLightBlue;
+                    InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+                    break;
+                    
+                case IDC_COLOR_WHITE:
+                    hCurrentBrush = hBrushWhite;
+                    InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     break;
                     
                 case IDCANCEL:
