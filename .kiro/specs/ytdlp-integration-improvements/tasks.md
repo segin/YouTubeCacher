@@ -97,6 +97,7 @@
 
 
 
+
   - [x] 7.1 Implement operation-specific argument sets
 
 
@@ -114,14 +115,22 @@
     - Add registry storage for custom argument preferences
     - _Requirements: 6.4_
 
-- [ ] 8. Update existing UI integration points
-  - [ ] 8.1 Modify Get Info button implementation
+- [x] 8. Update existing UI integration points
+
+
+
+
+  - [x] 8.1 Modify Get Info button implementation
+
+
     - Replace current yt-dlp execution with new YtDlp Manager system
     - Add progress dialog integration for info retrieval operations
     - Implement enhanced error display with diagnostic information
     - _Requirements: 1.1, 1.2, 3.1, 4.1_
 
-  - [ ] 8.2 Update Download button implementation
+  - [x] 8.2 Update Download button implementation
+
+
     - Integrate new yt-dlp management system for download operations
     - Add progress tracking and cancellation support for downloads
     - Implement proper temp directory management for download operations
