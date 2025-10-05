@@ -14,6 +14,7 @@
 #define IDC_GETINFO_BTN   1010
 #define IDC_DOWNLOAD_GROUP 1011
 #define IDC_OFFLINE_GROUP  1012
+#define IDC_PROGRESS_BAR   1022
 #define IDC_STATIC         -1
 
 // Dialog and Menu Resource IDs
@@ -27,5 +28,14 @@
 
 // Settings Dialog
 #define IDD_SETTINGS      103
+#define IDC_YTDLP_LABEL   1013
+#define IDC_YTDLP_PATH    1014
+#define IDC_YTDLP_BROWSE  1015
+#define IDC_FOLDER_LABEL  1016
+#define IDC_FOLDER_PATH   1017
+#define IDC_FOLDER_BROWSE 1018
+#define IDC_PLAYER_LABEL  1019
+#define IDC_PLAYER_PATH   1020
+#define IDC_PLAYER_BROWSE 1021
 
 #endif // RESOURCE_H
