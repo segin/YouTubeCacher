@@ -5,6 +5,7 @@
 #include <commdlg.h>
 #include <shlobj.h>
 #include <commctrl.h>
+#include <knownfolders.h>
 
 // Global variable for command line URL
 char cmdLineURL[MAX_URL_LENGTH] = {0};
@@ -18,16 +19,15 @@ HBRUSH hCurrentBrush = NULL;
 
 // Function to get the default download path (Downloads/YouTubeCacher)
 void GetDefaultDownloadPath(char* path, size_t pathSize) {
+    PWSTR downloadsPathW = NULL;
     char downloadsPath[MAX_PATH];
     
-    // Get the user's Downloads folder
-    if (SHGetFolderPath(NULL, CSIDL_PERSONAL, NULL, SHGFP_TYPE_CURRENT, downloadsPath) == S_OK) {
-        // Try to get Downloads folder specifically
-        char* lastBackslash = strrchr(downloadsPath, '\\');
-        if (lastBackslash) {
-            *lastBackslash = '\0';
-            strcat(downloadsPath, "\\Downloads");
-        }
+    // Get the user's Downloads folder using the proper FOLDERID_Downloads
+    HRESULT hr = SHGetKnownFolderPath(&FOLDERID_Downloads, 0, NULL, &downloadsPathW);
+    if (SUCCEEDED(hr) && downloadsPathW != NULL) {
+        // Convert wide string to multibyte
+        WideCharToMultiByte(CP_UTF8, 0, downloadsPathW, -1, downloadsPath, sizeof(downloadsPath), NULL, NULL);
+        CoTaskMemFree(downloadsPathW);
     } else {
         // Fallback to user profile + Downloads
         if (GetEnvironmentVariable("USERPROFILE", downloadsPath, sizeof(downloadsPath)) > 0) {

@@ -4,7 +4,7 @@
 CC = gcc
 RC = windres
 CFLAGS = -Wall -Wextra -Werror -std=c99
-LDFLAGS = -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32
+LDFLAGS = -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid
 
 # Target executable
 TARGET = YouTubeCacher.exe
