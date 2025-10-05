@@ -50,4 +50,8 @@
 #define IDC_PROGRESS_PROGRESS  1028
 #define IDC_PROGRESS_CANCEL    1029
 
+// Custom Arguments
+#define IDC_CUSTOM_ARGS_LABEL  1030
+#define IDC_CUSTOM_ARGS_FIELD  1031
+
 #endif // RESOURCE_H

@@ -289,6 +289,14 @@ void LoadSettings(HWND hDlg) {
         // Use default if not found in registry
         SetDlgItemTextW(hDlg, IDC_PLAYER_PATH, L"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe");
     }
+    
+    // Load custom yt-dlp arguments
+    if (LoadSettingFromRegistry(REG_CUSTOM_ARGS, buffer, MAX_EXTENDED_PATH)) {
+        SetDlgItemTextW(hDlg, IDC_CUSTOM_ARGS_FIELD, buffer);
+    } else {
+        // Use empty default
+        SetDlgItemTextW(hDlg, IDC_CUSTOM_ARGS_FIELD, L"");
+    }
 }
 
 // Function to save settings from dialog controls to registry
@@ -306,6 +314,24 @@ void SaveSettings(HWND hDlg) {
     // Save player path
     GetDlgItemTextW(hDlg, IDC_PLAYER_PATH, buffer, MAX_EXTENDED_PATH);
     SaveSettingToRegistry(REG_PLAYER_PATH, buffer);
+    
+    // Save custom yt-dlp arguments
+    GetDlgItemTextW(hDlg, IDC_CUSTOM_ARGS_FIELD, buffer, MAX_EXTENDED_PATH);
+    
+    // Validate and sanitize the custom arguments before saving
+    if (wcslen(buffer) > 0) {
+        if (ValidateYtDlpArguments(buffer)) {
+            SanitizeYtDlpArguments(buffer, MAX_EXTENDED_PATH);
+            SaveSettingToRegistry(REG_CUSTOM_ARGS, buffer);
+        } else {
+            // Invalid arguments - show warning and don't save
+            MessageBoxW(hDlg, L"Custom yt-dlp arguments contain potentially dangerous options and were not saved.\n\nPlease remove any --exec, --batch-file, or other potentially harmful arguments.", 
+                       L"Invalid Arguments", MB_OK | MB_ICONWARNING);
+        }
+    } else {
+        // Empty arguments - save empty string
+        SaveSettingToRegistry(REG_CUSTOM_ARGS, L"");
+    }
 }
 
 
@@ -931,9 +957,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Build yt-dlp arguments for download
+                    // Build yt-dlp arguments for download using new argument management
                     wchar_t arguments[2048];
-                    swprintf(arguments, 2048, L"-o \"%ls\\%%(title)s.%%(ext)s\" \"%ls\"", downloadPath, url);
+                    if (!GetYtDlpArgsForOperation(YTDLP_OP_DOWNLOAD, url, downloadPath, arguments, 2048)) {
+                        MessageBoxW(hDlg, L"Failed to build yt-dlp arguments for download.", L"Configuration Error", MB_OK | MB_ICONERROR);
+                        break;
+                    }
                     
                     // Execute yt-dlp with progress dialog
                     wchar_t* output = NULL;
@@ -985,11 +1014,16 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                     wchar_t arguments[1024];
                     if (wcslen(url) > 0) {
-                        // Get info for specific URL
-                        swprintf(arguments, 1024, L"--print title,duration,uploader \"%ls\"", url);
+                        // Get info for specific URL using new argument management
+                        if (!GetYtDlpArgsForOperation(YTDLP_OP_GET_INFO, url, NULL, arguments, 1024)) {
+                            MessageBoxW(hDlg, L"Failed to build yt-dlp arguments for info retrieval.", L"Configuration Error", MB_OK | MB_ICONERROR);
+                            break;
+                        }
                     } else {
                         // Just get version info
-                        wcscpy(arguments, L"--version");
+                        if (!GetYtDlpArgsForOperation(YTDLP_OP_VALIDATE, NULL, NULL, arguments, 1024)) {
+                            wcscpy(arguments, L"--version");
+                        }
                     }
                     
                     // Execute yt-dlp with progress dialog
@@ -1584,6 +1618,252 @@ BOOL TestYtDlpFunctionality(const wchar_t* path) {
     }
     
     return success;
+}
+
+// Command line argument management functions
+
+// Function to get optimized arguments for info retrieval operations
+BOOL GetOptimizedArgsForInfo(wchar_t* args, size_t argsSize) {
+    if (!args || argsSize == 0) {
+        return FALSE;
+    }
+    
+    // Optimized arguments for fast info retrieval
+    const wchar_t* infoArgs = L"--no-download --quiet --print title,duration,uploader,view_count,upload_date";
+    
+    if (wcslen(infoArgs) >= argsSize) {
+        return FALSE;
+    }
+    
+    wcscpy(args, infoArgs);
+    return TRUE;
+}
+
+// Function to get optimized arguments for download operations
+BOOL GetOptimizedArgsForDownload(const wchar_t* outputPath, wchar_t* args, size_t argsSize) {
+    if (!args || argsSize == 0 || !outputPath) {
+        return FALSE;
+    }
+    
+    // Build optimized download arguments
+    const wchar_t* format = L"--format \"best[height<=1080]/best\" --embed-metadata --write-thumbnail --output \"%ls\\%%(title)s.%%(ext)s\"";
+    
+    size_t requiredSize = wcslen(format) + wcslen(outputPath) + 1;
+    if (requiredSize > argsSize) {
+        return FALSE;
+    }
+    
+    swprintf(args, argsSize, format, outputPath);
+    return TRUE;
+}
+
+// Function to get fallback argument sets for compatibility issues
+BOOL GetFallbackArgs(YtDlpOperation operation, wchar_t* args, size_t argsSize) {
+    if (!args || argsSize == 0) {
+        return FALSE;
+    }
+    
+    const wchar_t* fallbackArgs = NULL;
+    
+    switch (operation) {
+        case YTDLP_OP_GET_INFO:
+            // Simple fallback for info - just get title
+            fallbackArgs = L"--no-download --get-title";
+            break;
+            
+        case YTDLP_OP_DOWNLOAD:
+            // Simple fallback for download - basic format
+            fallbackArgs = L"--format \"best\"";
+            break;
+            
+        case YTDLP_OP_VALIDATE:
+            // Fallback for validation - just version
+            fallbackArgs = L"--version";
+            break;
+            
+        default:
+            return FALSE;
+    }
+    
+    if (wcslen(fallbackArgs) >= argsSize) {
+        return FALSE;
+    }
+    
+    wcscpy(args, fallbackArgs);
+    return TRUE;
+}
+
+// Function to validate yt-dlp arguments for security
+BOOL ValidateYtDlpArguments(const wchar_t* args) {
+    if (!args) {
+        return FALSE;
+    }
+    
+    // Check for potentially dangerous arguments
+    const wchar_t* dangerousArgs[] = {
+        L"--exec",           // Execute arbitrary commands
+        L"--exec-before-dl", // Execute before download
+        L"--exec-after-dl",  // Execute after download
+        L"--config-location", // Could point to malicious config
+        L"--batch-file",     // Could read arbitrary files
+        L"--load-info-json", // Could load malicious JSON
+        L"--cookies-from-browser", // Privacy concern
+        NULL
+    };
+    
+    // Convert to lowercase for case-insensitive checking
+    wchar_t* lowerArgs = _wcsdup(args);
+    if (!lowerArgs) {
+        return FALSE;
+    }
+    
+    for (size_t i = 0; lowerArgs[i]; i++) {
+        lowerArgs[i] = towlower(lowerArgs[i]);
+    }
+    
+    // Check for dangerous arguments
+    for (int i = 0; dangerousArgs[i]; i++) {
+        wchar_t* lowerDangerous = _wcsdup(dangerousArgs[i]);
+        if (lowerDangerous) {
+            for (size_t j = 0; lowerDangerous[j]; j++) {
+                lowerDangerous[j] = towlower(lowerDangerous[j]);
+            }
+            
+            if (wcsstr(lowerArgs, lowerDangerous)) {
+                free(lowerDangerous);
+                free(lowerArgs);
+                return FALSE;
+            }
+            free(lowerDangerous);
+        }
+    }
+    
+    free(lowerArgs);
+    return TRUE;
+}
+
+// Function to sanitize yt-dlp arguments
+BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
+    if (!args || argsSize == 0) {
+        return FALSE;
+    }
+    
+    // Remove potentially dangerous characters and sequences
+    size_t len = wcslen(args);
+    size_t writePos = 0;
+    
+    for (size_t i = 0; i < len && writePos < argsSize - 1; i++) {
+        wchar_t c = args[i];
+        
+        // Skip dangerous characters
+        if (c == L'&' || c == L'|' || c == L';' || c == L'`' || c == L'$') {
+            continue;
+        }
+        
+        // Replace multiple spaces with single space
+        if (c == L' ' && writePos > 0 && args[writePos - 1] == L' ') {
+            continue;
+        }
+        
+        args[writePos++] = c;
+    }
+    
+    args[writePos] = L'\0';
+    return TRUE;
+}
+
+// Main function to get operation-specific argument sets
+BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
+                             wchar_t* args, size_t argsSize) {
+    if (!args || argsSize == 0) {
+        return FALSE;
+    }
+    
+    // Initialize args
+    args[0] = L'\0';
+    
+    // Check for custom arguments from registry first
+    wchar_t customArgs[1024] = {0};
+    if (LoadSettingFromRegistry(REG_CUSTOM_ARGS, customArgs, 1024) && wcslen(customArgs) > 0) {
+        // Validate custom arguments
+        if (ValidateYtDlpArguments(customArgs)) {
+            // Use custom arguments as base
+            wcsncpy(args, customArgs, argsSize - 1);
+            args[argsSize - 1] = L'\0';
+            
+            // Sanitize the arguments
+            SanitizeYtDlpArguments(args, argsSize);
+            
+            // Add URL if provided and not already in custom args
+            if (url && wcslen(url) > 0 && !wcsstr(args, url)) {
+                size_t currentLen = wcslen(args);
+                size_t urlLen = wcslen(url);
+                
+                if (currentLen + urlLen + 10 < argsSize) {
+                    if (currentLen > 0) {
+                        wcscat(args, L" ");
+                    }
+                    wcscat(args, L"\"");
+                    wcscat(args, url);
+                    wcscat(args, L"\"");
+                }
+            }
+            
+            return TRUE;
+        }
+    }
+    
+    // Use operation-specific optimized arguments
+    wchar_t baseArgs[1024] = {0};
+    BOOL success = FALSE;
+    
+    switch (operation) {
+        case YTDLP_OP_GET_INFO:
+            success = GetOptimizedArgsForInfo(baseArgs, 1024);
+            break;
+            
+        case YTDLP_OP_DOWNLOAD:
+            if (outputPath) {
+                success = GetOptimizedArgsForDownload(outputPath, baseArgs, 1024);
+            } else {
+                // Use fallback if no output path
+                success = GetFallbackArgs(operation, baseArgs, 1024);
+            }
+            break;
+            
+        case YTDLP_OP_VALIDATE:
+            success = GetFallbackArgs(operation, baseArgs, 1024);
+            break;
+            
+        default:
+            return FALSE;
+    }
+    
+    if (!success) {
+        // Try fallback arguments
+        success = GetFallbackArgs(operation, baseArgs, 1024);
+        if (!success) {
+            return FALSE;
+        }
+    }
+    
+    // Build final command line with URL
+    size_t baseLen = wcslen(baseArgs);
+    size_t urlLen = url ? wcslen(url) : 0;
+    
+    if (baseLen + urlLen + 10 >= argsSize) {
+        return FALSE;
+    }
+    
+    wcscpy(args, baseArgs);
+    
+    if (url && wcslen(url) > 0) {
+        wcscat(args, L" \"");
+        wcscat(args, url);
+        wcscat(args, L"\"");
+    }
+    
+    return TRUE;
 }
 
 // Comprehensive yt-dlp validation function

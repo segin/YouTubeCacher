@@ -60,12 +60,6 @@
 
 - [x] 5. Create enhanced error handling and analysis
 
-
-
-
-
-
-
   - [x] 5.1 Implement error parsing system
 
     - Write AnalyzeYtDlpError() function to categorize common yt-dlp errors
@@ -79,12 +73,9 @@
     - Include system state, configuration, and execution context in diagnostics
     - Add suggested solutions and troubleshooting steps for each error type
 
-
     - _Requirements: 1.1, 1.3, 1.4_
 
-
 - [x] 6. Implement progress dialog and user feedback
-
 
 
   - [x] 6.1 Create progress dialog UI
@@ -96,20 +87,28 @@
 
   - [x] 6.2 Integrate progress feedback with yt-dlp operations
 
-
     - Modify yt-dlp execution to show progress dialog during operations
     - Implement real-time status updates from yt-dlp output parsing
     - Add cancellation support that properly terminates yt-dlp processes
     - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 7. Enhance command line argument management
-  - [ ] 7.1 Implement operation-specific argument sets
+- [x] 7. Enhance command line argument management
+
+
+
+
+  - [x] 7.1 Implement operation-specific argument sets
+
+
     - Create GetYtDlpArgsForOperation() function for different operation types
     - Add optimized arguments for info retrieval vs download operations
     - Implement fallback argument sets for compatibility issues
     - _Requirements: 6.1, 6.2, 6.3, 6.5_
 
-  - [ ] 7.2 Add user-customizable arguments support
+
+  - [x] 7.2 Add user-customizable arguments support
+
+
     - Extend settings dialog to include custom yt-dlp arguments field
     - Implement argument validation and sanitization
     - Add registry storage for custom argument preferences

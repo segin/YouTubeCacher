@@ -266,6 +266,18 @@ BOOL InitializeYtDlpContext(YtDlpContext* context, const YtDlpConfig* config);
 void CleanupYtDlpContext(YtDlpContext* context);
 void FreeYtDlpContext(YtDlpContext* context);
 
+// Command line argument management function prototypes
+BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
+                             wchar_t* args, size_t argsSize);
+BOOL GetOptimizedArgsForInfo(wchar_t* args, size_t argsSize);
+BOOL GetOptimizedArgsForDownload(const wchar_t* outputPath, wchar_t* args, size_t argsSize);
+BOOL GetFallbackArgs(YtDlpOperation operation, wchar_t* args, size_t argsSize);
+BOOL ValidateYtDlpArguments(const wchar_t* args);
+BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
+
+// Registry constants for custom arguments
+#define REG_CUSTOM_ARGS     L"CustomYtDlpArgs"
+
 // Global variables (extern declarations)
 extern wchar_t cmdLineURL[MAX_URL_LENGTH];
 extern HBRUSH hBrushWhite;
