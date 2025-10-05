@@ -41,6 +41,58 @@ static int ScaleForDpi(int value, int dpi) {
     return MulDiv(value, dpi, 96); // 96 is the standard DPI
 }
 
+// Dynamic dialog sizing helper function
+static void CalculateOptimalDialogSize(HWND hDlg, const wchar_t* message, int* width, int* height) {
+    if (!message || !width || !height) return;
+    
+    // Get DPI for proper scaling
+    int dpi = GetDpiForWindowSafe(hDlg);
+    
+    // Define constraints (scaled for DPI)
+    int maxWidth = ScaleForDpi(400, dpi);      // Maximum dialog width
+    int minWidth = ScaleForDpi(280, dpi);      // Minimum dialog width  
+    int iconWidth = ScaleForDpi(50, dpi);      // Space for icon + margin
+    int buttonHeight = ScaleForDpi(30, dpi);   // Space for buttons
+    int margins = ScaleForDpi(20, dpi);        // Top/bottom margins
+    
+    // Get device context for text measurement
+    HDC hdc = GetDC(hDlg);
+    if (!hdc) {
+        *width = minWidth;
+        *height = ScaleForDpi(120, dpi);
+        return;
+    }
+    
+    // Select dialog font for accurate measurement
+    HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    HFONT hOldFont = NULL;
+    if (hFont) {
+        hOldFont = (HFONT)SelectObject(hdc, hFont);
+    }
+    
+    // Calculate text area width (dialog width minus icon and margins)
+    int textAreaWidth = maxWidth - iconWidth - margins;
+    
+    // Measure text with word wrapping
+    RECT textRect = {0, 0, textAreaWidth, 0};
+    int textHeight = DrawTextW(hdc, message, -1, &textRect, 
+                              DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    
+    // Calculate required dialog dimensions
+    int requiredWidth = textRect.right + iconWidth + margins;
+    int requiredHeight = max(textHeight, ScaleForDpi(32, dpi)) + buttonHeight + margins;
+    
+    // Apply constraints
+    *width = max(minWidth, min(maxWidth, requiredWidth));
+    *height = max(ScaleForDpi(100, dpi), requiredHeight);
+    
+    // Cleanup
+    if (hOldFont) {
+        SelectObject(hdc, hOldFont);
+    }
+    ReleaseDC(hDlg, hdc);
+}
+
 // Tab names for the error dialog
 static const wchar_t* TAB_NAMES[] = {
     L"Error Details",
@@ -111,10 +163,16 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     // Get DPI for this window
     int dpi = GetDpiForWindowSafe(hDlg);
     
-    // Scale dimensions for current DPI
-    int baseWidth = ScaleForDpi(320, dpi);
-    int baseHeight = ScaleForDpi(120, dpi);     // Height for collapsed state
-    int expandedHeight = ScaleForDpi(240, dpi); // Height for expanded state
+    // Get the current message text for dynamic sizing
+    wchar_t messageText[1024];
+    GetDlgItemTextW(hDlg, IDC_ERROR_MESSAGE, messageText, 1024);
+    
+    // Calculate optimal dialog size based on message content
+    int optimalWidth, baseHeight;
+    CalculateOptimalDialogSize(hDlg, messageText, &optimalWidth, &baseHeight);
+    
+    // Scale expanded height
+    int expandedHeight = baseHeight + ScaleForDpi(140, dpi); // Add space for tabs/details
     
     int newHeight = expanded ? expandedHeight : baseHeight;
     
@@ -134,10 +192,23 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     // Adjust position if dialog would go off screen
     if (currentX < screenRect.left) currentX = screenRect.left;
     if (currentY < screenRect.top) currentY = screenRect.top;
-    if (currentX + baseWidth > screenRect.right) currentX = screenRect.right - baseWidth;
+    if (currentX + optimalWidth > screenRect.right) currentX = screenRect.right - optimalWidth;
     if (currentY + newHeight > screenRect.bottom) currentY = screenRect.bottom - newHeight;
     
-    SetWindowPos(hDlg, NULL, currentX, currentY, baseWidth, newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(hDlg, NULL, currentX, currentY, optimalWidth, newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    
+    // Update message control to enable word wrapping and proper sizing
+    HWND hMessage = GetDlgItem(hDlg, IDC_ERROR_MESSAGE);
+    if (hMessage) {
+        // Position message text with proper margins for icon
+        int iconSpace = ScaleForDpi(50, dpi);
+        int margin = ScaleForDpi(10, dpi);
+        int messageWidth = optimalWidth - iconSpace - margin;
+        int messageHeight = baseHeight - ScaleForDpi(60, dpi); // Leave space for buttons
+        
+        SetWindowPos(hMessage, NULL, iconSpace, margin, messageWidth, messageHeight, 
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     
     // Show/hide expanded controls
     HWND hTabControl = GetDlgItem(hDlg, IDC_ERROR_TAB_CONTROL);
@@ -295,13 +366,13 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 SetDlgItemTextW(hDlg, IDC_ERROR_SOLUTION_TEXT, errorDialog->solutions);
             }
             
+            // Calculate optimal dialog size based on message content
+            int optimalWidth, optimalHeight;
+            CalculateOptimalDialogSize(hDlg, errorDialog->message, &optimalWidth, &optimalHeight);
+            
             // Center dialog on parent window with HiDPI-aware screen bounds checking
             HWND hParent = GetParent(hDlg);
-            RECT parentRect, dialogRect;
-            
-            GetWindowRect(hDlg, &dialogRect);
-            int dialogWidth = dialogRect.right - dialogRect.left;
-            int dialogHeight = dialogRect.bottom - dialogRect.top;
+            RECT parentRect;
             
             // Get screen work area for the appropriate monitor
             HMONITOR hMonitor;
@@ -323,23 +394,37 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             
             if (hParent && GetWindowRect(hParent, &parentRect)) {
                 // Center on parent window
-                x = parentRect.left + (parentRect.right - parentRect.left - dialogWidth) / 2;
-                y = parentRect.top + (parentRect.bottom - parentRect.top - dialogHeight) / 2;
+                x = parentRect.left + (parentRect.right - parentRect.left - optimalWidth) / 2;
+                y = parentRect.top + (parentRect.bottom - parentRect.top - optimalHeight) / 2;
             } else {
                 // Center on screen if no parent
-                x = screenRect.left + (screenRect.right - screenRect.left - dialogWidth) / 2;
-                y = screenRect.top + (screenRect.bottom - screenRect.top - dialogHeight) / 2;
+                x = screenRect.left + (screenRect.right - screenRect.left - optimalWidth) / 2;
+                y = screenRect.top + (screenRect.bottom - screenRect.top - optimalHeight) / 2;
             }
             
             // Adjust if any edge would be off screen
             if (x < screenRect.left) x = screenRect.left;
             if (y < screenRect.top) y = screenRect.top;
-            if (x + dialogWidth > screenRect.right) x = screenRect.right - dialogWidth;
-            if (y + dialogHeight > screenRect.bottom) y = screenRect.bottom - dialogHeight;
+            if (x + optimalWidth > screenRect.right) x = screenRect.right - optimalWidth;
+            if (y + optimalHeight > screenRect.bottom) y = screenRect.bottom - optimalHeight;
             
-            SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+            // Set initial size and position
+            SetWindowPos(hDlg, NULL, x, y, optimalWidth, optimalHeight, SWP_NOZORDER);
             
-            // Start in collapsed state
+            // Update message control for word wrapping
+            HWND hMessage = GetDlgItem(hDlg, IDC_ERROR_MESSAGE);
+            if (hMessage) {
+                int dpi = GetDpiForWindowSafe(hDlg);
+                int iconSpace = ScaleForDpi(50, dpi);
+                int margin = ScaleForDpi(10, dpi);
+                int messageWidth = optimalWidth - iconSpace - margin;
+                int messageHeight = optimalHeight - ScaleForDpi(60, dpi);
+                
+                SetWindowPos(hMessage, NULL, iconSpace, margin, messageWidth, messageHeight, 
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            
+            // Start in collapsed state (this will trigger ResizeErrorDialog)
             ResizeErrorDialog(hDlg, FALSE);
             
             return TRUE;
