@@ -5,8 +5,8 @@
 #include "resource.h"
 
 // Application constants
-#define APP_NAME            "YouTube Cacher"
-#define APP_VERSION         "1.0"
+#define APP_NAME            L"YouTube Cacher"
+#define APP_VERSION         L"1.0"
 #define MAX_URL_LENGTH      1024
 #define MAX_BUFFER_SIZE     1024
 
@@ -37,14 +37,14 @@
 // Function prototypes
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
-void GetDefaultDownloadPath(char* path, size_t pathSize);
-void GetDefaultYtDlpPath(char* path, size_t pathSize);
-BOOL CreateDownloadDirectoryIfNeeded(const char* path);
+void GetDefaultDownloadPath(wchar_t* path, size_t pathSize);
+void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize);
+BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path);
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 // Global variables (extern declarations)
-extern char cmdLineURL[MAX_URL_LENGTH];
+extern wchar_t cmdLineURL[MAX_URL_LENGTH];
 extern HBRUSH hBrushWhite;
 extern HBRUSH hBrushLightGreen;
 extern HBRUSH hBrushLightBlue;

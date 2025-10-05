@@ -58,6 +58,7 @@ This project follows a modular C/Windows application structure with clear separa
 3. **Resource Sharing**: Common definitions between C code and resource script are in `resource.h`
 4. **Type Safety**: Proper extern declarations and function prototypes
 5. **Maintainability**: Constants can be changed in one location
+6. **Unicode Support**: All code uses Unicode (UTF-16) APIs and TCHAR types for proper internationalization
 
 ## Build Process
 

@@ -4,6 +4,6 @@
 #include <windows.h>
 
 // Function to check if a URL is a YouTube URL
-BOOL IsYouTubeURL(const char* url);
+BOOL IsYouTubeURL(const wchar_t* url);
 
 #endif // URI_H

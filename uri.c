@@ -1,13 +1,13 @@
 #include "uri.h"
-#include <string.h>
+#include <wchar.h>
 
-BOOL IsYouTubeURL(const char* url) {
+BOOL IsYouTubeURL(const wchar_t* url) {
     if (url == NULL) {
         return FALSE;
     }
     
-    return (strstr(url, "https://www.youtube.com/watch") != NULL ||
-            strstr(url, "https://youtu.be/") != NULL ||
-            strstr(url, "https://m.youtube.com/watch") != NULL ||
-            strstr(url, "https://youtube.com/watch") != NULL);
+    return (wcsstr(url, L"https://www.youtube.com/watch") != NULL ||
+            wcsstr(url, L"https://youtu.be/") != NULL ||
+            wcsstr(url, L"https://m.youtube.com/watch") != NULL ||
+            wcsstr(url, L"https://youtube.com/watch") != NULL);
 }

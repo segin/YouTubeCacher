@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
+#include <stdlib.h>
 #include "YouTubeCacher.h"
 #include "uri.h"
 #include <commdlg.h>
@@ -8,7 +10,7 @@
 #include <knownfolders.h>
 
 // Global variable for command line URL
-char cmdLineURL[MAX_URL_LENGTH] = {0};
+wchar_t cmdLineURL[MAX_URL_LENGTH] = {0};
 
 // Global variables for text field colors
 HBRUSH hBrushWhite = NULL;
@@ -18,65 +20,66 @@ HBRUSH hBrushLightTeal = NULL;
 HBRUSH hCurrentBrush = NULL;
 
 // Function to get the default download path (Downloads/YouTubeCacher)
-void GetDefaultDownloadPath(char* path, size_t pathSize) {
+void GetDefaultDownloadPath(wchar_t* path, size_t pathSize) {
     PWSTR downloadsPathW = NULL;
-    char downloadsPath[MAX_EXTENDED_PATH];
+    wchar_t downloadsPath[MAX_EXTENDED_PATH];
     
     // Get the user's Downloads folder using the proper FOLDERID_Downloads
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_Downloads, 0, NULL, &downloadsPathW);
     if (SUCCEEDED(hr) && downloadsPathW != NULL) {
-        // Convert wide string to multibyte
-        WideCharToMultiByte(CP_UTF8, 0, downloadsPathW, -1, downloadsPath, sizeof(downloadsPath), NULL, NULL);
+        // Copy the wide string directly
+        wcsncpy(downloadsPath, downloadsPathW, MAX_EXTENDED_PATH - 1);
+        downloadsPath[MAX_EXTENDED_PATH - 1] = L'\0';
         CoTaskMemFree(downloadsPathW);
     } else {
         // Fallback to user profile + Downloads
-        if (GetEnvironmentVariable("USERPROFILE", downloadsPath, sizeof(downloadsPath)) > 0) {
-            strcat(downloadsPath, "\\Downloads");
+        if (GetEnvironmentVariableW(L"USERPROFILE", downloadsPath, MAX_EXTENDED_PATH) > 0) {
+            wcscat(downloadsPath, L"\\Downloads");
         } else {
             // Ultimate fallback
-            strcpy(downloadsPath, "C:\\Users\\Public\\Downloads");
+            wcscpy(downloadsPath, L"C:\\Users\\Public\\Downloads");
         }
     }
     
     // Append YouTubeCacher subdirectory
-    snprintf(path, pathSize, "%s\\YouTubeCacher", downloadsPath);
+    swprintf(path, pathSize, L"%s\\YouTubeCacher", downloadsPath);
 }
 
 // Function to get the default yt-dlp path (check WinGet installation)
-void GetDefaultYtDlpPath(char* path, size_t pathSize) {
-    char localAppData[MAX_EXTENDED_PATH];
-    char ytDlpPath[MAX_EXTENDED_PATH];
+void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize) {
+    wchar_t localAppData[MAX_EXTENDED_PATH];
+    wchar_t ytDlpPath[MAX_EXTENDED_PATH];
     
     // Initialize path as empty
-    path[0] = '\0';
+    path[0] = L'\0';
     
     // Get %LocalAppData% environment variable
-    if (GetEnvironmentVariable("LOCALAPPDATA", localAppData, sizeof(localAppData)) > 0) {
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_EXTENDED_PATH) > 0) {
         // Construct the WinGet yt-dlp path
-        int result = snprintf(ytDlpPath, sizeof(ytDlpPath), 
-                "%s\\Microsoft\\WinGet\\Packages\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\\yt-dlp.exe",
+        int result = swprintf(ytDlpPath, MAX_EXTENDED_PATH, 
+                L"%s\\Microsoft\\WinGet\\Packages\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\\yt-dlp.exe",
                 localAppData);
         
         // Check if path was truncated
-        if (result > 0 && (size_t)result < sizeof(ytDlpPath)) {
+        if (result > 0 && (size_t)result < MAX_EXTENDED_PATH) {
             // Check if the file exists
-            DWORD attributes = GetFileAttributes(ytDlpPath);
+            DWORD attributes = GetFileAttributesW(ytDlpPath);
             if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
                 // File exists and is not a directory, copy to output
-                strncpy(path, ytDlpPath, pathSize - 1);
-                path[pathSize - 1] = '\0';
+                wcsncpy(path, ytDlpPath, pathSize - 1);
+                path[pathSize - 1] = L'\0';
             }
         }
     }
 }
 
 // Function to create the download directory if it doesn't exist
-BOOL CreateDownloadDirectoryIfNeeded(const char* path) {
-    DWORD attributes = GetFileAttributes(path);
+BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path) {
+    DWORD attributes = GetFileAttributesW(path);
     
     // If directory doesn't exist, create it
     if (attributes == INVALID_FILE_ATTRIBUTES) {
-        return CreateDirectory(path, NULL);
+        return CreateDirectoryW(path, NULL);
     }
     
     // If it exists and is a directory, return success
@@ -92,16 +95,16 @@ BOOL CreateDownloadDirectoryIfNeeded(const char* path) {
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
     // Only check clipboard if text field is empty
-    char currentText[MAX_BUFFER_SIZE];
-    GetDlgItemText(hDlg, IDC_TEXT_FIELD, currentText, sizeof(currentText));
+    wchar_t currentText[MAX_BUFFER_SIZE];
+    GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, currentText, MAX_BUFFER_SIZE);
     
-    if (strlen(currentText) == 0) {
+    if (wcslen(currentText) == 0) {
         if (OpenClipboard(hDlg)) {
-            HANDLE hData = GetClipboardData(CF_TEXT);
+            HANDLE hData = GetClipboardData(CF_UNICODETEXT);
             if (hData != NULL) {
-                char* clipText = (char*)GlobalLock(hData);
+                wchar_t* clipText = (wchar_t*)GlobalLock(hData);
                 if (clipText != NULL && IsYouTubeURL(clipText)) {
-                    SetDlgItemText(hDlg, IDC_TEXT_FIELD, clipText);
+                    SetDlgItemTextW(hDlg, IDC_TEXT_FIELD, clipText);
                     hCurrentBrush = hBrushLightGreen;
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                 }
@@ -165,54 +168,54 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     switch (message) {
         case WM_INITDIALOG: {
             // Set default yt-dlp path (check WinGet installation)
-            char defaultYtDlpPath[MAX_EXTENDED_PATH];
-            GetDefaultYtDlpPath(defaultYtDlpPath, sizeof(defaultYtDlpPath));
-            SetDlgItemText(hDlg, IDC_YTDLP_PATH, defaultYtDlpPath);
+            wchar_t defaultYtDlpPath[MAX_EXTENDED_PATH];
+            GetDefaultYtDlpPath(defaultYtDlpPath, MAX_EXTENDED_PATH);
+            SetDlgItemTextW(hDlg, IDC_YTDLP_PATH, defaultYtDlpPath);
             
             // Set default download folder path
-            char defaultDownloadPath[MAX_EXTENDED_PATH];
-            GetDefaultDownloadPath(defaultDownloadPath, sizeof(defaultDownloadPath));
-            SetDlgItemText(hDlg, IDC_FOLDER_PATH, defaultDownloadPath);
+            wchar_t defaultDownloadPath[MAX_EXTENDED_PATH];
+            GetDefaultDownloadPath(defaultDownloadPath, MAX_EXTENDED_PATH);
+            SetDlgItemTextW(hDlg, IDC_FOLDER_PATH, defaultDownloadPath);
             
             // Set default media player path
-            SetDlgItemText(hDlg, IDC_PLAYER_PATH, "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe");
+            SetDlgItemTextW(hDlg, IDC_PLAYER_PATH, L"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe");
             return TRUE;
         }
             
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case IDC_YTDLP_BROWSE: {
-                    OPENFILENAME ofn = {0};
-                    char szFile[MAX_EXTENDED_PATH] = {0};
+                    OPENFILENAMEW ofn = {0};
+                    wchar_t szFile[MAX_EXTENDED_PATH] = {0};
                     
                     ofn.lStructSize = sizeof(ofn);
                     ofn.hwndOwner = hDlg;
                     ofn.lpstrFile = szFile;
-                    ofn.nMaxFile = sizeof(szFile);
-                    ofn.lpstrFilter = "Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0";
+                    ofn.nMaxFile = MAX_EXTENDED_PATH;
+                    ofn.lpstrFilter = L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0";
                     ofn.nFilterIndex = 1;
-                    ofn.lpstrTitle = "Select yt-dlp executable";
+                    ofn.lpstrTitle = L"Select yt-dlp executable";
                     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
                     
-                    if (GetOpenFileName(&ofn)) {
-                        SetDlgItemText(hDlg, IDC_YTDLP_PATH, szFile);
+                    if (GetOpenFileNameW(&ofn)) {
+                        SetDlgItemTextW(hDlg, IDC_YTDLP_PATH, szFile);
                     }
                     return TRUE;
                 }
                 
                 case IDC_FOLDER_BROWSE: {
-                    BROWSEINFO bi = {0};
-                    char szPath[MAX_EXTENDED_PATH];
+                    BROWSEINFOW bi = {0};
+                    wchar_t szPath[MAX_EXTENDED_PATH];
                     LPITEMIDLIST pidl;
                     
                     bi.hwndOwner = hDlg;
-                    bi.lpszTitle = "Select Download Folder";
+                    bi.lpszTitle = L"Select Download Folder";
                     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
                     
-                    pidl = SHBrowseForFolder(&bi);
+                    pidl = SHBrowseForFolderW(&bi);
                     if (pidl != NULL) {
-                        if (SHGetPathFromIDList(pidl, szPath)) {
-                            SetDlgItemText(hDlg, IDC_FOLDER_PATH, szPath);
+                        if (SHGetPathFromIDListW(pidl, szPath)) {
+                            SetDlgItemTextW(hDlg, IDC_FOLDER_PATH, szPath);
                         }
                         CoTaskMemFree(pidl);
                     }
@@ -220,20 +223,20 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 }
                 
                 case IDC_PLAYER_BROWSE: {
-                    OPENFILENAME ofn = {0};
-                    char szFile[MAX_EXTENDED_PATH] = {0};
+                    OPENFILENAMEW ofn = {0};
+                    wchar_t szFile[MAX_EXTENDED_PATH] = {0};
                     
                     ofn.lStructSize = sizeof(ofn);
                     ofn.hwndOwner = hDlg;
                     ofn.lpstrFile = szFile;
-                    ofn.nMaxFile = sizeof(szFile);
-                    ofn.lpstrFilter = "Executable Files\0*.exe\0All Files\0*.*\0";
+                    ofn.nMaxFile = MAX_EXTENDED_PATH;
+                    ofn.lpstrFilter = L"Executable Files\0*.exe\0All Files\0*.*\0";
                     ofn.nFilterIndex = 1;
-                    ofn.lpstrTitle = "Select Media Player";
+                    ofn.lpstrTitle = L"Select Media Player";
                     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
                     
-                    if (GetOpenFileName(&ofn)) {
-                        SetDlgItemText(hDlg, IDC_PLAYER_PATH, szFile);
+                    if (GetOpenFileNameW(&ofn)) {
+                        SetDlgItemTextW(hDlg, IDC_PLAYER_PATH, szFile);
                     }
                     return TRUE;
                 }
@@ -264,17 +267,17 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             hCurrentBrush = hBrushWhite;
             
             // Initialize dialog controls
-            SetDlgItemText(hDlg, IDC_LABEL2, "Status: Ready");
-            SetDlgItemText(hDlg, IDC_LABEL3, "Items: 0");
+            SetDlgItemTextW(hDlg, IDC_LABEL2, L"Status: Ready");
+            SetDlgItemTextW(hDlg, IDC_LABEL3, L"Items: 0");
             
             // Add some sample items to the listbox
-            SendDlgItemMessage(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)"Sample Video 1.mp4");
-            SendDlgItemMessage(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)"Sample Video 2.mp4");
-            SendDlgItemMessage(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)"Sample Video 3.mp4");
+            SendDlgItemMessageW(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)L"Sample Video 1.mp4");
+            SendDlgItemMessageW(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)L"Sample Video 2.mp4");
+            SendDlgItemMessageW(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)L"Sample Video 3.mp4");
             
             // Check command line first, then clipboard
-            if (strlen(cmdLineURL) > 0) {
-                SetDlgItemText(hDlg, IDC_TEXT_FIELD, cmdLineURL);
+            if (wcslen(cmdLineURL) > 0) {
+                SetDlgItemTextW(hDlg, IDC_TEXT_FIELD, cmdLineURL);
                 hCurrentBrush = hBrushLightTeal;
                 InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
             } else {
@@ -349,8 +352,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 case IDC_TEXT_FIELD:
                     if (HIWORD(wParam) == EN_CHANGE) {
                         // Check if it's a paste operation with YouTube URL
-                        char buffer[MAX_BUFFER_SIZE];
-                        GetDlgItemText(hDlg, IDC_TEXT_FIELD, buffer, sizeof(buffer));
+                        wchar_t buffer[MAX_BUFFER_SIZE];
+                        GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, buffer, MAX_BUFFER_SIZE);
                         
                         if (IsYouTubeURL(buffer) && hCurrentBrush != hBrushLightGreen) {
                             // Manual paste of YouTube URL - set to light blue
@@ -365,32 +368,32 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case IDC_DOWNLOAD_BTN: {
                     // Get the current download folder path from settings (for now use default)
-                    char downloadPath[MAX_EXTENDED_PATH];
-                    GetDefaultDownloadPath(downloadPath, sizeof(downloadPath));
+                    wchar_t downloadPath[MAX_EXTENDED_PATH];
+                    GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
                     
                     // Create the download directory if it doesn't exist
                     if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
-                        MessageBox(hDlg, "Failed to create download directory", "Error", MB_OK | MB_ICONERROR);
+                        MessageBoxW(hDlg, L"Failed to create download directory", L"Error", MB_OK | MB_ICONERROR);
                         break;
                     }
                     
                     // TODO: Implement actual download functionality
-                    char message[MAX_EXTENDED_PATH + 100];
-                    snprintf(message, sizeof(message), "Download directory ready: %s\n\nDownload functionality not implemented yet", downloadPath);
-                    MessageBox(hDlg, message, "Download", MB_OK);
+                    wchar_t message[MAX_EXTENDED_PATH + 100];
+                    swprintf(message, MAX_EXTENDED_PATH + 100, L"Download directory ready: %s\n\nDownload functionality not implemented yet", downloadPath);
+                    MessageBoxW(hDlg, message, L"Download", MB_OK);
                     break;
                 }
                     
                 case IDC_GETINFO_BTN:
-                    MessageBox(hDlg, "Get Info functionality not implemented yet", "Get Info", MB_OK);
+                    MessageBoxW(hDlg, L"Get Info functionality not implemented yet", L"Get Info", MB_OK);
                     break;
                     
                 case IDC_BUTTON2:
-                    MessageBox(hDlg, "Play functionality not implemented yet", "Play", MB_OK);
+                    MessageBoxW(hDlg, L"Play functionality not implemented yet", L"Play", MB_OK);
                     break;
                     
                 case IDC_BUTTON3:
-                    MessageBox(hDlg, "Delete functionality not implemented yet", "Delete", MB_OK);
+                    MessageBoxW(hDlg, L"Delete functionality not implemented yet", L"Delete", MB_OK);
                     break;
                     
                 case IDCANCEL:
@@ -416,7 +419,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
     return FALSE;
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(nCmdShow);
     
@@ -428,7 +431,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     // Enable DPI awareness for HiDPI support
     typedef BOOL (WINAPI *SetProcessDPIAwareFunc)(void);
-    HMODULE hUser32 = LoadLibrary("user32.dll");
+    HMODULE hUser32 = LoadLibraryW(L"user32.dll");
     if (hUser32) {
         FARPROC proc = GetProcAddress(hUser32, "SetProcessDPIAware");
         if (proc) {
@@ -439,9 +442,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
     
     // Check if command line contains YouTube URL
-    if (lpCmdLine && strlen(lpCmdLine) > 0 && IsYouTubeURL(lpCmdLine)) {
-        strncpy(cmdLineURL, lpCmdLine, MAX_URL_LENGTH - 1);
-        cmdLineURL[MAX_URL_LENGTH - 1] = '\0';
+    if (lpCmdLine && wcslen(lpCmdLine) > 0 && IsYouTubeURL(lpCmdLine)) {
+        wcsncpy(cmdLineURL, lpCmdLine, MAX_URL_LENGTH - 1);
+        cmdLineURL[MAX_URL_LENGTH - 1] = L'\0';
     }
     
     // Load accelerator table
@@ -465,4 +468,29 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
     
     return (int)msg.wParam;
+}
+
+// ANSI entry point wrapper for Unicode main function
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // Convert ANSI command line to Unicode
+    wchar_t* lpCmdLineW = NULL;
+    if (lpCmdLine && strlen(lpCmdLine) > 0) {
+        int len = MultiByteToWideChar(CP_UTF8, 0, lpCmdLine, -1, NULL, 0);
+        if (len > 0) {
+            lpCmdLineW = (wchar_t*)malloc(len * sizeof(wchar_t));
+            if (lpCmdLineW) {
+                MultiByteToWideChar(CP_UTF8, 0, lpCmdLine, -1, lpCmdLineW, len);
+            }
+        }
+    }
+    
+    // Call Unicode main function
+    int result = wWinMain(hInstance, hPrevInstance, lpCmdLineW ? lpCmdLineW : L"", nCmdShow);
+    
+    // Clean up
+    if (lpCmdLineW) {
+        free(lpCmdLineW);
+    }
+    
+    return result;
 }
