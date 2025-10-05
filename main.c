@@ -30,6 +30,9 @@ BOOL bProgrammaticChange = FALSE;
 // Flag to track manual paste operations
 BOOL bManualPaste = FALSE;
 
+// Global cache manager
+CacheManager g_cacheManager;
+
 // Original text field window procedure
 WNDPROC OriginalTextFieldProc = NULL;
 
@@ -2720,14 +2723,24 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             hBrushLightTeal = CreateSolidBrush(COLOR_LIGHT_TEAL);
             hCurrentBrush = hBrushWhite;
             
-            // Initialize dialog controls
-            SetDlgItemTextW(hDlg, IDC_LABEL2, L"Status: Ready");
-            SetDlgItemTextW(hDlg, IDC_LABEL3, L"Items: 0");
+            // Initialize cache manager
+            wchar_t downloadPath[MAX_EXTENDED_PATH];
+            if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+                GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+            }
             
-            // Add some sample items to the listbox
-            SendDlgItemMessageW(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)L"Sample Video 1.mp4");
-            SendDlgItemMessageW(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)L"Sample Video 2.mp4");
-            SendDlgItemMessageW(hDlg, IDC_LIST, LB_ADDSTRING, 0, (LPARAM)L"Sample Video 3.mp4");
+            if (InitializeCacheManager(&g_cacheManager, downloadPath)) {
+                // Scan for existing videos in download folder
+                ScanDownloadFolderForVideos(&g_cacheManager, downloadPath);
+                
+                // Refresh the UI with cached videos
+                RefreshCacheList(GetDlgItem(hDlg, IDC_LIST), &g_cacheManager);
+                UpdateCacheListStatus(hDlg, &g_cacheManager);
+            } else {
+                // Initialize dialog controls with defaults if cache fails
+                SetDlgItemTextW(hDlg, IDC_LABEL2, L"Status: Cache initialization failed");
+                SetDlgItemTextW(hDlg, IDC_LABEL3, L"Items: 0");
+            }
             
             // Check command line first, then clipboard
             if (wcslen(cmdLineURL) > 0) {
@@ -3027,6 +3040,66 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         Sleep(1000);
                         ShowMainProgressBar(hDlg, FALSE);
                         
+                        // Add to cache - extract video ID from URL
+                        wchar_t* videoId = ExtractVideoIdFromUrl(url);
+                        if (videoId) {
+                            // Get video title and duration from UI if available
+                            wchar_t title[512] = {0};
+                            wchar_t duration[64] = {0};
+                            GetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title, 512);
+                            GetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, duration, 64);
+                            
+                            // Find the downloaded video file (look for common video extensions)
+                            wchar_t videoPattern[MAX_EXTENDED_PATH];
+                            swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\*[%ls]*", downloadPath, videoId);
+                            
+                            WIN32_FIND_DATAW findData;
+                            HANDLE hFind = FindFirstFileW(videoPattern, &findData);
+                            
+                            if (hFind != INVALID_HANDLE_VALUE) {
+                                do {
+                                    if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                                        // Check if it's a video file
+                                        wchar_t* ext = wcsrchr(findData.cFileName, L'.');
+                                        if (ext && (wcsicmp(ext, L".mp4") == 0 || wcsicmp(ext, L".mkv") == 0 || 
+                                                   wcsicmp(ext, L".webm") == 0 || wcsicmp(ext, L".avi") == 0)) {
+                                            
+                                            wchar_t fullVideoPath[MAX_EXTENDED_PATH];
+                                            swprintf(fullVideoPath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, findData.cFileName);
+                                            
+                                            // Find subtitle files
+                                            wchar_t** subtitleFiles = NULL;
+                                            int subtitleCount = 0;
+                                            FindSubtitleFiles(fullVideoPath, &subtitleFiles, &subtitleCount);
+                                            
+                                            // Add to cache
+                                            AddCacheEntry(&g_cacheManager, videoId, 
+                                                        wcslen(title) > 0 ? title : findData.cFileName,
+                                                        wcslen(duration) > 0 ? duration : L"Unknown",
+                                                        fullVideoPath, subtitleFiles, subtitleCount);
+                                            
+                                            // Clean up subtitle files array
+                                            if (subtitleFiles) {
+                                                for (int i = 0; i < subtitleCount; i++) {
+                                                    if (subtitleFiles[i]) free(subtitleFiles[i]);
+                                                }
+                                                free(subtitleFiles);
+                                            }
+                                            
+                                            break; // Found the main video file
+                                        }
+                                    }
+                                } while (FindNextFileW(hFind, &findData));
+                                FindClose(hFind);
+                            }
+                            
+                            free(videoId);
+                            
+                            // Refresh the cache list UI
+                            RefreshCacheList(GetDlgItem(hDlg, IDC_LIST), &g_cacheManager);
+                            UpdateCacheListStatus(hDlg, &g_cacheManager);
+                        }
+                        
                         // Show success message with download location
                         wchar_t successMsg[MAX_EXTENDED_PATH + 100];
                         swprintf(successMsg, MAX_EXTENDED_PATH + 100, 
@@ -3085,13 +3158,87 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     break;
                 }
                     
-                case IDC_BUTTON2:
-                    ShowInfoMessage(hDlg, L"Play", L"Play functionality not implemented yet");
-                    break;
+                case IDC_BUTTON2: { // Play button
+                    HWND hListBox = GetDlgItem(hDlg, IDC_LIST);
+                    wchar_t* selectedVideoId = GetSelectedVideoId(hListBox);
                     
-                case IDC_BUTTON3:
-                    ShowInfoMessage(hDlg, L"Delete", L"Delete functionality not implemented yet");
+                    if (!selectedVideoId) {
+                        ShowWarningMessage(hDlg, L"No Selection", 
+                                         L"Please select a video from the list to play.");
+                        break;
+                    }
+                    
+                    // Get player path from settings
+                    wchar_t playerPath[MAX_EXTENDED_PATH];
+                    if (!LoadSettingFromRegistry(REG_PLAYER_PATH, playerPath, MAX_EXTENDED_PATH)) {
+                        ShowWarningMessage(hDlg, L"Player Not Configured", 
+                                         L"Please configure a media player in File > Settings.");
+                        break;
+                    }
+                    
+                    // Validate player exists
+                    DWORD attributes = GetFileAttributesW(playerPath);
+                    if (attributes == INVALID_FILE_ATTRIBUTES) {
+                        ShowWarningMessage(hDlg, L"Player Not Found", 
+                                         L"The configured media player was not found. Please check the path in Settings.");
+                        break;
+                    }
+                    
+                    // Play the video
+                    if (PlayCacheEntry(&g_cacheManager, selectedVideoId, playerPath)) {
+                        ShowInfoMessage(hDlg, L"Playing Video", L"Video launched in media player.");
+                    } else {
+                        ShowWarningMessage(hDlg, L"Playback Failed", 
+                                         L"Failed to launch the video. The file may have been moved or deleted.");
+                        // Refresh cache to remove invalid entries
+                        RefreshCacheList(hListBox, &g_cacheManager);
+                        UpdateCacheListStatus(hDlg, &g_cacheManager);
+                    }
                     break;
+                }
+                    
+                case IDC_BUTTON3: { // Delete button
+                    HWND hListBox = GetDlgItem(hDlg, IDC_LIST);
+                    wchar_t* selectedVideoId = GetSelectedVideoId(hListBox);
+                    
+                    if (!selectedVideoId) {
+                        ShowWarningMessage(hDlg, L"No Selection", 
+                                         L"Please select a video from the list to delete.");
+                        break;
+                    }
+                    
+                    // Find the cache entry to get the title for confirmation
+                    CacheEntry* entry = FindCacheEntry(&g_cacheManager, selectedVideoId);
+                    wchar_t confirmMsg[512];
+                    if (entry && entry->title) {
+                        swprintf(confirmMsg, 512, 
+                                L"Are you sure you want to delete \"%ls\"?\n\n"
+                                L"This will permanently delete the video file and any associated subtitle files.",
+                                entry->title);
+                    } else {
+                        wcscpy(confirmMsg, L"Are you sure you want to delete the selected video?\n\n"
+                                         L"This will permanently delete the video file and any associated subtitle files.");
+                    }
+                    
+                    // Confirm deletion
+                    int result = MessageBoxW(hDlg, confirmMsg, L"Confirm Delete", 
+                                           MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+                    
+                    if (result == IDYES) {
+                        // Delete the files and remove from cache
+                        if (DeleteCacheEntryFiles(&g_cacheManager, selectedVideoId)) {
+                            ShowInfoMessage(hDlg, L"Video Deleted", L"Video and associated files have been deleted.");
+                            
+                            // Refresh the list
+                            RefreshCacheList(hListBox, &g_cacheManager);
+                            UpdateCacheListStatus(hDlg, &g_cacheManager);
+                        } else {
+                            ShowWarningMessage(hDlg, L"Delete Failed", 
+                                             L"Failed to delete some or all files. They may be in use or you may not have permission.");
+                        }
+                    }
+                    break;
+                }
                     
                 case IDC_COLOR_GREEN:
                     hCurrentBrush = hBrushLightGreen;
@@ -3209,6 +3356,18 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
         }
             
         case WM_DESTROY:
+            // Clean up cache manager
+            CleanupCacheManager(&g_cacheManager);
+            
+            // Clean up listbox item data
+            CleanupListboxItemData(GetDlgItem(hDlg, IDC_LIST));
+            
+            // Clean up brushes
+            if (hBrushWhite) DeleteObject(hBrushWhite);
+            if (hBrushLightGreen) DeleteObject(hBrushLightGreen);
+            if (hBrushLightBlue) DeleteObject(hBrushLightBlue);
+            if (hBrushLightTeal) DeleteObject(hBrushLightTeal);
+            
             PostQuitMessage(0);
             return TRUE;
     }

@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include "resource.h"
+#include "cache.h"
 
 // Application constants
 #define APP_NAME            L"YouTube Cacher"
@@ -437,5 +438,6 @@ extern HBRUSH hBrushLightTeal;
 extern HBRUSH hCurrentBrush;
 extern BOOL bProgrammaticChange;
 extern BOOL bManualPaste;
+extern CacheManager g_cacheManager;
 
 #endif // YOUTUBECACHER_H

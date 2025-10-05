@@ -8,13 +8,13 @@ export PATH := /mingw32/bin:$(PATH)
 CC = /mingw32/bin/gcc.exe
 RC = /mingw32/bin/windres.exe
 CFLAGS = -Wall -Wextra -Werror -std=c99 -DUNICODE -D_UNICODE -static-libgcc
-LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -static
+LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -static
 
 # Target executable
 TARGET = YouTubeCacher.exe
 
 # Source files
-SOURCES = main.c uri.c errordialog.c
+SOURCES = main.c uri.c errordialog.c cache.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object files
