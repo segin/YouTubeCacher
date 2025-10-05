@@ -28,7 +28,7 @@
 
 // Layout constants
 #define BUTTON_PADDING      80
-#define BUTTON_WIDTH        70
+#define BUTTON_WIDTH        78
 #define BUTTON_HEIGHT_SMALL 24
 #define BUTTON_HEIGHT_LARGE 30
 #define TEXT_FIELD_HEIGHT   20
