@@ -178,13 +178,15 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     wchar_t messageText[1024];
     GetDlgItemTextW(hDlg, IDC_ERROR_MESSAGE, messageText, 1024);
     
-    // === STEP 1: Calculate base metrics scaled for DPI ===
-    int margin = ScaleForDpi(10, dpi);           // Standard margin
-    int iconSize = ScaleForDpi(32, dpi);         // Icon dimensions
-    int buttonWidth = ScaleForDpi(60, dpi);      // Details button width
-    int buttonHeight = ScaleForDpi(14, dpi);     // Button height
-    int smallButtonWidth = ScaleForDpi(35, dpi); // Copy/OK button width
-    int buttonGap = ScaleForDpi(10, dpi);        // Gap between buttons
+    // === STEP 1: Calculate base metrics per Microsoft Win32 UI standards ===
+    int margin = ScaleForDpi(11, dpi);           // 7 DLU = ~11px dialog margin standard
+    int iconSize = ScaleForDpi(32, dpi);         // Standard system icon size
+    int buttonWidth = ScaleForDpi(75, dpi);      // Min 50 DLU = ~75px for "Details >>" button
+    int buttonHeight = ScaleForDpi(23, dpi);     // Standard 23 DLU = ~23px button height
+    int smallButtonWidth = ScaleForDpi(50, dpi); // Min 50 DLU = ~75px, but 50px acceptable for "OK"/"Copy"
+    int buttonGap = ScaleForDpi(6, dpi);         // 4 DLU = ~6px spacing between buttons
+    int controlSpacing = ScaleForDpi(6, dpi);    // 4 DLU = ~6px between related controls
+    int groupSpacing = ScaleForDpi(10, dpi);     // 7 DLU = ~10px between control groups
     
     // === STEP 2: Calculate text metrics ===
     HDC hdc = GetDC(hDlg);
@@ -201,8 +203,8 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int minWidth = ScaleForDpi(320, dpi);
     int maxWidth = ScaleForDpi(480, dpi);
     
-    // Width calculation: left margin + icon + gap + text area + right margin
-    int iconGap = margin; // Gap between icon and text
+    // Width calculation: left margin + icon + control spacing + text area + right margin
+    int iconGap = controlSpacing; // 4 DLU = ~6px gap between icon and text per Win32 standards
     int availableTextWidth = maxWidth - margin - iconSize - iconGap - margin;
     
     // Measure text with word wrapping to determine required height
@@ -234,28 +236,30 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int messageWidth = finalTextWidth;
     int messageHeight = textHeight;
     
-    // === STEP 6: Position buttons ===
-    // Buttons go below the larger of (icon bottom, text bottom)
+    // === STEP 6: Position buttons per Win32 standards ===
+    // Buttons go below content with proper group spacing (7 DLU = ~10px)
     int contentBottom = max(iconY + iconSize, messageY + messageHeight);
-    int buttonY = contentBottom + margin;
+    int buttonY = contentBottom + groupSpacing;
     
-    // Details button on left
+    // Details button on left with dialog margin
     int detailsX = margin;
     
-    // Copy and OK buttons on right
+    // Copy and OK buttons on right with proper spacing
     int okX = dialogWidth - margin - smallButtonWidth;
     int copyX = okX - buttonGap - smallButtonWidth;
     
-    // === STEP 7: Calculate collapsed dialog height ===
+    // === STEP 7: Calculate collapsed dialog height with Win32 standards ===
+    // Height = content + group spacing + button height + dialog margin
     int collapsedHeight = buttonY + buttonHeight + margin;
     
-    // Ensure minimum height for button visibility
-    int minCollapsedHeight = ScaleForDpi(100, dpi);
+    // Win32 minimum dialog height should accommodate all elements
+    int minCollapsedHeight = ScaleForDpi(120, dpi); // Increased minimum
     collapsedHeight = max(collapsedHeight, minCollapsedHeight);
     
-    // === STEP 8: Calculate expanded height ===
+    // === STEP 8: Calculate expanded height with proper margins ===
     int tabHeight = ScaleForDpi(140, dpi);
-    int expandedHeight = collapsedHeight + margin + tabHeight;
+    // Expanded = collapsed + margin between buttons and tabs + tab height + bottom margin
+    int expandedHeight = collapsedHeight + groupSpacing + tabHeight + margin;
     
     int finalHeight = expanded ? expandedHeight : collapsedHeight;
     
@@ -305,7 +309,8 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     
     // Position expanded controls if needed
     if (expanded) {
-        int tabY = buttonY + buttonHeight + margin;
+        // Tab control positioned with group spacing below buttons per Win32 standards
+        int tabY = buttonY + buttonHeight + groupSpacing;
         int tabWidth = dialogWidth - 2 * margin;
         
         if (hTabControl) {
