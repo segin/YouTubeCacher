@@ -71,24 +71,29 @@ void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize) {
     // Get the user's LocalAppData folder using the proper API
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
     if (SUCCEEDED(hr) && localAppDataW != NULL) {
-        // Construct the WinGet yt-dlp path
-        int result = swprintf(ytDlpPath, MAX_EXTENDED_PATH, 
-                L"%s\\Microsoft\\WinGet\\Packages\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\\yt-dlp.exe",
-                localAppDataW);
+        // Safely construct the WinGet yt-dlp path
+        size_t localAppDataLen = wcslen(localAppDataW);
+        const wchar_t* wingetSuffix = L"\\Microsoft\\WinGet\\Packages\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\\yt-dlp.exe";
+        size_t suffixLen = wcslen(wingetSuffix);
         
-        // Free the allocated path string
-        CoTaskMemFree(localAppDataW);
-        
-        // Check if path was truncated
-        if (result > 0 && (size_t)result < MAX_EXTENDED_PATH) {
+        // Check if the combined path would fit
+        if (localAppDataLen + suffixLen < MAX_EXTENDED_PATH) {
+            // Safely construct the path
+            wcscpy(ytDlpPath, localAppDataW);
+            wcscat(ytDlpPath, wingetSuffix);
+            
             // Check if the file exists
             DWORD attributes = GetFileAttributesW(ytDlpPath);
             if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
                 // File exists and is not a directory, copy to output
-                wcsncpy(path, ytDlpPath, pathSize - 1);
-                path[pathSize - 1] = L'\0';
+                if (wcslen(ytDlpPath) < pathSize) {
+                    wcscpy(path, ytDlpPath);
+                }
             }
         }
+        
+        // Free the allocated path string
+        CoTaskMemFree(localAppDataW);
     }
 }
 
@@ -546,11 +551,17 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     
                     // TODO: Implement actual download functionality
-                    wchar_t message[MAX_EXTENDED_PATH + 200];
-                    swprintf(message, MAX_EXTENDED_PATH + 200, 
-                        L"Ready to download!\n\nyt-dlp: %s\nDownload folder: %s\n\nDownload functionality not implemented yet", 
-                        ytDlpPath, downloadPath);
-                    MessageBoxW(hDlg, message, L"Download", MB_OK);
+                    // Use a larger buffer for the message to accommodate long paths
+                    wchar_t* message = (wchar_t*)malloc((MAX_EXTENDED_PATH * 2 + 300) * sizeof(wchar_t));
+                    if (message) {
+                        swprintf(message, MAX_EXTENDED_PATH * 2 + 300, 
+                            L"Ready to download!\n\nyt-dlp:\n%s\n\nDownload folder:\n%s\n\nDownload functionality not implemented yet", 
+                            ytDlpPath, downloadPath);
+                        MessageBoxW(hDlg, message, L"Download", MB_OK);
+                        free(message);
+                    } else {
+                        MessageBoxW(hDlg, L"Ready to download!\n\nDownload functionality not implemented yet", L"Download", MB_OK);
+                    }
                     break;
                 }
                     
