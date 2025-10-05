@@ -10,6 +10,10 @@
 #define MAX_URL_LENGTH      1024
 #define MAX_BUFFER_SIZE     1024
 
+// Long path support constants
+#define MAX_LONG_PATH       32767  // Windows 10 long path limit
+#define MAX_EXTENDED_PATH   (MAX_LONG_PATH + 1)
+
 // Window sizing constants
 #define MIN_WINDOW_WIDTH    500
 #define MIN_WINDOW_HEIGHT   350

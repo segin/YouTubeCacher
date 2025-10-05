@@ -20,7 +20,7 @@ HBRUSH hCurrentBrush = NULL;
 // Function to get the default download path (Downloads/YouTubeCacher)
 void GetDefaultDownloadPath(char* path, size_t pathSize) {
     PWSTR downloadsPathW = NULL;
-    char downloadsPath[MAX_PATH];
+    char downloadsPath[MAX_EXTENDED_PATH];
     
     // Get the user's Downloads folder using the proper FOLDERID_Downloads
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_Downloads, 0, NULL, &downloadsPathW);
@@ -44,8 +44,8 @@ void GetDefaultDownloadPath(char* path, size_t pathSize) {
 
 // Function to get the default yt-dlp path (check WinGet installation)
 void GetDefaultYtDlpPath(char* path, size_t pathSize) {
-    char localAppData[MAX_PATH];
-    char ytDlpPath[MAX_PATH * 2];  // Use larger buffer for long path
+    char localAppData[MAX_EXTENDED_PATH];
+    char ytDlpPath[MAX_EXTENDED_PATH];
     
     // Initialize path as empty
     path[0] = '\0';
@@ -53,16 +53,19 @@ void GetDefaultYtDlpPath(char* path, size_t pathSize) {
     // Get %LocalAppData% environment variable
     if (GetEnvironmentVariable("LOCALAPPDATA", localAppData, sizeof(localAppData)) > 0) {
         // Construct the WinGet yt-dlp path
-        snprintf(ytDlpPath, sizeof(ytDlpPath), 
+        int result = snprintf(ytDlpPath, sizeof(ytDlpPath), 
                 "%s\\Microsoft\\WinGet\\Packages\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\\yt-dlp.exe",
                 localAppData);
         
-        // Check if the file exists
-        DWORD attributes = GetFileAttributes(ytDlpPath);
-        if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            // File exists and is not a directory, copy to output
-            strncpy(path, ytDlpPath, pathSize - 1);
-            path[pathSize - 1] = '\0';
+        // Check if path was truncated
+        if (result > 0 && (size_t)result < sizeof(ytDlpPath)) {
+            // Check if the file exists
+            DWORD attributes = GetFileAttributes(ytDlpPath);
+            if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                // File exists and is not a directory, copy to output
+                strncpy(path, ytDlpPath, pathSize - 1);
+                path[pathSize - 1] = '\0';
+            }
         }
     }
 }
@@ -162,12 +165,12 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     switch (message) {
         case WM_INITDIALOG: {
             // Set default yt-dlp path (check WinGet installation)
-            char defaultYtDlpPath[MAX_PATH];
+            char defaultYtDlpPath[MAX_EXTENDED_PATH];
             GetDefaultYtDlpPath(defaultYtDlpPath, sizeof(defaultYtDlpPath));
             SetDlgItemText(hDlg, IDC_YTDLP_PATH, defaultYtDlpPath);
             
             // Set default download folder path
-            char defaultDownloadPath[MAX_PATH];
+            char defaultDownloadPath[MAX_EXTENDED_PATH];
             GetDefaultDownloadPath(defaultDownloadPath, sizeof(defaultDownloadPath));
             SetDlgItemText(hDlg, IDC_FOLDER_PATH, defaultDownloadPath);
             
@@ -180,7 +183,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             switch (LOWORD(wParam)) {
                 case IDC_YTDLP_BROWSE: {
                     OPENFILENAME ofn = {0};
-                    char szFile[MAX_PATH] = {0};
+                    char szFile[MAX_EXTENDED_PATH] = {0};
                     
                     ofn.lStructSize = sizeof(ofn);
                     ofn.hwndOwner = hDlg;
@@ -199,7 +202,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 
                 case IDC_FOLDER_BROWSE: {
                     BROWSEINFO bi = {0};
-                    char szPath[MAX_PATH];
+                    char szPath[MAX_EXTENDED_PATH];
                     LPITEMIDLIST pidl;
                     
                     bi.hwndOwner = hDlg;
@@ -218,7 +221,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 
                 case IDC_PLAYER_BROWSE: {
                     OPENFILENAME ofn = {0};
-                    char szFile[MAX_PATH] = {0};
+                    char szFile[MAX_EXTENDED_PATH] = {0};
                     
                     ofn.lStructSize = sizeof(ofn);
                     ofn.hwndOwner = hDlg;
@@ -362,7 +365,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case IDC_DOWNLOAD_BTN: {
                     // Get the current download folder path from settings (for now use default)
-                    char downloadPath[MAX_PATH];
+                    char downloadPath[MAX_EXTENDED_PATH];
                     GetDefaultDownloadPath(downloadPath, sizeof(downloadPath));
                     
                     // Create the download directory if it doesn't exist
@@ -372,7 +375,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     
                     // TODO: Implement actual download functionality
-                    char message[MAX_PATH + 100];
+                    char message[MAX_EXTENDED_PATH + 100];
                     snprintf(message, sizeof(message), "Download directory ready: %s\n\nDownload functionality not implemented yet", downloadPath);
                     MessageBox(hDlg, message, "Download", MB_OK);
                     break;
