@@ -3,6 +3,10 @@
 
 #include <windows.h>
 
+// Long path support constants (must match YouTubeCacher.h)
+#define MAX_LONG_PATH       32767  // Windows 10 long path limit
+#define MAX_EXTENDED_PATH   (MAX_LONG_PATH + 1)
+
 // Cache entry structure
 typedef struct CacheEntry {
     wchar_t* videoId;           // YouTube video ID
@@ -20,7 +24,7 @@ typedef struct CacheEntry {
 typedef struct {
     CacheEntry* entries;        // Linked list of cache entries
     int totalEntries;           // Total number of cached videos
-    wchar_t cacheFilePath[MAX_PATH]; // Path to cache index file
+    wchar_t cacheFilePath[MAX_EXTENDED_PATH]; // Path to cache index file
     CRITICAL_SECTION lock;      // Thread safety
 } CacheManager;
 
@@ -44,6 +48,7 @@ BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t
 void RefreshCacheList(HWND hListBox, CacheManager* manager);
 wchar_t* ExtractVideoIdFromUrl(const wchar_t* url);
 BOOL ScanDownloadFolderForVideos(CacheManager* manager, const wchar_t* downloadPath);
+BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath);
 void FreeCacheEntry(CacheEntry* entry);
 BOOL ValidateCacheEntry(const CacheEntry* entry);
 

@@ -16,7 +16,7 @@ BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) 
     InitializeCriticalSection(&manager->lock);
     
     // Build cache file path
-    swprintf(manager->cacheFilePath, MAX_PATH, L"%ls\\%ls", downloadPath, CACHE_FILE_NAME);
+    swprintf(manager->cacheFilePath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, CACHE_FILE_NAME);
     
     // Load existing cache from file
     LoadCacheFromFile(manager);
@@ -530,7 +530,7 @@ BOOL FindSubtitleFiles(const wchar_t* videoFilePath, wchar_t*** subtitleFiles, i
     *count = 0;
     
     // Get base name without extension
-    wchar_t baseName[MAX_PATH];
+    wchar_t baseName[MAX_EXTENDED_PATH];
     wcscpy(baseName, videoFilePath);
     wchar_t* lastDot = wcsrchr(baseName, L'.');
     if (lastDot) *lastDot = L'\0';
@@ -545,8 +545,8 @@ BOOL FindSubtitleFiles(const wchar_t* videoFilePath, wchar_t*** subtitleFiles, i
     int foundCount = 0;
     
     for (int i = 0; i < numExts; i++) {
-        wchar_t subtitlePath[MAX_PATH];
-        swprintf(subtitlePath, MAX_PATH, L"%ls%ls", baseName, subtitleExts[i]);
+        wchar_t subtitlePath[MAX_EXTENDED_PATH];
+        swprintf(subtitlePath, MAX_EXTENDED_PATH, L"%ls%ls", baseName, subtitleExts[i]);
         
         DWORD attributes = GetFileAttributesW(subtitlePath);
         if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -602,12 +602,85 @@ wchar_t* FormatCacheEntryDisplay(const CacheEntry* entry) {
     return result;
 }
 
+// Add dummy video for debugging purposes
+BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath) {
+    if (!manager || !downloadPath) return FALSE;
+    
+    static int dummyCounter = 1;
+    
+    // Generate dummy video data
+    wchar_t videoId[12];
+    wchar_t title[256];
+    wchar_t duration[32];
+    wchar_t filename[MAX_EXTENDED_PATH];
+    wchar_t fullPath[MAX_EXTENDED_PATH];
+    
+    swprintf(videoId, 12, L"DUMMY%06d", dummyCounter);
+    swprintf(title, 256, L"Debug Video %d - Sample Content for Testing", dummyCounter);
+    swprintf(duration, 32, L"%d:%02d", (dummyCounter * 3) / 60, (dummyCounter * 3) % 60);
+    swprintf(filename, MAX_EXTENDED_PATH, L"debug_video_%d [%ls].mp4", dummyCounter, videoId);
+    swprintf(fullPath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, filename);
+    
+    // Create a dummy file (0 bytes) to simulate the video file
+    HANDLE hFile = CreateFileW(fullPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        // Write some dummy data to make it look like a real file
+        const char dummyData[] = "This is a dummy video file for debugging purposes.";
+        DWORD bytesWritten;
+        WriteFile(hFile, dummyData, sizeof(dummyData), &bytesWritten, NULL);
+        CloseHandle(hFile);
+    }
+    
+    // Create dummy subtitle files
+    wchar_t** subtitleFiles = (wchar_t**)malloc(2 * sizeof(wchar_t*));
+    if (subtitleFiles) {
+        // Create .srt file
+        wchar_t srtPath[MAX_EXTENDED_PATH];
+        swprintf(srtPath, MAX_EXTENDED_PATH, L"%ls\\debug_video_%d [%ls].en.srt", downloadPath, dummyCounter, videoId);
+        subtitleFiles[0] = _wcsdup(srtPath);
+        
+        HANDLE hSrt = CreateFileW(srtPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hSrt != INVALID_HANDLE_VALUE) {
+            const char srtData[] = "1\n00:00:00,000 --> 00:00:05,000\nThis is a dummy subtitle file.\n\n";
+            DWORD bytesWritten;
+            WriteFile(hSrt, srtData, sizeof(srtData), &bytesWritten, NULL);
+            CloseHandle(hSrt);
+        }
+        
+        // Create .vtt file
+        wchar_t vttPath[MAX_EXTENDED_PATH];
+        swprintf(vttPath, MAX_EXTENDED_PATH, L"%ls\\debug_video_%d [%ls].en.vtt", downloadPath, dummyCounter, videoId);
+        subtitleFiles[1] = _wcsdup(vttPath);
+        
+        HANDLE hVtt = CreateFileW(vttPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hVtt != INVALID_HANDLE_VALUE) {
+            const char vttData[] = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nThis is a dummy WebVTT subtitle.\n\n";
+            DWORD bytesWritten;
+            WriteFile(hVtt, vttData, sizeof(vttData), &bytesWritten, NULL);
+            CloseHandle(hVtt);
+        }
+    }
+    
+    // Add to cache
+    BOOL result = AddCacheEntry(manager, videoId, title, duration, fullPath, subtitleFiles, 2);
+    
+    // Clean up
+    if (subtitleFiles) {
+        if (subtitleFiles[0]) free(subtitleFiles[0]);
+        if (subtitleFiles[1]) free(subtitleFiles[1]);
+        free(subtitleFiles);
+    }
+    
+    dummyCounter++;
+    return result;
+}
+
 // Scan download folder for existing videos (for initial cache population)
 BOOL ScanDownloadFolderForVideos(CacheManager* manager, const wchar_t* downloadPath) {
     if (!manager || !downloadPath) return FALSE;
     
-    wchar_t searchPattern[MAX_PATH];
-    swprintf(searchPattern, MAX_PATH, L"%ls\\*.mp4", downloadPath);
+    wchar_t searchPattern[MAX_EXTENDED_PATH];
+    swprintf(searchPattern, MAX_EXTENDED_PATH, L"%ls\\*.mp4", downloadPath);
     
     WIN32_FIND_DATAW findData;
     HANDLE hFind = FindFirstFileW(searchPattern, &findData);
@@ -618,8 +691,8 @@ BOOL ScanDownloadFolderForVideos(CacheManager* manager, const wchar_t* downloadP
     
     do {
         if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            wchar_t fullPath[MAX_PATH];
-            swprintf(fullPath, MAX_PATH, L"%ls\\%ls", downloadPath, findData.cFileName);
+            wchar_t fullPath[MAX_EXTENDED_PATH];
+            swprintf(fullPath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, findData.cFileName);
             
             // Try to extract video ID from filename (if it follows yt-dlp naming)
             wchar_t* videoId = NULL;

@@ -1243,6 +1243,28 @@ DWORD WINAPI GetVideoInfoThread(LPVOID lpParam) {
 }
 
 // Synchronous version of the video info function (renamed from original)
+// Structure for concurrent video info retrieval
+typedef struct {
+    YtDlpConfig* config;
+    YtDlpRequest* request;
+    YtDlpResult* result;
+    HANDLE hThread;
+    DWORD threadId;
+    BOOL completed;
+} VideoInfoThread;
+
+// Thread function for getting video info
+DWORD WINAPI VideoInfoWorkerThread(LPVOID lpParam) {
+    VideoInfoThread* threadInfo = (VideoInfoThread*)lpParam;
+    if (!threadInfo || !threadInfo->config || !threadInfo->request) {
+        return 1;
+    }
+    
+    threadInfo->result = ExecuteYtDlpRequest(threadInfo->config, threadInfo->request);
+    threadInfo->completed = TRUE;
+    return 0;
+}
+
 BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
     if (!url || !title || !duration || titleSize == 0 || durationSize == 0) return FALSE;
     
@@ -1274,63 +1296,104 @@ BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t tit
         return FALSE;
     }
     
-    // Get video title
+    // Create requests for both title and duration
     YtDlpRequest* titleRequest = CreateYtDlpRequest(YTDLP_OP_GET_TITLE, url, NULL);
-    if (titleRequest) {
-        titleRequest->tempDir = _wcsdup(tempDir);
-        
-        YtDlpResult* titleResult = ExecuteYtDlpRequest(&config, titleRequest);
-        if (titleResult && titleResult->success && titleResult->output) {
-            // Clean up the title output (remove newlines and extra whitespace)
-            wchar_t* cleanTitle = titleResult->output;
-            
-            // Remove trailing newlines and whitespace
-            size_t len = wcslen(cleanTitle);
-            while (len > 0 && (cleanTitle[len-1] == L'\n' || cleanTitle[len-1] == L'\r' || cleanTitle[len-1] == L' ')) {
-                cleanTitle[len-1] = L'\0';
-                len--;
-            }
-            
-            // Copy to output buffer
-            wcsncpy(title, cleanTitle, titleSize - 1);
-            title[titleSize - 1] = L'\0';
-            success = TRUE;
-        }
-        
-        if (titleResult) FreeYtDlpResult(titleResult);
-        FreeYtDlpRequest(titleRequest);
+    YtDlpRequest* durationRequest = CreateYtDlpRequest(YTDLP_OP_GET_DURATION, url, NULL);
+    
+    if (!titleRequest || !durationRequest) {
+        if (titleRequest) FreeYtDlpRequest(titleRequest);
+        if (durationRequest) FreeYtDlpRequest(durationRequest);
+        CleanupTempDirectory(tempDir);
+        CleanupYtDlpConfig(&config);
+        return FALSE;
     }
     
-    // Get video duration
-    YtDlpRequest* durationRequest = CreateYtDlpRequest(YTDLP_OP_GET_DURATION, url, NULL);
-    if (durationRequest) {
-        durationRequest->tempDir = _wcsdup(tempDir);
+    titleRequest->tempDir = _wcsdup(tempDir);
+    durationRequest->tempDir = _wcsdup(tempDir);
+    
+    // Create thread info structures
+    VideoInfoThread titleThread = {0};
+    VideoInfoThread durationThread = {0};
+    
+    titleThread.config = &config;
+    titleThread.request = titleRequest;
+    
+    durationThread.config = &config;
+    durationThread.request = durationRequest;
+    
+    // Start both threads concurrently
+    titleThread.hThread = CreateThread(NULL, 0, VideoInfoWorkerThread, &titleThread, 0, &titleThread.threadId);
+    durationThread.hThread = CreateThread(NULL, 0, VideoInfoWorkerThread, &durationThread, 0, &durationThread.threadId);
+    
+    if (titleThread.hThread && durationThread.hThread) {
+        // Wait for both threads to complete (with timeout)
+        HANDLE threads[2] = {titleThread.hThread, durationThread.hThread};
+        DWORD waitResult = WaitForMultipleObjects(2, threads, TRUE, 30000); // 30 second timeout
         
-        YtDlpResult* durationResult = ExecuteYtDlpRequest(&config, durationRequest);
-        if (durationResult && durationResult->success && durationResult->output) {
-            // Clean up the duration output (remove newlines and extra whitespace)
-            wchar_t* cleanDuration = durationResult->output;
+        if (waitResult == WAIT_OBJECT_0) {
+            // Both threads completed successfully
             
-            // Remove trailing newlines and whitespace
-            size_t len = wcslen(cleanDuration);
-            while (len > 0 && (cleanDuration[len-1] == L'\n' || cleanDuration[len-1] == L'\r' || cleanDuration[len-1] == L' ')) {
-                cleanDuration[len-1] = L'\0';
-                len--;
-            }
-            
-            // Copy to output buffer
-            wcsncpy(duration, cleanDuration, durationSize - 1);
-            duration[durationSize - 1] = L'\0';
-            
-            // If we got duration but not title, still consider it a partial success
-            if (!success && wcslen(duration) > 0) {
+            // Process title result
+            if (titleThread.result && titleThread.result->success && titleThread.result->output) {
+                wchar_t* cleanTitle = titleThread.result->output;
+                
+                // Remove trailing newlines and whitespace
+                size_t len = wcslen(cleanTitle);
+                while (len > 0 && (cleanTitle[len-1] == L'\n' || cleanTitle[len-1] == L'\r' || cleanTitle[len-1] == L' ')) {
+                    cleanTitle[len-1] = L'\0';
+                    len--;
+                }
+                
+                wcsncpy(title, cleanTitle, titleSize - 1);
+                title[titleSize - 1] = L'\0';
                 success = TRUE;
             }
+            
+            // Process duration result
+            if (durationThread.result && durationThread.result->success && durationThread.result->output) {
+                wchar_t* cleanDuration = durationThread.result->output;
+                
+                // Remove trailing newlines and whitespace
+                size_t len = wcslen(cleanDuration);
+                while (len > 0 && (cleanDuration[len-1] == L'\n' || cleanDuration[len-1] == L'\r' || cleanDuration[len-1] == L' ')) {
+                    cleanDuration[len-1] = L'\0';
+                    len--;
+                }
+                
+                wcsncpy(duration, cleanDuration, durationSize - 1);
+                duration[durationSize - 1] = L'\0';
+                
+                // If we got duration but not title, still consider it a partial success
+                if (!success && wcslen(duration) > 0) {
+                    success = TRUE;
+                }
+            }
+        } else {
+            // Timeout or error - terminate threads
+            if (titleThread.hThread) {
+                TerminateThread(titleThread.hThread, 1);
+            }
+            if (durationThread.hThread) {
+                TerminateThread(durationThread.hThread, 1);
+            }
         }
-        
-        if (durationResult) FreeYtDlpResult(durationResult);
-        FreeYtDlpRequest(durationRequest);
     }
+    
+    // Cleanup threads
+    if (titleThread.hThread) {
+        CloseHandle(titleThread.hThread);
+    }
+    if (durationThread.hThread) {
+        CloseHandle(durationThread.hThread);
+    }
+    
+    // Cleanup results
+    if (titleThread.result) FreeYtDlpResult(titleThread.result);
+    if (durationThread.result) FreeYtDlpResult(durationThread.result);
+    
+    // Cleanup requests
+    FreeYtDlpRequest(titleRequest);
+    FreeYtDlpRequest(durationRequest);
     
     // Cleanup
     CleanupTempDirectory(tempDir);
@@ -2496,12 +2559,14 @@ void ResizeControls(HWND hDlg) {
     SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 
                 downloadGroupX + margin, listY, listWidth, listHeight, SWP_NOZORDER);
     
-    // Side buttons (Play and Delete)
+    // Side buttons (Play, Delete, and Add)
     int sideButtonHeight = (int)(32 * scaleY);
     SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, 
                 sideButtonX, listY, buttonWidth, sideButtonHeight, SWP_NOZORDER);
     SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, 
                 sideButtonX, listY + sideButtonHeight + (margin / 2), buttonWidth, sideButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON1), NULL, 
+                sideButtonX, listY + (sideButtonHeight + (margin / 2)) * 2, buttonWidth, sideButtonHeight, SWP_NOZORDER);
 }
 
 // Settings dialog procedure
@@ -3037,8 +3102,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                     if (result && result->success) {
                         UpdateMainProgressBar(hDlg, 100, L"Download completed successfully");
-                        Sleep(1000);
-                        ShowMainProgressBar(hDlg, FALSE);
+                        // Keep progress bar visible - don't hide it
                         
                         // Add to cache - extract video ID from URL
                         wchar_t* videoId = ExtractVideoIdFromUrl(url);
@@ -3100,11 +3164,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             UpdateCacheListStatus(hDlg, &g_cacheManager);
                         }
                         
-                        // Show success message with download location
-                        wchar_t successMsg[MAX_EXTENDED_PATH + 100];
-                        swprintf(successMsg, MAX_EXTENDED_PATH + 100, 
-                            L"Download completed successfully!\n\nFiles saved to:\n%ls", downloadPath);
-                        ShowSuccessMessage(hDlg, L"Download Complete", successMsg);
+                        // Success message removed - progress bar shows completion status
                     } else {
                         UpdateMainProgressBar(hDlg, 0, L"Download failed");
                         Sleep(500);
@@ -3239,6 +3299,30 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     break;
                 }
+
+                case IDC_BUTTON1: { // Add button (for debugging)
+                    // Get download path
+                    wchar_t downloadPath[MAX_EXTENDED_PATH];
+                    if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+                        GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+                    }
+                    
+                    // Create download directory if it doesn't exist
+                    CreateDownloadDirectoryIfNeeded(downloadPath);
+                    
+                    // Add dummy video
+                    if (AddDummyVideo(&g_cacheManager, downloadPath)) {
+                        // Refresh the list
+                        HWND hListBox = GetDlgItem(hDlg, IDC_LIST);
+                        RefreshCacheList(hListBox, &g_cacheManager);
+                        UpdateCacheListStatus(hDlg, &g_cacheManager);
+                        
+                        ShowInfoMessage(hDlg, L"Debug Video Added", L"A dummy video has been added to the cache for testing purposes.");
+                    } else {
+                        ShowWarningMessage(hDlg, L"Add Failed", L"Failed to add dummy video to cache.");
+                    }
+                    break;
+                }
                     
                 case IDC_COLOR_GREEN:
                     hCurrentBrush = hBrushLightGreen;
@@ -3317,23 +3401,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     UpdateVideoInfoUI(hDlg, data->title, data->duration);
                     
                     UpdateMainProgressBar(hDlg, 100, L"Video information retrieved successfully");
-                    Sleep(500);
-                    ShowMainProgressBar(hDlg, FALSE);
-                    
-                    // Show success message with the retrieved information
-                    wchar_t successMsg[1024];
-                    swprintf(successMsg, 1024, 
-                        L"Video information retrieved successfully!\n\n"
-                        L"Title: %ls\n\n"
-                        L"Duration: %ls",
-                        wcslen(data->title) > 0 ? data->title : L"Not available",
-                        wcslen(data->duration) > 0 ? data->duration : L"Not available");
-                    
-                    ShowSuccessMessage(hDlg, L"Video Information Retrieved", successMsg);
+                    // Keep progress bar visible - don't hide it
+                    // Success dialog removed - info is displayed in the UI fields
                 } else {
                     UpdateMainProgressBar(hDlg, 0, L"Failed to retrieve video information");
-                    Sleep(500);
-                    ShowMainProgressBar(hDlg, FALSE);
+                    // Keep progress bar visible to show failure status
                     
                     // Clear any existing video info
                     UpdateVideoInfoUI(hDlg, L"", L"");
