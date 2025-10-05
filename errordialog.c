@@ -197,34 +197,41 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     GetTextMetricsW(hdc, &tm);
     int lineHeight = tm.tmHeight;
     
-    // === STEP 3: Calculate dialog width ===
+    // === STEP 3: Calculate dialog width with proper margins ===
     int minWidth = ScaleForDpi(320, dpi);
     int maxWidth = ScaleForDpi(480, dpi);
-    int textAreaWidth = maxWidth - margin - iconSize - margin - margin; // Left margin + icon + gap + right margin
+    
+    // Width calculation: left margin + icon + gap + text area + right margin
+    int iconGap = margin; // Gap between icon and text
+    int availableTextWidth = maxWidth - margin - iconSize - iconGap - margin;
     
     // Measure text with word wrapping to determine required height
-    RECT textRect = {0, 0, textAreaWidth, 0};
+    RECT textRect = {0, 0, availableTextWidth, 0};
     int textHeight = DrawTextW(hdc, messageText, -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
     
-    // Calculate optimal dialog width (may be less than max if text is short)
-    int requiredWidth = textRect.right + margin + iconSize + margin + margin;
+    // Calculate required dialog width: margins + icon + gap + actual text width
+    int requiredWidth = margin + iconSize + iconGap + textRect.right + margin;
     int dialogWidth = max(minWidth, min(maxWidth, requiredWidth));
     
-    // Recalculate text area width based on actual dialog width
-    textAreaWidth = dialogWidth - margin - iconSize - margin - margin;
+    // Recalculate final text area width based on actual dialog width
+    int finalTextWidth = dialogWidth - margin - iconSize - iconGap - margin;
     
-    // === STEP 4: Position icon ===
+    // Remeasure text with final width to get accurate height
+    RECT finalTextRect = {0, 0, finalTextWidth, 0};
+    textHeight = DrawTextW(hdc, messageText, -1, &finalTextRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    
+    // === STEP 4: Position icon with left margin ===
     int iconX = margin;
     int iconY = margin;
     
-    // === STEP 5: Position message label ===
+    // === STEP 5: Position message label with proper spacing ===
     // First line of text should be vertically centered with icon center
     int iconCenterY = iconY + iconSize / 2;
     int textStartY = iconCenterY - lineHeight / 2;
     
-    int messageX = iconX + iconSize + margin;
+    int messageX = iconX + iconSize + iconGap;
     int messageY = textStartY;
-    int messageWidth = textAreaWidth;
+    int messageWidth = finalTextWidth;
     int messageHeight = textHeight;
     
     // === STEP 6: Position buttons ===
@@ -241,6 +248,10 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     
     // === STEP 7: Calculate collapsed dialog height ===
     int collapsedHeight = buttonY + buttonHeight + margin;
+    
+    // Ensure minimum height for button visibility
+    int minCollapsedHeight = ScaleForDpi(100, dpi);
+    collapsedHeight = max(collapsedHeight, minCollapsedHeight);
     
     // === STEP 8: Calculate expanded height ===
     int tabHeight = ScaleForDpi(140, dpi);
