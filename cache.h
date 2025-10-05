@@ -33,6 +33,19 @@ typedef struct {
 #define CACHE_VERSION           L"1.0"
 #define MAX_CACHE_LINE_LENGTH   2048
 
+// File deletion error information
+typedef struct {
+    wchar_t* fileName;
+    DWORD errorCode;
+} FileDeleteError;
+
+typedef struct {
+    FileDeleteError* errors;
+    int errorCount;
+    int totalFiles;
+    int successfulDeletes;
+} DeleteResult;
+
 // Function prototypes
 BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath);
 void CleanupCacheManager(CacheManager* manager);
@@ -44,6 +57,9 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
 BOOL RemoveCacheEntry(CacheManager* manager, const wchar_t* videoId);
 CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId);
 BOOL DeleteCacheEntryFiles(CacheManager* manager, const wchar_t* videoId);
+DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t* videoId);
+void FreeDeleteResult(DeleteResult* result);
+wchar_t* FormatDeleteErrorDetails(const DeleteResult* result);
 BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t* playerPath);
 void RefreshCacheList(HWND hListBox, CacheManager* manager);
 wchar_t* ExtractVideoIdFromUrl(const wchar_t* url);

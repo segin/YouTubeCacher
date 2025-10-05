@@ -311,24 +311,60 @@ CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId) {
     return NULL;
 }
 
-// Delete all files associated with a cache entry
+// Delete all files associated with a cache entry (simple version)
 BOOL DeleteCacheEntryFiles(CacheManager* manager, const wchar_t* videoId) {
-    if (!manager || !videoId) return FALSE;
+    DeleteResult* result = DeleteCacheEntryFilesDetailed(manager, videoId);
+    if (!result) return FALSE;
+    
+    BOOL success = (result->errorCount == 0);
+    FreeDeleteResult(result);
+    return success;
+}
+
+// Delete all files associated with a cache entry with detailed error reporting
+DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t* videoId) {
+    if (!manager || !videoId) return NULL;
     
     EnterCriticalSection(&manager->lock);
     
     CacheEntry* entry = FindCacheEntry(manager, videoId);
     if (!entry) {
         LeaveCriticalSection(&manager->lock);
-        return FALSE;
+        return NULL;
     }
     
-    BOOL success = TRUE;
+    // Create result structure
+    DeleteResult* result = (DeleteResult*)malloc(sizeof(DeleteResult));
+    if (!result) {
+        LeaveCriticalSection(&manager->lock);
+        return NULL;
+    }
+    
+    memset(result, 0, sizeof(DeleteResult));
+    
+    // Calculate total files to delete
+    result->totalFiles = (entry->mainVideoFile ? 1 : 0) + entry->subtitleCount;
+    
+    // Allocate error array (worst case: all files fail)
+    if (result->totalFiles > 0) {
+        result->errors = (FileDeleteError*)malloc(result->totalFiles * sizeof(FileDeleteError));
+        if (!result->errors) {
+            free(result);
+            LeaveCriticalSection(&manager->lock);
+            return NULL;
+        }
+        memset(result->errors, 0, result->totalFiles * sizeof(FileDeleteError));
+    }
     
     // Delete main video file
     if (entry->mainVideoFile) {
         if (!DeleteFileW(entry->mainVideoFile)) {
-            success = FALSE;
+            DWORD error = GetLastError();
+            result->errors[result->errorCount].fileName = _wcsdup(entry->mainVideoFile);
+            result->errors[result->errorCount].errorCode = error;
+            result->errorCount++;
+        } else {
+            result->successfulDeletes++;
         }
     }
     
@@ -336,19 +372,113 @@ BOOL DeleteCacheEntryFiles(CacheManager* manager, const wchar_t* videoId) {
     for (int i = 0; i < entry->subtitleCount; i++) {
         if (entry->subtitleFiles && entry->subtitleFiles[i]) {
             if (!DeleteFileW(entry->subtitleFiles[i])) {
-                success = FALSE;
+                DWORD error = GetLastError();
+                result->errors[result->errorCount].fileName = _wcsdup(entry->subtitleFiles[i]);
+                result->errors[result->errorCount].errorCode = error;
+                result->errorCount++;
+            } else {
+                result->successfulDeletes++;
             }
         }
     }
     
     LeaveCriticalSection(&manager->lock);
     
-    // Remove from cache if files were deleted successfully
-    if (success) {
+    // Remove from cache if all files were deleted successfully
+    if (result->errorCount == 0) {
         RemoveCacheEntry(manager, videoId);
     }
     
-    return success;
+    return result;
+}
+
+// Free delete result structure
+void FreeDeleteResult(DeleteResult* result) {
+    if (!result) return;
+    
+    if (result->errors) {
+        for (int i = 0; i < result->errorCount; i++) {
+            if (result->errors[i].fileName) {
+                free(result->errors[i].fileName);
+            }
+        }
+        free(result->errors);
+    }
+    
+    free(result);
+}
+
+// Format delete error details for display
+wchar_t* FormatDeleteErrorDetails(const DeleteResult* result) {
+    if (!result) return NULL;
+    
+    // Calculate required buffer size
+    size_t bufferSize = 1024; // Base size for headers
+    for (int i = 0; i < result->errorCount; i++) {
+        if (result->errors[i].fileName) {
+            bufferSize += wcslen(result->errors[i].fileName) + 100; // File name + error info
+        }
+    }
+    
+    wchar_t* details = (wchar_t*)malloc(bufferSize * sizeof(wchar_t));
+    if (!details) return NULL;
+    
+    // Format summary
+    swprintf(details, bufferSize, 
+        L"Delete Operation Summary:\n"
+        L"Total files: %d\n"
+        L"Successfully deleted: %d\n"
+        L"Failed to delete: %d\n\n",
+        result->totalFiles, result->successfulDeletes, result->errorCount);
+    
+    if (result->errorCount > 0) {
+        wcscat(details, L"Failed Files:\n");
+        wcscat(details, L"=============\n\n");
+        
+        for (int i = 0; i < result->errorCount; i++) {
+            wchar_t errorInfo[1024];
+            wchar_t* fileName = result->errors[i].fileName;
+            DWORD errorCode = result->errors[i].errorCode;
+            
+            // Get just the filename without full path for display
+            wchar_t* displayName = wcsrchr(fileName, L'\\');
+            if (displayName) {
+                displayName++; // Skip the backslash
+            } else {
+                displayName = fileName;
+            }
+            
+            // Format error message
+            wchar_t errorMessage[256] = L"Unknown error";
+            FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                          NULL, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                          errorMessage, 256, NULL);
+            
+            // Remove trailing newlines from error message
+            size_t len = wcslen(errorMessage);
+            while (len > 0 && (errorMessage[len-1] == L'\n' || errorMessage[len-1] == L'\r')) {
+                errorMessage[len-1] = L'\0';
+                len--;
+            }
+            
+            swprintf(errorInfo, 1024, 
+                L"File: %ls\n"
+                L"Error Code: %lu (0x%08lX)\n"
+                L"Error: %ls\n"
+                L"Full Path: %ls\n\n",
+                displayName, errorCode, errorCode, errorMessage, fileName);
+            
+            // Check if we have enough space
+            if (wcslen(details) + wcslen(errorInfo) < bufferSize - 1) {
+                wcscat(details, errorInfo);
+            } else {
+                wcscat(details, L"... (additional errors truncated)\n");
+                break;
+            }
+        }
+    }
+    
+    return details;
 }
 
 // Play a cached video

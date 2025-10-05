@@ -3285,16 +3285,54 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
                     
                     if (result == IDYES) {
-                        // Delete the files and remove from cache
-                        if (DeleteCacheEntryFiles(&g_cacheManager, selectedVideoId)) {
-                            ShowInfoMessage(hDlg, L"Video Deleted", L"Video and associated files have been deleted.");
+                        // Delete the files and remove from cache with detailed error reporting
+                        DeleteResult* deleteResult = DeleteCacheEntryFilesDetailed(&g_cacheManager, selectedVideoId);
+                        
+                        if (deleteResult) {
+                            if (deleteResult->errorCount == 0) {
+                                // All files deleted successfully
+                                ShowInfoMessage(hDlg, L"Video Deleted", L"Video and associated files have been deleted.");
+                                
+                                // Refresh the list
+                                RefreshCacheList(hListBox, &g_cacheManager);
+                                UpdateCacheListStatus(hDlg, &g_cacheManager);
+                            } else {
+                                // Some files failed to delete - show detailed error
+                                wchar_t* errorDetails = FormatDeleteErrorDetails(deleteResult);
+                                if (errorDetails) {
+                                    // Create enhanced error dialog with detailed information
+                                    EnhancedErrorDialog* errorDialog = CreateEnhancedErrorDialog(
+                                        L"Delete Failed",
+                                        L"Failed to delete some or all files. They may be in use or you may not have permission.",
+                                        errorDetails,
+                                        L"Check if files are currently open in another application or if you have sufficient permissions.",
+                                        L"• Close any applications that might be using the files\n"
+                                        L"• Run as administrator if permission is denied\n"
+                                        L"• Check if files are read-only or protected\n"
+                                        L"• Restart the application and try again",
+                                        ERROR_TYPE_PERMISSIONS
+                                    );
+                                    
+                                    if (errorDialog) {
+                                        ShowEnhancedErrorDialog(hDlg, errorDialog);
+                                        FreeEnhancedErrorDialog(errorDialog);
+                                    }
+                                    
+                                    free(errorDetails);
+                                } else {
+                                    ShowWarningMessage(hDlg, L"Delete Failed", 
+                                                     L"Failed to delete some or all files. They may be in use or you may not have permission.");
+                                }
+                                
+                                // Refresh the list anyway to show current state
+                                RefreshCacheList(hListBox, &g_cacheManager);
+                                UpdateCacheListStatus(hDlg, &g_cacheManager);
+                            }
                             
-                            // Refresh the list
-                            RefreshCacheList(hListBox, &g_cacheManager);
-                            UpdateCacheListStatus(hDlg, &g_cacheManager);
+                            FreeDeleteResult(deleteResult);
                         } else {
                             ShowWarningMessage(hDlg, L"Delete Failed", 
-                                             L"Failed to delete some or all files. They may be in use or you may not have permission.");
+                                             L"Failed to delete files. The video entry may not exist.");
                         }
                     }
                     break;
