@@ -40,6 +40,126 @@
 #define COLOR_LIGHT_BLUE    RGB(220, 220, 255)
 #define COLOR_LIGHT_TEAL    RGB(220, 255, 255)
 
+// YtDlp operation types
+typedef enum {
+    YTDLP_OP_GET_INFO,
+    YTDLP_OP_DOWNLOAD,
+    YTDLP_OP_VALIDATE
+} YtDlpOperation;
+
+// Validation result types
+typedef enum {
+    VALIDATION_OK,
+    VALIDATION_NOT_FOUND,
+    VALIDATION_NOT_EXECUTABLE,
+    VALIDATION_MISSING_DEPENDENCIES,
+    VALIDATION_VERSION_INCOMPATIBLE,
+    VALIDATION_PERMISSION_DENIED
+} ValidationResult;
+
+// Temporary directory strategies
+typedef enum {
+    TEMP_DIR_SYSTEM,
+    TEMP_DIR_DOWNLOAD,
+    TEMP_DIR_CUSTOM,
+    TEMP_DIR_APPDATA
+} TempDirStrategy;
+
+// Error types for analysis
+typedef enum {
+    ERROR_TYPE_TEMP_DIR,
+    ERROR_TYPE_NETWORK,
+    ERROR_TYPE_PERMISSIONS,
+    ERROR_TYPE_DEPENDENCIES,
+    ERROR_TYPE_URL_INVALID,
+    ERROR_TYPE_DISK_SPACE,
+    ERROR_TYPE_UNKNOWN
+} ErrorType;
+
+// YtDlp configuration structure
+typedef struct {
+    wchar_t ytDlpPath[MAX_EXTENDED_PATH];
+    wchar_t defaultTempDir[MAX_EXTENDED_PATH];
+    wchar_t defaultArgs[1024];
+    DWORD timeoutSeconds;
+    BOOL enableVerboseLogging;
+    BOOL autoRetryOnFailure;
+    TempDirStrategy tempDirStrategy;
+} YtDlpConfig;
+
+// YtDlp request structure
+typedef struct {
+    YtDlpOperation operation;
+    wchar_t* url;
+    wchar_t* outputPath;
+    wchar_t* tempDir;
+    BOOL useCustomArgs;
+    wchar_t* customArgs;
+} YtDlpRequest;
+
+// YtDlp result structure
+typedef struct {
+    BOOL success;
+    DWORD exitCode;
+    wchar_t* output;
+    wchar_t* errorMessage;
+    wchar_t* diagnostics;
+} YtDlpResult;
+
+// Validation information structure
+typedef struct {
+    ValidationResult result;
+    wchar_t* version;
+    wchar_t* errorDetails;
+    wchar_t* suggestions;
+} ValidationInfo;
+
+// Process handle structure for robust process management
+typedef struct {
+    HANDLE hProcess;
+    HANDLE hThread;
+    HANDLE hStdOut;
+    HANDLE hStdErr;
+    DWORD processId;
+    BOOL isRunning;
+} ProcessHandle;
+
+// Process options structure
+typedef struct {
+    DWORD timeoutMs;
+    BOOL captureOutput;
+    BOOL hideWindow;
+    wchar_t* workingDirectory;
+    wchar_t* environment;
+} ProcessOptions;
+
+// Error analysis structure
+typedef struct {
+    ErrorType type;
+    wchar_t* description;
+    wchar_t* solution;
+    wchar_t* technicalDetails;
+} ErrorAnalysis;
+
+// Progress dialog structure
+typedef struct {
+    HWND hDialog;
+    HWND hProgressBar;
+    HWND hStatusText;
+    HWND hCancelButton;
+    BOOL cancelled;
+} ProgressDialog;
+
+// Operation context structure
+typedef struct {
+    YtDlpConfig config;
+    YtDlpRequest request;
+    ProcessHandle process;
+    ProgressDialog progress;
+    wchar_t tempDir[MAX_EXTENDED_PATH];
+    BOOL operationActive;
+} YtDlpContext;
+
 // Function prototypes
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
@@ -54,6 +174,45 @@ void LoadSettings(HWND hDlg);
 void SaveSettings(HWND hDlg);
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+
+// YtDlp management function prototypes
+BOOL InitializeYtDlpConfig(YtDlpConfig* config);
+void CleanupYtDlpConfig(YtDlpConfig* config);
+ValidationInfo* ValidateYtDlpInstallation(const YtDlpConfig* config);
+void FreeValidationInfo(ValidationInfo* info);
+
+// YtDlp request/result management
+YtDlpRequest* CreateYtDlpRequest(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath);
+void FreeYtDlpRequest(YtDlpRequest* request);
+YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* request);
+void FreeYtDlpResult(YtDlpResult* result);
+
+// Process management functions
+ProcessHandle* CreateProcess(const wchar_t* commandLine, const ProcessOptions* options);
+BOOL WaitForProcessCompletion(ProcessHandle* handle, DWORD timeoutMs);
+BOOL TerminateProcessSafely(ProcessHandle* handle);
+void CleanupProcessHandle(ProcessHandle* handle);
+wchar_t* ReadProcessOutput(ProcessHandle* handle);
+
+// Error analysis functions
+ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result);
+void FreeErrorAnalysis(ErrorAnalysis* analysis);
+
+// Temporary directory management
+BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize);
+BOOL CleanupTempDirectory(const wchar_t* tempDir);
+
+// Progress dialog functions
+ProgressDialog* CreateProgressDialog(HWND parent, const wchar_t* title);
+void UpdateProgressDialog(ProgressDialog* dialog, int progress, const wchar_t* status);
+BOOL IsProgressDialogCancelled(const ProgressDialog* dialog);
+void DestroyProgressDialog(ProgressDialog* dialog);
+
+// Context management functions
+YtDlpContext* CreateYtDlpContext(void);
+BOOL InitializeYtDlpContext(YtDlpContext* context, const YtDlpConfig* config);
+void CleanupYtDlpContext(YtDlpContext* context);
+void FreeYtDlpContext(YtDlpContext* context);
 
 // Global variables (extern declarations)
 extern wchar_t cmdLineURL[MAX_URL_LENGTH];
