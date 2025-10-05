@@ -10,6 +10,7 @@
 #include <commctrl.h>
 #include <knownfolders.h>
 #include <tlhelp32.h>
+#include <psapi.h>
 
 // Function declarations for missing functions
 wchar_t* _wcsdup(const wchar_t* str);
@@ -2074,9 +2075,13 @@ DWORD WINAPI ProcessMonitorThread(LPVOID lpParam) {
     }
     
     DWORD startTime = GetTickCount();
+    DWORD lastActivityCheck = startTime;
     const DWORD CHECK_INTERVAL = 100; // Check every 100ms
+    const DWORD HUNG_CHECK_INTERVAL = 5000; // Check for hung process every 5 seconds
     
     while (monitor->handle->isRunning) {
+        DWORD currentTime = GetTickCount();
+        
         // Check for cancellation request
         if (monitor->cancelFlag && *monitor->cancelFlag) {
             monitor->cancelled = TRUE;
@@ -2086,12 +2091,23 @@ DWORD WINAPI ProcessMonitorThread(LPVOID lpParam) {
         
         // Check for timeout
         if (monitor->timeoutMs != INFINITE) {
-            DWORD elapsed = GetTickCount() - startTime;
+            DWORD elapsed = currentTime - startTime;
             if (elapsed >= monitor->timeoutMs) {
                 monitor->timedOut = TRUE;
                 TerminateProcessSafely(monitor->handle);
                 return 0;
             }
+        }
+        
+        // Periodically check if process is hung (every 5 seconds)
+        if (currentTime - lastActivityCheck >= HUNG_CHECK_INTERVAL) {
+            if (IsProcessHung(monitor->handle, 2000)) { // 2 second responsiveness check
+                // Process appears hung, terminate it
+                monitor->timedOut = TRUE; // Treat hung process as timeout
+                TerminateProcessSafely(monitor->handle);
+                return 0;
+            }
+            lastActivityCheck = currentTime;
         }
         
         // Wait briefly before next check
@@ -2130,19 +2146,34 @@ BOOL ExecuteYtDlpWithTimeout(const wchar_t* commandLine, const ProcessOptions* o
     // Wait for process completion
     BOOL success = WaitForProcessCompletion(handle, INFINITE);
     
-    // Stop monitoring thread
-    WaitForSingleObject(hMonitorThread, 1000);
+    // Stop monitoring thread gracefully
+    DWORD threadWaitResult = WaitForSingleObject(hMonitorThread, 2000);
+    if (threadWaitResult == WAIT_TIMEOUT) {
+        // Force terminate monitoring thread if it doesn't stop
+        TerminateThread(hMonitorThread, 1);
+    }
     CloseHandle(hMonitorThread);
     
-    // Get exit code if process completed successfully
-    if (success && !monitor.timedOut && !monitor.cancelled) {
-        if (exitCode) {
+    // Get exit code and output even if process was terminated
+    if (exitCode) {
+        if (monitor.timedOut || monitor.cancelled) {
+            *exitCode = 1; // Indicate abnormal termination
+        } else {
             GetExitCodeProcess(handle->hProcess, exitCode);
         }
-        
-        // Read output if requested
-        if (output && options->captureOutput) {
-            *output = ReadProcessOutput(handle);
+    }
+    
+    // Read output if requested and available
+    if (output && options->captureOutput) {
+        wchar_t* processOutput = ReadProcessOutput(handle);
+        if (processOutput) {
+            *output = processOutput;
+        } else if (monitor.timedOut) {
+            // Provide timeout indication in output
+            *output = _wcsdup(L"Process terminated due to timeout");
+        } else if (monitor.cancelled) {
+            // Provide cancellation indication in output
+            *output = _wcsdup(L"Process cancelled by user");
         }
     }
     
@@ -2193,6 +2224,108 @@ BOOL IsProcessHung(ProcessHandle* handle, DWORD responseTimeoutMs) {
             lastUser.QuadPart == currentUser.QuadPart);
 }
 
+// Enhanced process monitoring with detailed status
+// ProcessStatus is defined in YouTubeCacher.h
+
+// Get detailed status of a process
+BOOL GetProcessStatus(ProcessHandle* handle, ProcessStatus* status) {
+    if (!handle || !status || handle->hProcess == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    
+    memset(status, 0, sizeof(ProcessStatus));
+    status->processId = handle->processId;
+    
+    // Get process name
+    HMODULE hMod;
+    DWORD cbNeeded;
+    if (EnumProcessModules(handle->hProcess, &hMod, sizeof(hMod), &cbNeeded)) {
+        GetModuleBaseNameW(handle->hProcess, hMod, status->processName, MAX_PATH);
+    }
+    
+    // Get CPU time
+    FILETIME createTime, exitTime, kernelTime, userTime;
+    if (GetProcessTimes(handle->hProcess, &createTime, &exitTime, &kernelTime, &userTime)) {
+        ULARGE_INTEGER kernel, user;
+        kernel.LowPart = kernelTime.dwLowDateTime;
+        kernel.HighPart = kernelTime.dwHighDateTime;
+        user.LowPart = userTime.dwLowDateTime;
+        user.HighPart = userTime.dwHighDateTime;
+        status->cpuTime = (DWORD)((kernel.QuadPart + user.QuadPart) / 10000); // Convert to milliseconds
+    }
+    
+    // Check if process is responding (simplified check)
+    status->isResponding = !IsProcessHung(handle, 1000);
+    
+    // Get memory usage
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(handle->hProcess, &pmc, sizeof(pmc))) {
+        status->memoryUsage = (DWORD)(pmc.WorkingSetSize / 1024); // Convert to KB
+    }
+    
+    return TRUE;
+}
+
+// Monitor process with periodic status updates
+typedef struct {
+    ProcessHandle* handle;
+    DWORD timeoutMs;
+    BOOL* cancelFlag;
+    void (*statusCallback)(const ProcessStatus* status, void* userData);
+    void* callbackUserData;
+    DWORD statusUpdateIntervalMs;
+    BOOL timedOut;
+    BOOL cancelled;
+} AdvancedProcessMonitor;
+
+// Advanced monitoring thread with status callbacks
+DWORD WINAPI AdvancedProcessMonitorThread(LPVOID lpParam) {
+    AdvancedProcessMonitor* monitor = (AdvancedProcessMonitor*)lpParam;
+    if (!monitor || !monitor->handle) {
+        return 1;
+    }
+    
+    DWORD startTime = GetTickCount();
+    DWORD lastStatusUpdate = startTime;
+    const DWORD CHECK_INTERVAL = 100; // Check every 100ms
+    
+    while (monitor->handle->isRunning) {
+        DWORD currentTime = GetTickCount();
+        
+        // Check for cancellation request
+        if (monitor->cancelFlag && *monitor->cancelFlag) {
+            monitor->cancelled = TRUE;
+            TerminateProcessSafely(monitor->handle);
+            return 0;
+        }
+        
+        // Check for timeout
+        if (monitor->timeoutMs != INFINITE) {
+            DWORD elapsed = currentTime - startTime;
+            if (elapsed >= monitor->timeoutMs) {
+                monitor->timedOut = TRUE;
+                TerminateProcessSafely(monitor->handle);
+                return 0;
+            }
+        }
+        
+        // Provide status updates if callback is provided
+        if (monitor->statusCallback && 
+            (currentTime - lastStatusUpdate >= monitor->statusUpdateIntervalMs)) {
+            ProcessStatus status;
+            if (GetProcessStatus(monitor->handle, &status)) {
+                monitor->statusCallback(&status, monitor->callbackUserData);
+            }
+            lastStatusUpdate = currentTime;
+        }
+        
+        // Wait briefly before next check
+        Sleep(CHECK_INTERVAL);
+    }
+    
+    return 0;
+}
+
 // Kill all yt-dlp processes (emergency cleanup)
 BOOL KillAllYtDlpProcesses(void) {
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -2204,29 +2337,134 @@ BOOL KillAllYtDlpProcesses(void) {
     pe32.dwSize = sizeof(PROCESSENTRY32W);
     
     BOOL success = TRUE;
+    int processesKilled = 0;
     
     if (Process32FirstW(hSnapshot, &pe32)) {
         do {
             // Check if this is a yt-dlp process
-            if (_wcsicmp(pe32.szExeFile, L"yt-dlp.exe") == 0 ||
-                _wcsicmp(pe32.szExeFile, L"python.exe") == 0) {
-                
-                // For python.exe, we need to check command line to confirm it's yt-dlp
+            if (_wcsicmp(pe32.szExeFile, L"yt-dlp.exe") == 0) {
                 HANDLE hProcess = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION, 
                                            FALSE, pe32.th32ProcessID);
                 if (hProcess) {
                     // Try to terminate the process
-                    if (!TerminateProcess(hProcess, 1)) {
+                    if (TerminateProcess(hProcess, 1)) {
+                        processesKilled++;
+                    } else {
                         success = FALSE;
                     }
                     CloseHandle(hProcess);
                 }
+            }
+            // For python.exe, we need to be more careful and check command line
+            else if (_wcsicmp(pe32.szExeFile, L"python.exe") == 0) {
+                // TODO: Add command line checking to confirm it's running yt-dlp
+                // For now, we'll be conservative and not kill python.exe processes
+                // unless we can confirm they're yt-dlp instances
             }
         } while (Process32NextW(hSnapshot, &pe32));
     }
     
     CloseHandle(hSnapshot);
     return success;
+}
+
+// Execute yt-dlp with advanced monitoring and status callbacks
+BOOL ExecuteYtDlpWithAdvancedMonitoring(const wchar_t* commandLine, const ProcessOptions* options,
+                                       DWORD timeoutMs, BOOL* cancelFlag, 
+                                       ProcessStatusCallback statusCallback, void* callbackUserData,
+                                       DWORD statusUpdateIntervalMs, wchar_t** output, DWORD* exitCode) {
+    if (!commandLine || !options) {
+        return FALSE;
+    }
+    
+    ProcessHandle* handle = CreateYtDlpProcess(commandLine, options);
+    if (!handle) {
+        return FALSE;
+    }
+    
+    AdvancedProcessMonitor monitor = {0};
+    monitor.handle = handle;
+    monitor.timeoutMs = timeoutMs;
+    monitor.cancelFlag = cancelFlag;
+    monitor.statusCallback = statusCallback;
+    monitor.callbackUserData = callbackUserData;
+    monitor.statusUpdateIntervalMs = statusUpdateIntervalMs > 0 ? statusUpdateIntervalMs : 1000; // Default 1 second
+    monitor.timedOut = FALSE;
+    monitor.cancelled = FALSE;
+    
+    // Start advanced monitoring thread
+    HANDLE hMonitorThread = CreateThread(NULL, 0, AdvancedProcessMonitorThread, &monitor, 0, NULL);
+    if (!hMonitorThread) {
+        CleanupProcessHandle(handle);
+        return FALSE;
+    }
+    
+    // Wait for process completion
+    BOOL success = WaitForProcessCompletion(handle, INFINITE);
+    
+    // Stop monitoring thread gracefully
+    DWORD threadWaitResult = WaitForSingleObject(hMonitorThread, 2000);
+    if (threadWaitResult == WAIT_TIMEOUT) {
+        // Force terminate monitoring thread if it doesn't stop
+        TerminateThread(hMonitorThread, 1);
+    }
+    CloseHandle(hMonitorThread);
+    
+    // Get exit code and output
+    if (exitCode) {
+        if (monitor.timedOut || monitor.cancelled) {
+            *exitCode = 1; // Indicate abnormal termination
+        } else {
+            GetExitCodeProcess(handle->hProcess, exitCode);
+        }
+    }
+    
+    // Read output if requested and available
+    if (output && options->captureOutput) {
+        wchar_t* processOutput = ReadProcessOutput(handle);
+        if (processOutput) {
+            *output = processOutput;
+        } else if (monitor.timedOut) {
+            *output = _wcsdup(L"Process terminated due to timeout");
+        } else if (monitor.cancelled) {
+            *output = _wcsdup(L"Process cancelled by user");
+        }
+    }
+    
+    CleanupProcessHandle(handle);
+    
+    // Return success only if process completed without timeout or cancellation
+    return success && !monitor.timedOut && !monitor.cancelled;
+}
+
+// Utility functions for cancellation flag management
+
+// Utility function to create a cancellation flag for UI integration
+BOOL* CreateCancellationFlag(void) {
+    BOOL* flag = (BOOL*)malloc(sizeof(BOOL));
+    if (flag) {
+        *flag = FALSE;
+    }
+    return flag;
+}
+
+// Utility function to signal cancellation
+void SignalCancellation(BOOL* cancelFlag) {
+    if (cancelFlag) {
+        *cancelFlag = TRUE;
+    }
+}
+
+// Utility function to check if operation was cancelled
+BOOL IsCancelled(const BOOL* cancelFlag) {
+    return cancelFlag ? *cancelFlag : FALSE;
+}
+
+// Utility function to free cancellation flag
+void FreeCancellationFlag(BOOL* cancelFlag) {
+    if (cancelFlag) {
+        free(cancelFlag);
+    }
 }
 
 // YtDlp Command Line Integration Functions

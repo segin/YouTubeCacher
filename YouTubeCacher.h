@@ -203,11 +203,34 @@ BOOL TerminateProcessSafely(ProcessHandle* handle);
 void CleanupProcessHandle(ProcessHandle* handle);
 wchar_t* ReadProcessOutput(ProcessHandle* handle);
 
+// Process status structure for detailed monitoring
+typedef struct {
+    DWORD processId;
+    wchar_t processName[260]; // MAX_PATH
+    DWORD cpuTime;
+    BOOL isResponding;
+    DWORD memoryUsage;
+} ProcessStatus;
+
 // Process timeout and cancellation support functions
 BOOL ExecuteYtDlpWithTimeout(const wchar_t* commandLine, const ProcessOptions* options, 
                             DWORD timeoutMs, BOOL* cancelFlag, wchar_t** output, DWORD* exitCode);
 BOOL IsProcessHung(ProcessHandle* handle, DWORD responseTimeoutMs);
 BOOL KillAllYtDlpProcesses(void);
+
+// Enhanced process monitoring functions
+BOOL GetProcessStatus(ProcessHandle* handle, ProcessStatus* status);
+typedef void (*ProcessStatusCallback)(const ProcessStatus* status, void* userData);
+BOOL ExecuteYtDlpWithAdvancedMonitoring(const wchar_t* commandLine, const ProcessOptions* options,
+                                       DWORD timeoutMs, BOOL* cancelFlag, 
+                                       ProcessStatusCallback statusCallback, void* callbackUserData,
+                                       DWORD statusUpdateIntervalMs, wchar_t** output, DWORD* exitCode);
+
+// Cancellation flag utility functions
+BOOL* CreateCancellationFlag(void);
+void SignalCancellation(BOOL* cancelFlag);
+BOOL IsCancelled(const BOOL* cancelFlag);
+void FreeCancellationFlag(BOOL* cancelFlag);
 
 // Error analysis functions
 ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result);
