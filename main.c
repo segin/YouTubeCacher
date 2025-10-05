@@ -1301,14 +1301,16 @@ void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX,
     
     // Calculate minimum height requirements with detailed breakdown
     
-    // DOWNLOAD GROUP HEIGHT CALCULATION (108px at 96 DPI) - CORRECTED LAYOUT:
+    // DOWNLOAD GROUP HEIGHT CALCULATION (130px at 96 DPI) - TWO-LINE VIDEO INFO:
     // - Group title area: 18px (group box border + "Download video" text)
     // - Top margin: 10px (breathing room after title)
     // - URL input row: 22px (standard edit control height)
     // - Reduced margin: 8px (3/4 × 10px for spacing before progress bar)
     // - Progress bar: 16px (standard progress control height, restored to original position)
     // - Reduced margin: 8px (space before video info section)
-    // - Video info row: 16px (title + duration + download status on same line)
+    // - Video title line: 16px (title text, truncates before "Get Info" button)
+    // - Small margin: 6px (1/2 × 10px between title and duration lines)
+    // - Duration + status line: 16px (duration + download progress on same line)
     // - Bottom margin: 10px (separation from offline videos group)
     int downloadGroupHeight = groupTitleHeight +           // 18px: group title space
                              margin +                      // 10px: top margin
@@ -1316,9 +1318,11 @@ void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX,
                              (margin * 3/4) +             //  8px: reduced margin
                              progressHeight +              // 16px: progress bar
                              (margin * 3/4) +             //  8px: reduced margin
-                             labelHeight +                 // 16px: video info row
+                             labelHeight +                 // 16px: video title line
+                             (margin / 2) +               //  6px: small margin
+                             labelHeight +                 // 16px: duration + status line
                              margin;                       // 10px: bottom margin
-                                                          // Total: 108px
+                                                          // Total: 130px
     
     // OFFLINE VIDEOS GROUP MINIMUM HEIGHT CALCULATION (159px at 96 DPI):
     // - Group title area: 18px (group box border + "Offline videos" text)
@@ -1445,11 +1449,13 @@ void ResizeControls(HWND hDlg) {
     int clientHeight = rect.bottom - rect.top;
     
     // Calculate Download video group dimensions
-    // Corrected layout: URL field + progress bar + video info labels below
+    // Two-line video info layout: URL field + progress bar + title line + duration line
     // Vertical layout: Group title (18) + margin (10) + URL row (22) + margin (8) + 
-    //                  progress bar (16) + margin (8) + video info row (16) + bottom margin (10) = 108 total
+    //                  progress bar (16) + margin (8) + title line (16) + small margin (6) +
+    //                  duration line (16) + bottom margin (10) = 130 total
     int downloadGroupHeight = groupTitleHeight + margin + textHeight + (margin * 3/4) + 
-                             progressHeight + (margin * 3/4) + labelHeight + margin;
+                             progressHeight + (margin * 3/4) + labelHeight + (margin / 2) + 
+                             labelHeight + margin;
     
     // Position Download video group box
     int downloadGroupX = windowMargin;
@@ -1489,28 +1495,37 @@ void ResizeControls(HWND hDlg) {
     
     currentY += progressHeight + (margin * 3/4);
     
-    // Video info row - move below progress bar
-    // Video title on left side
+    // CORRECTED: Two-line video info layout below progress bar
+    
+    // LINE 1: Video title (truncates to account for "Get Info" button)
+    // Mathematical reasoning: availableTextWidth already accounts for button space
     SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_TITLE_LABEL), NULL, 
                 downloadGroupX + margin, currentY, (int)(35 * scaleX), labelHeight, SWP_NOZORDER);
     
+    // Title text width = availableTextWidth - label width (35px)
+    // This ensures title truncates BEFORE hitting the "Get Info" button
+    int titleTextWidth = availableTextWidth - (int)(35 * scaleX);
     SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_TITLE), NULL, 
-                urlFieldX, currentY, (int)(200 * scaleX), labelHeight, SWP_NOZORDER);
+                urlFieldX, currentY, titleTextWidth, labelHeight, SWP_NOZORDER);
     
-    // Duration and download status on same row
-    // Duration starts after video title with some spacing
-    int durationX = urlFieldX + (int)(210 * scaleX);
+    // Move to next line for duration + download status
+    currentY += labelHeight + (margin / 2);  // 6px spacing between lines
+    
+    // LINE 2: Duration + Download Status (on same line, below title)
+    // Duration label: "Duration:" (50px width)
     SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_DURATION_LABEL), NULL, 
-                durationX, currentY, (int)(50 * scaleX), labelHeight, SWP_NOZORDER);
+                downloadGroupX + margin, currentY, (int)(50 * scaleX), labelHeight, SWP_NOZORDER);
     
+    // Duration value: "5:23" format (60px width - enough for "99:59:59")
+    int durationValueX = downloadGroupX + margin + (int)(55 * scaleX);  // After label + 5px gap
     SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_DURATION), NULL, 
-                durationX + (int)(55 * scaleX), currentY, (int)(80 * scaleX), labelHeight, SWP_NOZORDER);
+                durationValueX, currentY, (int)(60 * scaleX), labelHeight, SWP_NOZORDER);
     
-    // Download status positioned to the right of duration, centered in remaining frame space
-    int statusX = durationX + (int)(140 * scaleX);  // After duration + some spacing
-    int remainingWidth = (downloadGroupX + downloadGroupWidth - margin) - statusX;
+    // Download status: positioned after duration with 10px gap, uses remaining width
+    int statusX = durationValueX + (int)(60 * scaleX) + (int)(10 * scaleX);  // After duration + gap
+    int statusWidth = (downloadGroupX + downloadGroupWidth - margin) - statusX;
     SetWindowPos(GetDlgItem(hDlg, IDC_PROGRESS_TEXT), NULL, 
-                statusX, currentY, remainingWidth, labelHeight, SWP_NOZORDER);
+                statusX, currentY, statusWidth, labelHeight, SWP_NOZORDER);
     
     // Position color indicator buttons (hidden by default, positioned for future use)
     int colorButtonY = currentY;
