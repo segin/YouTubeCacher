@@ -10,6 +10,12 @@
 #define MAX_URL_LENGTH      1024
 #define MAX_BUFFER_SIZE     1024
 
+// Registry constants
+#define REGISTRY_KEY        L"Software\\Talamar Developments\\YouTube Cacher"
+#define REG_YTDLP_PATH      L"YtDlpPath"
+#define REG_DOWNLOAD_PATH   L"DownloadPath"
+#define REG_PLAYER_PATH     L"PlayerPath"
+
 // Long path support constants
 #define MAX_LONG_PATH       32767  // Windows 10 long path limit
 #define MAX_EXTENDED_PATH   (MAX_LONG_PATH + 1)
@@ -40,6 +46,10 @@ void ResizeControls(HWND hDlg);
 void GetDefaultDownloadPath(wchar_t* path, size_t pathSize);
 void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize);
 BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path);
+BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bufferSize);
+BOOL SaveSettingToRegistry(const wchar_t* valueName, const wchar_t* value);
+void LoadSettings(HWND hDlg);
+void SaveSettings(HWND hDlg);
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 

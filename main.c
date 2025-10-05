@@ -91,6 +91,100 @@ BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path) {
     return FALSE;
 }
 
+// Function to load a setting from the registry
+BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bufferSize) {
+    HKEY hKey;
+    DWORD dataType;
+    DWORD dataSize = bufferSize * sizeof(wchar_t);
+    BOOL result = FALSE;
+    
+    // Open the registry key
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        // Query the value
+        if (RegQueryValueExW(hKey, valueName, NULL, &dataType, (LPBYTE)buffer, &dataSize) == ERROR_SUCCESS) {
+            if (dataType == REG_SZ) {
+                result = TRUE;
+            }
+        }
+        RegCloseKey(hKey);
+    }
+    
+    // If failed to load, clear the buffer
+    if (!result) {
+        buffer[0] = L'\0';
+    }
+    
+    return result;
+}
+
+// Function to save a setting to the registry
+BOOL SaveSettingToRegistry(const wchar_t* valueName, const wchar_t* value) {
+    HKEY hKey;
+    BOOL result = FALSE;
+    DWORD disposition;
+    
+    // Create or open the registry key
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, NULL, REG_OPTION_NON_VOLATILE, 
+                       KEY_WRITE, NULL, &hKey, &disposition) == ERROR_SUCCESS) {
+        // Set the value
+        DWORD dataSize = (DWORD)((wcslen(value) + 1) * sizeof(wchar_t));
+        if (RegSetValueExW(hKey, valueName, 0, REG_SZ, (const BYTE*)value, dataSize) == ERROR_SUCCESS) {
+            result = TRUE;
+        }
+        RegCloseKey(hKey);
+    }
+    
+    return result;
+}
+
+// Function to load settings from registry into dialog controls
+void LoadSettings(HWND hDlg) {
+    wchar_t buffer[MAX_EXTENDED_PATH];
+    
+    // Load yt-dlp path
+    if (LoadSettingFromRegistry(REG_YTDLP_PATH, buffer, MAX_EXTENDED_PATH)) {
+        SetDlgItemTextW(hDlg, IDC_YTDLP_PATH, buffer);
+    } else {
+        // Use default if not found in registry
+        GetDefaultYtDlpPath(buffer, MAX_EXTENDED_PATH);
+        SetDlgItemTextW(hDlg, IDC_YTDLP_PATH, buffer);
+    }
+    
+    // Load download path
+    if (LoadSettingFromRegistry(REG_DOWNLOAD_PATH, buffer, MAX_EXTENDED_PATH)) {
+        SetDlgItemTextW(hDlg, IDC_FOLDER_PATH, buffer);
+    } else {
+        // Use default if not found in registry
+        GetDefaultDownloadPath(buffer, MAX_EXTENDED_PATH);
+        SetDlgItemTextW(hDlg, IDC_FOLDER_PATH, buffer);
+    }
+    
+    // Load player path
+    if (LoadSettingFromRegistry(REG_PLAYER_PATH, buffer, MAX_EXTENDED_PATH)) {
+        SetDlgItemTextW(hDlg, IDC_PLAYER_PATH, buffer);
+    } else {
+        // Use default if not found in registry
+        SetDlgItemTextW(hDlg, IDC_PLAYER_PATH, L"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe");
+    }
+}
+
+// Function to save settings from dialog controls to registry
+void SaveSettings(HWND hDlg) {
+    wchar_t buffer[MAX_EXTENDED_PATH];
+    
+    // Save yt-dlp path
+    GetDlgItemTextW(hDlg, IDC_YTDLP_PATH, buffer, MAX_EXTENDED_PATH);
+    SaveSettingToRegistry(REG_YTDLP_PATH, buffer);
+    
+    // Save download path
+    GetDlgItemTextW(hDlg, IDC_FOLDER_PATH, buffer, MAX_EXTENDED_PATH);
+    SaveSettingToRegistry(REG_DOWNLOAD_PATH, buffer);
+    
+    // Save player path
+    GetDlgItemTextW(hDlg, IDC_PLAYER_PATH, buffer, MAX_EXTENDED_PATH);
+    SaveSettingToRegistry(REG_PLAYER_PATH, buffer);
+}
+
 
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
@@ -167,18 +261,8 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     
     switch (message) {
         case WM_INITDIALOG: {
-            // Set default yt-dlp path (check WinGet installation)
-            wchar_t defaultYtDlpPath[MAX_EXTENDED_PATH];
-            GetDefaultYtDlpPath(defaultYtDlpPath, MAX_EXTENDED_PATH);
-            SetDlgItemTextW(hDlg, IDC_YTDLP_PATH, defaultYtDlpPath);
-            
-            // Set default download folder path
-            wchar_t defaultDownloadPath[MAX_EXTENDED_PATH];
-            GetDefaultDownloadPath(defaultDownloadPath, MAX_EXTENDED_PATH);
-            SetDlgItemTextW(hDlg, IDC_FOLDER_PATH, defaultDownloadPath);
-            
-            // Set default media player path
-            SetDlgItemTextW(hDlg, IDC_PLAYER_PATH, L"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe");
+            // Load settings from registry (with defaults if not found)
+            LoadSettings(hDlg);
             return TRUE;
         }
             
@@ -242,7 +326,8 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 }
                 
                 case IDOK:
-                    // TODO: Save settings to registry or config file
+                    // Save settings to registry
+                    SaveSettings(hDlg);
                     EndDialog(hDlg, IDOK);
                     return TRUE;
                     
@@ -367,9 +452,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     break;
                     
                 case IDC_DOWNLOAD_BTN: {
-                    // Get the current download folder path from settings (for now use default)
+                    // Get the current download folder path from registry settings
                     wchar_t downloadPath[MAX_EXTENDED_PATH];
-                    GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+                    if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+                        // Fall back to default if not found in registry
+                        GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+                    }
                     
                     // Create the download directory if it doesn't exist
                     if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
