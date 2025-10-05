@@ -23,6 +23,32 @@ HBRUSH hCurrentBrush = NULL;
 // Flag to track programmatic text changes
 BOOL bProgrammaticChange = FALSE;
 
+// Flag to track manual paste operations
+BOOL bManualPaste = FALSE;
+
+// Original text field window procedure
+WNDPROC OriginalTextFieldProc = NULL;
+
+// Subclass procedure for text field to detect paste operations
+LRESULT CALLBACK TextFieldSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+        case WM_PASTE:
+            // User is manually pasting - set flag
+            bManualPaste = TRUE;
+            break;
+            
+        case WM_KEYDOWN:
+            // Check for Ctrl+V
+            if (wParam == 'V' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                bManualPaste = TRUE;
+            }
+            break;
+    }
+    
+    // Call original window procedure
+    return CallWindowProc(OriginalTextFieldProc, hwnd, uMsg, wParam, lParam);
+}
+
 // Function to get the default download path (Downloads/YouTubeCacher)
 void GetDefaultDownloadPath(wchar_t* path, size_t pathSize) {
     PWSTR downloadsPathW = NULL;
@@ -450,6 +476,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             // Set focus to the text field for immediate typing
             SetFocus(GetDlgItem(hDlg, IDC_TEXT_FIELD));
             
+            // Subclass the text field to detect paste operations
+            HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
+            OriginalTextFieldProc = (WNDPROC)SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)TextFieldSubclassProc);
+            
             // Set minimum window size
             SetWindowPos(hDlg, NULL, 0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT, SWP_NOMOVE | SWP_NOZORDER);
             
@@ -561,16 +591,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         wchar_t buffer[MAX_BUFFER_SIZE];
                         GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, buffer, MAX_BUFFER_SIZE);
                         
-                        // If currently light green (autopaste) and user is typing, clear autopaste status
+                        // Handle different user input scenarios
                         if (hCurrentBrush == hBrushLightGreen) {
                             // User has modified the autopasted content - return to white
                             hCurrentBrush = hBrushWhite;
-                        } else if (IsYouTubeURL(buffer) && hCurrentBrush == hBrushWhite) {
+                        } else if (hCurrentBrush == hBrushLightBlue) {
+                            // User is editing manually pasted content - return to white
+                            hCurrentBrush = hBrushWhite;
+                        } else if (bManualPaste && IsYouTubeURL(buffer)) {
                             // Manual paste of YouTube URL - set to light blue
                             hCurrentBrush = hBrushLightBlue;
+                            bManualPaste = FALSE; // Reset flag after use
+                        } else if (bManualPaste) {
+                            // Manual paste of non-YouTube content - keep white but reset flag
+                            bManualPaste = FALSE;
                         }
-                        // Note: We don't change from light blue or light teal as those indicate 
-                        // manual paste or command line input respectively
+                        // Note: Light teal (command line) is preserved during editing
+                        // Regular typing in white background stays white
                         
                         InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     }
@@ -687,6 +724,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             break;
             
         case WM_CLOSE:
+            // Restore original text field window procedure
+            if (OriginalTextFieldProc) {
+                HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
+                SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)OriginalTextFieldProc);
+            }
+            
             // Clean up brushes
             if (hBrushWhite) DeleteObject(hBrushWhite);
             if (hBrushLightGreen) DeleteObject(hBrushLightGreen);

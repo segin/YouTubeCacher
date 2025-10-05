@@ -47,6 +47,7 @@ void GetDefaultDownloadPath(wchar_t* path, size_t pathSize);
 void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize);
 BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path);
 BOOL ValidateYtDlpExecutable(const wchar_t* path);
+LRESULT CALLBACK TextFieldSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bufferSize);
 BOOL SaveSettingToRegistry(const wchar_t* valueName, const wchar_t* value);
 void LoadSettings(HWND hDlg);
@@ -62,5 +63,6 @@ extern HBRUSH hBrushLightBlue;
 extern HBRUSH hBrushLightTeal;
 extern HBRUSH hCurrentBrush;
 extern BOOL bProgrammaticChange;
+extern BOOL bManualPaste;
 
 #endif // YOUTUBECACHER_H
