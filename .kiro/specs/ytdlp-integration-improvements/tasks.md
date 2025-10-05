@@ -116,7 +116,6 @@
     - Implement enhanced error display with diagnostic information
     - _Requirements: 1.1, 1.2, 3.1, 4.1_
 
-
   - [x] 8.2 Update Download button implementation
 
     - Integrate new yt-dlp management system for download operations
@@ -126,8 +125,6 @@
 
 - [-] 9. Add comprehensive error message dialogs
 
-
-
   - [x] 9.1 Create enhanced error dialog
 
     - Design expandable error dialog with basic and detailed views
@@ -135,13 +132,12 @@
     - Implement tabbed interface for error details, diagnostics, and solutions
     - _Requirements: 1.1, 1.2, 1.3_
 
-
-  - [-] 9.2 Integrate enhanced error dialogs throughout application
-
+  - [x] 9.2 Integrate enhanced error dialogs throughout application
 
     - Replace existing MessageBox calls with enhanced error dialogs
     - Add context-specific error information and solutions
     - Implement error logging for troubleshooting support
+
 
     - _Requirements: 1.1, 1.4, 1.5_
 

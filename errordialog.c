@@ -165,11 +165,11 @@ BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog) {
     // Format the complete error information
     swprintf(clipboardText, totalSize,
         L"=== ERROR REPORT ===\r\n"
-        L"Title: %s\r\n"
-        L"Message: %s\r\n\r\n"
-        L"=== ERROR DETAILS ===\r\n%s\r\n\r\n"
-        L"=== DIAGNOSTICS ===\r\n%s\r\n\r\n"
-        L"=== SOLUTIONS ===\r\n%s\r\n",
+        L"Title: %ls\r\n"
+        L"Message: %ls\r\n\r\n"
+        L"=== ERROR DETAILS ===\r\n%ls\r\n\r\n"
+        L"=== DIAGNOSTICS ===\r\n%ls\r\n\r\n"
+        L"=== SOLUTIONS ===\r\n%ls\r\n",
         errorDialog->title ? errorDialog->title : L"Unknown Error",
         errorDialog->message ? errorDialog->message : L"No message available",
         errorDialog->details ? errorDialog->details : L"No details available",
@@ -334,7 +334,7 @@ INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpReques
     
     wchar_t message[512];
     if (result->errorMessage && wcslen(result->errorMessage) > 0) {
-        swprintf(message, _countof(message), L"yt-dlp operation failed: %s", result->errorMessage);
+        swprintf(message, _countof(message), L"yt-dlp operation failed: %ls", result->errorMessage);
     } else {
         wcscpy(message, L"yt-dlp operation failed with an unknown error.");
     }
@@ -349,7 +349,7 @@ INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpReques
                               L"4. Check available disk space";
     
     if (analysis && analysis->solution) {
-        swprintf(solutions, _countof(solutions), L"%s", analysis->solution);
+        swprintf(solutions, _countof(solutions), L"%ls", analysis->solution);
     }
     
     // Log the error
@@ -444,14 +444,14 @@ INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation)
     wcscpy(title, L"Process Error");
     
     wchar_t message[512];
-    swprintf(message, _countof(message), L"Failed to %s (Error Code: %lu)", 
+    swprintf(message, _countof(message), L"Failed to %ls (Error Code: %lu)", 
               operation ? operation : L"execute operation", errorCode);
     
     wchar_t details[1024];
     LPWSTR errorText = NULL;
     if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
                       NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
-        swprintf(details, _countof(details), L"Windows Error: %s", errorText);
+        swprintf(details, _countof(details), L"Windows Error: %ls", errorText);
         LocalFree(errorText);
     } else {
         swprintf(details, _countof(details), L"Windows Error Code: %lu", errorCode);
@@ -491,7 +491,7 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode) {
     wcscpy(title, L"Temporary Directory Error");
     
     wchar_t message[512];
-    swprintf(message, _countof(message), L"Failed to create or access temporary directory: %s", 
+    swprintf(message, _countof(message), L"Failed to create or access temporary directory: %ls", 
               tempDir ? tempDir : L"Unknown path");
     
     wchar_t details[1024];
@@ -499,12 +499,12 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode) {
     if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
                       NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
         swprintf(details, _countof(details), 
-                   L"Path: %s\r\nWindows Error: %s", 
+                   L"Path: %ls\r\nWindows Error: %ls", 
                    tempDir ? tempDir : L"Unknown", errorText);
         LocalFree(errorText);
     } else {
         swprintf(details, _countof(details), 
-                   L"Path: %s\r\nError Code: %lu", 
+                   L"Path: %ls\r\nError Code: %lu", 
                    tempDir ? tempDir : L"Unknown", errorCode);
     }
     
@@ -543,12 +543,12 @@ INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation) {
     wcscpy(title, L"Memory Error");
     
     wchar_t message[512];
-    swprintf(message, _countof(message), L"Failed to allocate memory for %s", 
+    swprintf(message, _countof(message), L"Failed to allocate memory for %ls", 
               operation ? operation : L"operation");
     
     wchar_t details[1024];
     swprintf(details, _countof(details), 
-               L"Operation: %s\r\nError: Insufficient memory available", 
+               L"Operation: %ls\r\nError: Insufficient memory available", 
                operation ? operation : L"Unknown operation");
     
     wchar_t solutions[1024];
@@ -619,12 +619,12 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation) {
     wcscpy(title, L"User Interface Error");
     
     wchar_t message[512];
-    swprintf(message, _countof(message), L"Failed to create user interface component: %s", 
+    swprintf(message, _countof(message), L"Failed to create user interface component: %ls", 
               operation ? operation : L"unknown component");
     
     wchar_t details[1024];
     swprintf(details, _countof(details), 
-               L"Component: %s\r\nError: UI creation failed", 
+               L"Component: %ls\r\nError: UI creation failed", 
                operation ? operation : L"Unknown component");
     
     wchar_t solutions[1024];
@@ -743,7 +743,7 @@ BOOL InitializeErrorLogging(void) {
     
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &appDataPath);
     if (SUCCEEDED(hr) && appDataPath) {
-        swprintf(logPath, MAX_EXTENDED_PATH, L"%s\\YouTubeCacher", appDataPath);
+        swprintf(logPath, MAX_EXTENDED_PATH, L"%ls\\YouTubeCacher", appDataPath);
         CoTaskMemFree(appDataPath);
         
         // Create directory if it doesn't exist
@@ -783,8 +783,8 @@ void LogError(const wchar_t* category, const wchar_t* message, const wchar_t* de
     
     wchar_t logEntry[2048];
     swprintf(logEntry, _countof(logEntry),
-             L"[%04d-%02d-%02d %02d:%02d:%02d] ERROR [%s] %s\r\n"
-             L"Details: %s\r\n\r\n",
+             L"[%04d-%02d-%02d %02d:%02d:%02d] ERROR [%ls] %ls\r\n"
+             L"Details: %ls\r\n\r\n",
              st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
              category ? category : L"Unknown",
              message ? message : L"No message",
@@ -814,7 +814,7 @@ void LogWarning(const wchar_t* category, const wchar_t* message) {
     
     wchar_t logEntry[1024];
     swprintf(logEntry, _countof(logEntry),
-             L"[%04d-%02d-%02d %02d:%02d:%02d] WARNING [%s] %s\r\n",
+             L"[%04d-%02d-%02d %02d:%02d:%02d] WARNING [%ls] %ls\r\n",
              st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
              category ? category : L"Unknown",
              message ? message : L"No message");
@@ -843,7 +843,7 @@ void LogInfo(const wchar_t* category, const wchar_t* message) {
     
     wchar_t logEntry[1024];
     swprintf(logEntry, _countof(logEntry),
-             L"[%04d-%02d-%02d %02d:%02d:%02d] INFO [%s] %s\r\n",
+             L"[%04d-%02d-%02d %02d:%02d:%02d] INFO [%ls] %ls\r\n",
              st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
              category ? category : L"Unknown",
              message ? message : L"No message");
