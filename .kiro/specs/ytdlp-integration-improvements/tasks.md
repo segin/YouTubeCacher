@@ -2,7 +2,6 @@
 
 - [x] 1. Create core data structures and interfaces
 
-
   - Define YtDlpRequest, YtDlpResult, and YtDlpConfig structures in YouTubeCacher.h
   - Define ValidationInfo, ProcessHandle, and ErrorAnalysis structures
   - Add function prototypes for new yt-dlp management functions
@@ -13,43 +12,44 @@
 
 -
 
-  - [x] 2.1 Create comprehensive yt-dlp validation function
+- [x] 2.1 Create comprehensive yt-dlp validation function
+
+  - Write ValidateYtDlpComprehensive() function that checks executable existence, permissions, and basic functionality
+  - Implement version detection and compatibility checking
+  - Add dependency validation (Python runtime detection)
+  - _Requirements: 4.1, 4.2, 4.3, 4.4_
+
+- [x] 2.2 Implement functionality testing
+
+  - Write TestYtDlpFunctionality() that runs a simple yt-dlp command to verify it works
+  - Add error parsing for common validation failures
+  - Create ValidationInfo structure population and cleanup functions
+  - _Requirements: 4.1, 4.3_
+
+- [x] 3. Create temporary directory management system
 
 
-    - Write ValidateYtDlpComprehensive() function that checks executable existence, permissions, and basic functionality
-    - Implement version detection and compatibility checking
-    - Add dependency validation (Python runtime detection)
-    - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  - [x] 3.1 Implement temp directory strategy functions
 
-  - [x] 2.2 Implement functionality testing
-
-
-
-    - Write TestYtDlpFunctionality() that runs a simple yt-dlp command to verify it works
-    - Add error parsing for common validation failures
-    - Create ValidationInfo structure population and cleanup functions
-    - _Requirements: 4.1, 4.3_
-
-- [-] 3. Create temporary directory management system
-
-
-
-  - [-] 3.1 Implement temp directory strategy functions
 
     - Write CreateYtDlpTempDir() with multiple fallback strategies (system, download folder, app data)
     - Implement ValidateTempDirAccess() to test write permissions and disk space
     - Add CleanupYtDlpTempDir() for proper cleanup after operations
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-  - [ ] 3.2 Add temp directory integration to yt-dlp commands
+  - [x] 3.2 Add temp directory integration to yt-dlp commands
+
+
     - Modify command line construction to include --temp-dir parameter
     - Implement automatic temp directory selection based on availability
     - Add error handling for temp directory creation failures
     - _Requirements: 2.1, 2.2_
 
-- [ ] 4. Implement robust process management
+- [-] 4. Implement robust process management
 
-  - [ ] 4.1 Create process wrapper functions
+
+  - [-] 4.1 Create process wrapper functions
+
     - Write CreateYtDlpProcess() with enhanced error handling and security attributes
     - Implement WaitForProcessCompletion() with timeout support
     - Add TerminateYtDlpProcess() for graceful and forced termination

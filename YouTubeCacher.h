@@ -215,6 +215,13 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize);
 BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize);
 BOOL CleanupTempDirectory(const wchar_t* tempDir);
 
+// YtDlp command line construction with temp directory integration
+BOOL BuildYtDlpCommandLine(const YtDlpRequest* request, const YtDlpConfig* config, 
+                          wchar_t* commandLine, size_t commandLineSize);
+BOOL EnsureTempDirForOperation(YtDlpRequest* request, const YtDlpConfig* config);
+BOOL AddTempDirToArgs(const wchar_t* tempDir, wchar_t* args, size_t argsSize);
+BOOL HandleTempDirFailure(HWND hParent, const YtDlpConfig* config);
+
 // Progress dialog functions
 ProgressDialog* CreateProgressDialog(HWND parent, const wchar_t* title);
 void UpdateProgressDialog(ProgressDialog* dialog, int progress, const wchar_t* status);

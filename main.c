@@ -1779,3 +1779,480 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
     
     return FALSE;
 }
+
+// Process management functions implementation
+
+// Create a yt-dlp process with enhanced error handling and security attributes
+ProcessHandle* CreateYtDlpProcess(const wchar_t* commandLine, const ProcessOptions* options) {
+    if (!commandLine || !options) {
+        return NULL;
+    }
+    
+    ProcessHandle* handle = (ProcessHandle*)malloc(sizeof(ProcessHandle));
+    if (!handle) {
+        return NULL;
+    }
+    
+    // Initialize handle structure
+    memset(handle, 0, sizeof(ProcessHandle));
+    handle->hProcess = INVALID_HANDLE_VALUE;
+    handle->hThread = INVALID_HANDLE_VALUE;
+    handle->hStdOut = INVALID_HANDLE_VALUE;
+    handle->hStdErr = INVALID_HANDLE_VALUE;
+    handle->processId = 0;
+    handle->isRunning = FALSE;
+    
+    SECURITY_ATTRIBUTES sa = {0};
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = TRUE;
+    
+    HANDLE hStdOutRead = NULL, hStdOutWrite = NULL;
+    HANDLE hStdErrRead = NULL, hStdErrWrite = NULL;
+    
+    // Create pipes for output capture if requested
+    if (options->captureOutput) {
+        if (!CreatePipe(&hStdOutRead, &hStdOutWrite, &sa, 0) ||
+            !CreatePipe(&hStdErrRead, &hStdErrWrite, &sa, 0)) {
+            CleanupProcessHandle(handle);
+            return NULL;
+        }
+        
+        // Ensure read handles are not inherited
+        SetHandleInformation(hStdOutRead, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(hStdErrRead, HANDLE_FLAG_INHERIT, 0);
+        
+        handle->hStdOut = hStdOutRead;
+        handle->hStdErr = hStdErrRead;
+    }
+    
+    STARTUPINFOW si = {0};
+    PROCESS_INFORMATION pi = {0};
+    
+    si.cb = sizeof(STARTUPINFOW);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    
+    if (options->captureOutput) {
+        si.hStdOutput = hStdOutWrite;
+        si.hStdError = hStdErrWrite;
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    }
+    
+    if (options->hideWindow) {
+        si.dwFlags |= STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+    }
+    
+    // Create mutable copy of command line
+    size_t cmdLen = wcslen(commandLine) + 1;
+    wchar_t* cmdLineCopy = (wchar_t*)malloc(cmdLen * sizeof(wchar_t));
+    if (!cmdLineCopy) {
+        if (hStdOutWrite) CloseHandle(hStdOutWrite);
+        if (hStdErrWrite) CloseHandle(hStdErrWrite);
+        CleanupProcessHandle(handle);
+        return NULL;
+    }
+    wcscpy(cmdLineCopy, commandLine);
+    
+    // Create process with enhanced security attributes
+    DWORD creationFlags = CREATE_NO_WINDOW;
+    if (options->hideWindow) {
+        creationFlags |= CREATE_NEW_CONSOLE;
+    }
+    
+    BOOL success = CreateProcessW(
+        NULL,                           // Application name
+        cmdLineCopy,                    // Command line
+        NULL,                           // Process security attributes
+        NULL,                           // Thread security attributes
+        options->captureOutput,         // Inherit handles
+        creationFlags,                  // Creation flags
+        (LPVOID)options->environment,   // Environment
+        options->workingDirectory,      // Current directory
+        &si,                           // Startup info
+        &pi                            // Process information
+    );
+    
+    // Close write handles in parent process
+    if (hStdOutWrite) CloseHandle(hStdOutWrite);
+    if (hStdErrWrite) CloseHandle(hStdErrWrite);
+    
+    free(cmdLineCopy);
+    
+    if (!success) {
+        CleanupProcessHandle(handle);
+        return NULL;
+    }
+    
+    // Store process information
+    handle->hProcess = pi.hProcess;
+    handle->hThread = pi.hThread;
+    handle->processId = pi.dwProcessId;
+    handle->isRunning = TRUE;
+    
+    return handle;
+}
+
+// Wait for process completion with timeout support
+BOOL WaitForProcessCompletion(ProcessHandle* handle, DWORD timeoutMs) {
+    if (!handle || handle->hProcess == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    
+    DWORD waitResult = WaitForSingleObject(handle->hProcess, timeoutMs);
+    
+    if (waitResult == WAIT_OBJECT_0) {
+        // Process completed normally
+        handle->isRunning = FALSE;
+        return TRUE;
+    } else if (waitResult == WAIT_TIMEOUT) {
+        // Process timed out - still running
+        return FALSE;
+    } else {
+        // Wait failed
+        handle->isRunning = FALSE;
+        return FALSE;
+    }
+}
+
+// Terminate yt-dlp process gracefully and forcefully if needed
+BOOL TerminateProcessSafely(ProcessHandle* handle) {
+    if (!handle || handle->hProcess == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    
+    if (!handle->isRunning) {
+        return TRUE; // Already terminated
+    }
+    
+    // First try graceful termination by sending WM_CLOSE to console window
+    HWND hConsole = GetConsoleWindow();
+    if (hConsole) {
+        DWORD consoleProcessId;
+        GetWindowThreadProcessId(hConsole, &consoleProcessId);
+        if (consoleProcessId == handle->processId) {
+            PostMessage(hConsole, WM_CLOSE, 0, 0);
+            
+            // Wait up to 5 seconds for graceful shutdown
+            if (WaitForSingleObject(handle->hProcess, 5000) == WAIT_OBJECT_0) {
+                handle->isRunning = FALSE;
+                return TRUE;
+            }
+        }
+    }
+    
+    // Try sending CTRL+C signal
+    if (GenerateConsoleCtrlEvent(CTRL_C_EVENT, handle->processId)) {
+        // Wait up to 3 seconds for graceful shutdown
+        if (WaitForSingleObject(handle->hProcess, 3000) == WAIT_OBJECT_0) {
+            handle->isRunning = FALSE;
+            return TRUE;
+        }
+    }
+    
+    // Force termination as last resort
+    BOOL result = TerminateProcess(handle->hProcess, 1);
+    if (result) {
+        // Wait for termination to complete
+        WaitForSingleObject(handle->hProcess, 1000);
+        handle->isRunning = FALSE;
+    }
+    
+    return result;
+}
+
+// Clean up process handle and associated resources
+void CleanupProcessHandle(ProcessHandle* handle) {
+    if (!handle) {
+        return;
+    }
+    
+    // Terminate process if still running
+    if (handle->isRunning) {
+        TerminateProcessSafely(handle);
+    }
+    
+    // Close all handles
+    if (handle->hProcess != INVALID_HANDLE_VALUE) {
+        CloseHandle(handle->hProcess);
+        handle->hProcess = INVALID_HANDLE_VALUE;
+    }
+    
+    if (handle->hThread != INVALID_HANDLE_VALUE) {
+        CloseHandle(handle->hThread);
+        handle->hThread = INVALID_HANDLE_VALUE;
+    }
+    
+    if (handle->hStdOut != INVALID_HANDLE_VALUE) {
+        CloseHandle(handle->hStdOut);
+        handle->hStdOut = INVALID_HANDLE_VALUE;
+    }
+    
+    if (handle->hStdErr != INVALID_HANDLE_VALUE) {
+        CloseHandle(handle->hStdErr);
+        handle->hStdErr = INVALID_HANDLE_VALUE;
+    }
+    
+    // Reset other fields
+    handle->processId = 0;
+    handle->isRunning = FALSE;
+    
+    // Free the handle structure
+    free(handle);
+}
+
+// Read process output from stdout handle
+wchar_t* ReadProcessOutput(ProcessHandle* handle) {
+    if (!handle || handle->hStdOut == INVALID_HANDLE_VALUE) {
+        return NULL;
+    }
+    
+    const DWORD BUFFER_SIZE = 4096;
+    wchar_t* output = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+    if (!output) {
+        return NULL;
+    }
+    
+    DWORD totalBytesRead = 0;
+    DWORD currentBufferSize = BUFFER_SIZE;
+    output[0] = L'\0';
+    
+    char readBuffer[1024];
+    DWORD bytesRead;
+    
+    // Read output in chunks
+    while (ReadFile(handle->hStdOut, readBuffer, sizeof(readBuffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+        readBuffer[bytesRead] = '\0';
+        
+        // Convert from UTF-8 to wide char
+        int wideCharsNeeded = MultiByteToWideChar(CP_UTF8, 0, readBuffer, -1, NULL, 0);
+        if (wideCharsNeeded > 0) {
+            // Check if we need to expand the buffer
+            DWORD newTotalSize = totalBytesRead + wideCharsNeeded;
+            if (newTotalSize >= currentBufferSize) {
+                currentBufferSize = newTotalSize * 2;
+                wchar_t* newOutput = (wchar_t*)realloc(output, currentBufferSize * sizeof(wchar_t));
+                if (!newOutput) {
+                    free(output);
+                    return NULL;
+                }
+                output = newOutput;
+            }
+            
+            // Convert and append to output
+            MultiByteToWideChar(CP_UTF8, 0, readBuffer, -1, 
+                               output + totalBytesRead, wideCharsNeeded);
+            totalBytesRead += wideCharsNeeded - 1; // -1 to not count null terminator
+        }
+    }
+    
+    // Ensure null termination
+    if (totalBytesRead < currentBufferSize) {
+        output[totalBytesRead] = L'\0';
+    }
+    
+    return output;
+}
+
+// YtDlp Command Line Integration Functions
+
+// Function to ensure temporary directory is available for yt-dlp operation
+BOOL EnsureTempDirForOperation(YtDlpRequest* request, const YtDlpConfig* config) {
+    if (!request || !config) {
+        return FALSE;
+    }
+    
+    // If temp directory is already specified in request, validate it
+    if (request->tempDir && wcslen(request->tempDir) > 0) {
+        if (ValidateTempDirAccess(request->tempDir)) {
+            return TRUE;
+        }
+        // If specified temp dir is invalid, fall back to automatic selection
+    }
+    
+    // Create temporary directory using configured strategy
+    wchar_t tempPath[MAX_EXTENDED_PATH];
+    TempDirStrategy strategy = config->tempDirStrategy;
+    
+    // Try the configured strategy first
+    if (CreateYtDlpTempDir(tempPath, MAX_EXTENDED_PATH, strategy)) {
+        // Allocate memory for temp directory in request
+        if (request->tempDir) {
+            free(request->tempDir);
+        }
+        request->tempDir = (wchar_t*)malloc((wcslen(tempPath) + 1) * sizeof(wchar_t));
+        if (request->tempDir) {
+            wcscpy(request->tempDir, tempPath);
+            return TRUE;
+        }
+    }
+    
+    // If configured strategy failed, try fallback
+    if (CreateYtDlpTempDirWithFallback(tempPath, MAX_EXTENDED_PATH)) {
+        if (request->tempDir) {
+            free(request->tempDir);
+        }
+        request->tempDir = (wchar_t*)malloc((wcslen(tempPath) + 1) * sizeof(wchar_t));
+        if (request->tempDir) {
+            wcscpy(request->tempDir, tempPath);
+            return TRUE;
+        }
+    }
+    
+    return FALSE;
+}
+
+// Function to add temporary directory parameter to yt-dlp arguments
+BOOL AddTempDirToArgs(const wchar_t* tempDir, wchar_t* args, size_t argsSize) {
+    if (!tempDir || !args || argsSize == 0) {
+        return FALSE;
+    }
+    
+    // Check if --temp-dir is already present in args
+    if (wcsstr(args, L"--temp-dir")) {
+        return TRUE; // Already has temp dir argument
+    }
+    
+    // Construct the temp dir argument
+    wchar_t tempDirArg[MAX_EXTENDED_PATH + 20];
+    swprintf(tempDirArg, MAX_EXTENDED_PATH + 20, L" --temp-dir \"%ls\"", tempDir);
+    
+    // Check if there's enough space to add the argument
+    size_t currentLen = wcslen(args);
+    size_t argLen = wcslen(tempDirArg);
+    
+    if (currentLen + argLen + 1 > argsSize) {
+        return FALSE; // Not enough space
+    }
+    
+    // Add the temp dir argument
+    wcscat(args, tempDirArg);
+    return TRUE;
+}
+
+// Function to build complete yt-dlp command line with temp directory integration
+BOOL BuildYtDlpCommandLine(const YtDlpRequest* request, const YtDlpConfig* config, 
+                          wchar_t* commandLine, size_t commandLineSize) {
+    if (!request || !config || !commandLine || commandLineSize == 0) {
+        return FALSE;
+    }
+    
+    // Start with the yt-dlp executable path (quoted for safety)
+    swprintf(commandLine, commandLineSize, L"\"%ls\"", config->ytDlpPath);
+    
+    // Add operation-specific arguments
+    wchar_t operationArgs[1024] = {0};
+    
+    switch (request->operation) {
+        case YTDLP_OP_GET_INFO:
+            wcscpy(operationArgs, L" --dump-json --no-download --no-warnings");
+            break;
+            
+        case YTDLP_OP_DOWNLOAD:
+            wcscpy(operationArgs, L" --no-warnings --progress");
+            if (request->outputPath && wcslen(request->outputPath) > 0) {
+                wchar_t outputArg[MAX_EXTENDED_PATH + 20];
+                swprintf(outputArg, MAX_EXTENDED_PATH + 20, L" -o \"%ls\\%%(title)s.%%(ext)s\"", request->outputPath);
+                wcscat(operationArgs, outputArg);
+            }
+            break;
+            
+        case YTDLP_OP_VALIDATE:
+            wcscpy(operationArgs, L" --version");
+            break;
+            
+        default:
+            return FALSE;
+    }
+    
+    // Add operation arguments to command line
+    if (wcslen(commandLine) + wcslen(operationArgs) + 1 > commandLineSize) {
+        return FALSE;
+    }
+    wcscat(commandLine, operationArgs);
+    
+    // Add temporary directory if available
+    if (request->tempDir && wcslen(request->tempDir) > 0) {
+        if (!AddTempDirToArgs(request->tempDir, commandLine, commandLineSize)) {
+            return FALSE; // Failed to add temp dir
+        }
+    }
+    
+    // Add custom arguments if specified
+    if (request->useCustomArgs && request->customArgs && wcslen(request->customArgs) > 0) {
+        if (wcslen(commandLine) + wcslen(request->customArgs) + 2 > commandLineSize) {
+            return FALSE;
+        }
+        wcscat(commandLine, L" ");
+        wcscat(commandLine, request->customArgs);
+    } else if (wcslen(config->defaultArgs) > 0) {
+        // Add default arguments from config
+        if (wcslen(commandLine) + wcslen(config->defaultArgs) + 2 > commandLineSize) {
+            return FALSE;
+        }
+        wcscat(commandLine, L" ");
+        wcscat(commandLine, config->defaultArgs);
+    }
+    
+    // Add URL for operations that need it
+    if (request->operation != YTDLP_OP_VALIDATE) {
+        if (!request->url || wcslen(request->url) == 0) {
+            return FALSE; // URL required for this operation
+        }
+        
+        wchar_t urlArg[MAX_URL_LENGTH + 10];
+        swprintf(urlArg, MAX_URL_LENGTH + 10, L" \"%ls\"", request->url);
+        
+        if (wcslen(commandLine) + wcslen(urlArg) + 1 > commandLineSize) {
+            return FALSE;
+        }
+        wcscat(commandLine, urlArg);
+    }
+    
+    return TRUE;
+}
+
+// Function to handle temp directory creation failures with user feedback
+BOOL HandleTempDirFailure(HWND hParent, const YtDlpConfig* config) {
+    wchar_t errorMsg[1024];
+    wchar_t configuredPath[MAX_EXTENDED_PATH] = {0};
+    
+    // Try to get information about the configured temp directory strategy
+    switch (config->tempDirStrategy) {
+        case TEMP_DIR_SYSTEM:
+            wcscpy(configuredPath, L"System temporary directory");
+            break;
+        case TEMP_DIR_DOWNLOAD:
+            wcscpy(configuredPath, config->defaultTempDir);
+            if (wcslen(configuredPath) == 0) {
+                wcscpy(configuredPath, L"Download directory");
+            }
+            break;
+        case TEMP_DIR_APPDATA:
+            wcscpy(configuredPath, L"User AppData\\Local directory");
+            break;
+        case TEMP_DIR_CUSTOM:
+            wcscpy(configuredPath, config->defaultTempDir);
+            if (wcslen(configuredPath) == 0) {
+                wcscpy(configuredPath, L"Custom directory");
+            }
+            break;
+        default:
+            wcscpy(configuredPath, L"Unknown directory");
+            break;
+    }
+    
+    swprintf(errorMsg, 1024, 
+        L"Failed to create temporary directory for yt-dlp operation.\n\n"
+        L"Attempted location: %ls\n\n"
+        L"Possible causes:\n"
+        L"• Insufficient disk space (requires at least 100MB)\n"
+        L"• No write permissions to the directory\n"
+        L"• Directory path is invalid or inaccessible\n\n"
+        L"Please check your system's temporary directory settings or "
+        L"configure a different temporary directory in Settings.",
+        configuredPath);
+    
+    MessageBoxW(hParent, errorMsg, L"Temporary Directory Error", MB_OK | MB_ICONWARNING);
+    return FALSE;
+}
