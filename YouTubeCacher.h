@@ -46,6 +46,7 @@ void ResizeControls(HWND hDlg);
 void GetDefaultDownloadPath(wchar_t* path, size_t pathSize);
 void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize);
 BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path);
+BOOL ValidateYtDlpExecutable(const wchar_t* path);
 BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bufferSize);
 BOOL SaveSettingToRegistry(const wchar_t* valueName, const wchar_t* value);
 void LoadSettings(HWND hDlg);

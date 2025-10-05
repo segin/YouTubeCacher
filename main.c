@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include <wctype.h>
 #include <stdlib.h>
 #include "YouTubeCacher.h"
 #include "uri.h"
@@ -88,6 +89,46 @@ BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path) {
     }
     
     // If it exists but is not a directory, return failure
+    return FALSE;
+}
+
+// Function to validate that yt-dlp executable exists and is accessible
+BOOL ValidateYtDlpExecutable(const wchar_t* path) {
+    // Check if path is empty
+    if (!path || wcslen(path) == 0) {
+        return FALSE;
+    }
+    
+    // Check if file exists
+    DWORD attributes = GetFileAttributesW(path);
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        return FALSE;
+    }
+    
+    // Check if it's a file (not a directory)
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
+        return FALSE;
+    }
+    
+    // Check if it's an executable file (has .exe, .cmd, .bat, .py, or .ps1 extension)
+    const wchar_t* ext = wcsrchr(path, L'.');
+    if (ext != NULL) {
+        // Convert extension to lowercase for comparison
+        wchar_t lowerExt[10];
+        wcscpy(lowerExt, ext);
+        for (int i = 0; lowerExt[i]; i++) {
+            lowerExt[i] = towlower(lowerExt[i]);
+        }
+        
+        if (wcscmp(lowerExt, L".exe") == 0 ||
+            wcscmp(lowerExt, L".cmd") == 0 ||
+            wcscmp(lowerExt, L".bat") == 0 ||
+            wcscmp(lowerExt, L".py") == 0 ||
+            wcscmp(lowerExt, L".ps1") == 0) {
+            return TRUE;
+        }
+    }
+    
     return FALSE;
 }
 
@@ -452,6 +493,27 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     break;
                     
                 case IDC_DOWNLOAD_BTN: {
+                    // First, validate that yt-dlp is configured and exists
+                    wchar_t ytDlpPath[MAX_EXTENDED_PATH];
+                    if (!LoadSettingFromRegistry(REG_YTDLP_PATH, ytDlpPath, MAX_EXTENDED_PATH)) {
+                        // Fall back to default if not found in registry
+                        GetDefaultYtDlpPath(ytDlpPath, MAX_EXTENDED_PATH);
+                    }
+                    
+                    // Validate yt-dlp executable
+                    if (!ValidateYtDlpExecutable(ytDlpPath)) {
+                        wchar_t errorMsg[MAX_EXTENDED_PATH + 200];
+                        if (wcslen(ytDlpPath) == 0) {
+                            swprintf(errorMsg, MAX_EXTENDED_PATH + 200, 
+                                L"yt-dlp executable is not configured.\n\nPlease go to File > Settings and specify the path to yt-dlp.exe");
+                        } else {
+                            swprintf(errorMsg, MAX_EXTENDED_PATH + 200, 
+                                L"yt-dlp executable not found or invalid:\n%s\n\nPlease check the path in File > Settings", ytDlpPath);
+                        }
+                        MessageBoxW(hDlg, errorMsg, L"yt-dlp Not Found", MB_OK | MB_ICONWARNING);
+                        break;
+                    }
+                    
                     // Get the current download folder path from registry settings
                     wchar_t downloadPath[MAX_EXTENDED_PATH];
                     if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
@@ -466,15 +528,39 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     
                     // TODO: Implement actual download functionality
-                    wchar_t message[MAX_EXTENDED_PATH + 100];
-                    swprintf(message, MAX_EXTENDED_PATH + 100, L"Download directory ready: %s\n\nDownload functionality not implemented yet", downloadPath);
+                    wchar_t message[MAX_EXTENDED_PATH + 200];
+                    swprintf(message, MAX_EXTENDED_PATH + 200, 
+                        L"Ready to download!\n\nyt-dlp: %s\nDownload folder: %s\n\nDownload functionality not implemented yet", 
+                        ytDlpPath, downloadPath);
                     MessageBoxW(hDlg, message, L"Download", MB_OK);
                     break;
                 }
                     
-                case IDC_GETINFO_BTN:
+                case IDC_GETINFO_BTN: {
+                    // Validate that yt-dlp is configured and exists
+                    wchar_t ytDlpPath[MAX_EXTENDED_PATH];
+                    if (!LoadSettingFromRegistry(REG_YTDLP_PATH, ytDlpPath, MAX_EXTENDED_PATH)) {
+                        // Fall back to default if not found in registry
+                        GetDefaultYtDlpPath(ytDlpPath, MAX_EXTENDED_PATH);
+                    }
+                    
+                    // Validate yt-dlp executable
+                    if (!ValidateYtDlpExecutable(ytDlpPath)) {
+                        wchar_t errorMsg[MAX_EXTENDED_PATH + 200];
+                        if (wcslen(ytDlpPath) == 0) {
+                            swprintf(errorMsg, MAX_EXTENDED_PATH + 200, 
+                                L"yt-dlp executable is not configured.\n\nPlease go to File > Settings and specify the path to yt-dlp.exe");
+                        } else {
+                            swprintf(errorMsg, MAX_EXTENDED_PATH + 200, 
+                                L"yt-dlp executable not found or invalid:\n%s\n\nPlease check the path in File > Settings", ytDlpPath);
+                        }
+                        MessageBoxW(hDlg, errorMsg, L"yt-dlp Not Found", MB_OK | MB_ICONWARNING);
+                        break;
+                    }
+                    
                     MessageBoxW(hDlg, L"Get Info functionality not implemented yet", L"Get Info", MB_OK);
                     break;
+                }
                     
                 case IDC_BUTTON2:
                     MessageBoxW(hDlg, L"Play functionality not implemented yet", L"Play", MB_OK);
