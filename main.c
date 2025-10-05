@@ -25,6 +25,9 @@ void GetDefaultDownloadPath(wchar_t* path, size_t pathSize) {
     PWSTR downloadsPathW = NULL;
     wchar_t downloadsPath[MAX_EXTENDED_PATH];
     
+    // Initialize path as empty
+    path[0] = L'\0';
+    
     // Get the user's Downloads folder using the proper FOLDERID_Downloads
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_Downloads, 0, NULL, &downloadsPathW);
     if (SUCCEEDED(hr) && downloadsPathW != NULL) {
@@ -33,17 +36,28 @@ void GetDefaultDownloadPath(wchar_t* path, size_t pathSize) {
         downloadsPath[MAX_EXTENDED_PATH - 1] = L'\0';
         CoTaskMemFree(downloadsPathW);
     } else {
-        // Fallback to user profile + Downloads
-        if (GetEnvironmentVariableW(L"USERPROFILE", downloadsPath, MAX_EXTENDED_PATH) > 0) {
+        // Fallback: try to get user profile folder and append Downloads
+        PWSTR userProfileW = NULL;
+        hr = SHGetKnownFolderPath(&FOLDERID_Profile, 0, NULL, &userProfileW);
+        if (SUCCEEDED(hr) && userProfileW != NULL) {
+            wcsncpy(downloadsPath, userProfileW, MAX_EXTENDED_PATH - 1);
+            downloadsPath[MAX_EXTENDED_PATH - 1] = L'\0';
             wcscat(downloadsPath, L"\\Downloads");
+            CoTaskMemFree(userProfileW);
         } else {
             // Ultimate fallback
             wcscpy(downloadsPath, L"C:\\Users\\Public\\Downloads");
         }
     }
     
-    // Append YouTubeCacher subdirectory
-    swprintf(path, pathSize, L"%s\\YouTubeCacher", downloadsPath);
+    // Safely construct the full path
+    if (wcslen(downloadsPath) + wcslen(L"\\YouTubeCacher") < pathSize) {
+        wcscpy(path, downloadsPath);
+        wcscat(path, L"\\YouTubeCacher");
+    } else {
+        // Path would be too long, use a shorter fallback
+        wcscpy(path, L"C:\\YouTubeCacher");
+    }
 }
 
 // Function to get the default yt-dlp path (check WinGet installation)
