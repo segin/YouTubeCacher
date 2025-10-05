@@ -179,6 +179,43 @@ typedef struct {
     HWND hTabControl;
 } EnhancedErrorDialog;
 
+// Thread-safe subprocess execution structures
+typedef struct {
+    HANDLE hThread;
+    DWORD threadId;
+    BOOL isRunning;
+    BOOL cancelRequested;
+    CRITICAL_SECTION criticalSection;
+} ThreadContext;
+
+// Progress callback function type
+typedef void (*ProgressCallback)(int percentage, const wchar_t* status, void* userData);
+
+// Subprocess execution context for multithreading
+typedef struct {
+    // Input parameters (set by caller)
+    YtDlpConfig* config;
+    YtDlpRequest* request;
+    ProgressCallback progressCallback;
+    void* callbackUserData;
+    HWND parentWindow;
+    
+    // Thread management
+    ThreadContext threadContext;
+    
+    // Output results (set by worker thread)
+    YtDlpResult* result;
+    BOOL completed;
+    DWORD completionTime;
+    
+    // Process monitoring
+    HANDLE hProcess;
+    HANDLE hOutputRead;
+    HANDLE hOutputWrite;
+    wchar_t* accumulatedOutput;
+    size_t outputBufferSize;
+} SubprocessContext;
+
 // Function prototypes
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
@@ -322,6 +359,29 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
 INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+
+// Multithreaded subprocess execution functions
+SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
+                                          ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow);
+BOOL StartSubprocessExecution(SubprocessContext* context);
+BOOL IsSubprocessRunning(const SubprocessContext* context);
+BOOL CancelSubprocessExecution(SubprocessContext* context);
+BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs);
+YtDlpResult* GetSubprocessResult(SubprocessContext* context);
+void FreeSubprocessContext(SubprocessContext* context);
+
+// Convenience function for simple multithreaded execution with progress dialog
+YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
+                                             HWND parentWindow, const wchar_t* operationTitle);
+
+// Thread-safe helper functions
+BOOL InitializeThreadContext(ThreadContext* threadContext);
+void CleanupThreadContext(ThreadContext* threadContext);
+BOOL SetCancellationFlag(ThreadContext* threadContext);
+BOOL IsCancellationRequested(const ThreadContext* threadContext);
+
+// Worker thread function
+DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam);
 
 // Error logging functions
 BOOL InitializeErrorLogging(void);

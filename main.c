@@ -719,6 +719,501 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     return result;
 }
 
+// Multithreaded subprocess execution implementation
+
+// Initialize thread context with critical section for thread safety
+BOOL InitializeThreadContext(ThreadContext* threadContext) {
+    if (!threadContext) return FALSE;
+    
+    memset(threadContext, 0, sizeof(ThreadContext));
+    
+    // Initialize critical section for thread-safe access
+    // Note: InitializeCriticalSection can raise exceptions on low memory,
+    // but we'll handle this with standard error checking
+    InitializeCriticalSection(&threadContext->criticalSection);
+    return TRUE;
+}
+
+// Clean up thread context and wait for thread completion
+void CleanupThreadContext(ThreadContext* threadContext) {
+    if (!threadContext) return;
+    
+    // Wait for thread to complete if still running
+    if (threadContext->hThread && threadContext->isRunning) {
+        // Signal cancellation first
+        EnterCriticalSection(&threadContext->criticalSection);
+        threadContext->cancelRequested = TRUE;
+        LeaveCriticalSection(&threadContext->criticalSection);
+        
+        // Wait up to 5 seconds for graceful shutdown
+        if (WaitForSingleObject(threadContext->hThread, 5000) == WAIT_TIMEOUT) {
+            // Force terminate if thread doesn't respond
+            TerminateThread(threadContext->hThread, 1);
+        }
+        
+        CloseHandle(threadContext->hThread);
+        threadContext->hThread = NULL;
+    }
+    
+    DeleteCriticalSection(&threadContext->criticalSection);
+    threadContext->isRunning = FALSE;
+}
+
+// Thread-safe cancellation flag setting
+BOOL SetCancellationFlag(ThreadContext* threadContext) {
+    if (!threadContext) return FALSE;
+    
+    EnterCriticalSection(&threadContext->criticalSection);
+    threadContext->cancelRequested = TRUE;
+    LeaveCriticalSection(&threadContext->criticalSection);
+    
+    return TRUE;
+}
+
+// Thread-safe cancellation check
+BOOL IsCancellationRequested(const ThreadContext* threadContext) {
+    if (!threadContext) return FALSE;
+    
+    BOOL cancelled = FALSE;
+    EnterCriticalSection((CRITICAL_SECTION*)&threadContext->criticalSection);
+    cancelled = threadContext->cancelRequested;
+    LeaveCriticalSection((CRITICAL_SECTION*)&threadContext->criticalSection);
+    
+    return cancelled;
+}
+
+// Worker thread function that executes yt-dlp subprocess
+DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
+    SubprocessContext* context = (SubprocessContext*)lpParam;
+    if (!context || !context->config || !context->request) {
+        return 1;
+    }
+    
+    // Mark thread as running
+    EnterCriticalSection(&context->threadContext.criticalSection);
+    context->threadContext.isRunning = TRUE;
+    LeaveCriticalSection(&context->threadContext.criticalSection);
+    
+    // Initialize result structure
+    context->result = (YtDlpResult*)malloc(sizeof(YtDlpResult));
+    if (!context->result) {
+        context->completed = TRUE;
+        return 1;
+    }
+    memset(context->result, 0, sizeof(YtDlpResult));
+    
+    // Report initial progress
+    if (context->progressCallback) {
+        context->progressCallback(0, L"Initializing yt-dlp process...", context->callbackUserData);
+    }
+    
+    // Build command line arguments
+    wchar_t arguments[2048];
+    if (!GetYtDlpArgsForOperation(context->request->operation, context->request->url, 
+                                 context->request->outputPath, context->config, arguments, 2048)) {
+        context->result->success = FALSE;
+        context->result->exitCode = 1;
+        context->result->errorMessage = _wcsdup(L"Failed to build yt-dlp arguments");
+        context->completed = TRUE;
+        return 1;
+    }
+    
+    // Check for cancellation before starting process
+    if (IsCancellationRequested(&context->threadContext)) {
+        context->result->success = FALSE;
+        context->result->errorMessage = _wcsdup(L"Operation cancelled by user");
+        context->completed = TRUE;
+        return 0;
+    }
+    
+    // Create pipes for output capture
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+    if (!CreatePipe(&context->hOutputRead, &context->hOutputWrite, &sa, 0)) {
+        context->result->success = FALSE;
+        context->result->exitCode = 1;
+        context->result->errorMessage = _wcsdup(L"Failed to create output pipe");
+        context->completed = TRUE;
+        return 1;
+    }
+    
+    SetHandleInformation(context->hOutputRead, HANDLE_FLAG_INHERIT, 0);
+    
+    // Setup process startup info
+    STARTUPINFOW si = {0};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = context->hOutputWrite;
+    si.hStdError = context->hOutputWrite;
+    si.hStdInput = NULL;
+    
+    PROCESS_INFORMATION pi = {0};
+    
+    // Build command line
+    size_t cmdLineLen = wcslen(context->config->ytDlpPath) + wcslen(arguments) + 10;
+    wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
+    if (!cmdLine) {
+        CloseHandle(context->hOutputRead);
+        CloseHandle(context->hOutputWrite);
+        context->result->success = FALSE;
+        context->result->exitCode = 1;
+        context->result->errorMessage = _wcsdup(L"Memory allocation failed");
+        context->completed = TRUE;
+        return 1;
+    }
+    
+    swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->config->ytDlpPath, arguments);
+    
+    // Report progress
+    if (context->progressCallback) {
+        context->progressCallback(10, L"Starting yt-dlp process...", context->callbackUserData);
+    }
+    
+    // Create the yt-dlp process
+    BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+    
+    if (!processCreated) {
+        free(cmdLine);
+        CloseHandle(context->hOutputRead);
+        CloseHandle(context->hOutputWrite);
+        context->result->success = FALSE;
+        context->result->exitCode = GetLastError();
+        context->result->errorMessage = _wcsdup(L"Failed to start yt-dlp process");
+        context->completed = TRUE;
+        return 1;
+    }
+    
+    // Store process handle for potential cancellation
+    context->hProcess = pi.hProcess;
+    CloseHandle(context->hOutputWrite);
+    context->hOutputWrite = NULL;
+    
+    // Initialize output buffer
+    context->outputBufferSize = 8192;
+    context->accumulatedOutput = (wchar_t*)malloc(context->outputBufferSize * sizeof(wchar_t));
+    if (context->accumulatedOutput) {
+        context->accumulatedOutput[0] = L'\0';
+    }
+    
+    // Read output and monitor process with cancellation support
+    char buffer[4096];
+    DWORD bytesRead;
+    BOOL processRunning = TRUE;
+    int progressPercentage = 20;
+    
+    while (processRunning && !IsCancellationRequested(&context->threadContext)) {
+        // Check if process is still running
+        DWORD waitResult = WaitForSingleObject(pi.hProcess, 100); // 100ms timeout
+        if (waitResult == WAIT_OBJECT_0) {
+            processRunning = FALSE;
+        }
+        
+        // Try to read output
+        DWORD bytesAvailable = 0;
+        if (PeekNamedPipe(context->hOutputRead, NULL, 0, NULL, &bytesAvailable, NULL) && bytesAvailable > 0) {
+            if (ReadFile(context->hOutputRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+                buffer[bytesRead] = '\0';
+                
+                // Convert to wide char and append to output buffer
+                wchar_t tempOutput[2048];
+                int converted = MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, tempOutput, 2047);
+                if (converted > 0 && context->accumulatedOutput) {
+                    tempOutput[converted] = L'\0';
+                    
+                    size_t currentLen = wcslen(context->accumulatedOutput);
+                    size_t newLen = currentLen + converted + 1;
+                    if (newLen >= context->outputBufferSize) {
+                        context->outputBufferSize = newLen * 2;
+                        wchar_t* newBuffer = (wchar_t*)realloc(context->accumulatedOutput, 
+                                                              context->outputBufferSize * sizeof(wchar_t));
+                        if (newBuffer) {
+                            context->accumulatedOutput = newBuffer;
+                        }
+                    }
+                    
+                    if (context->accumulatedOutput) {
+                        wcscat(context->accumulatedOutput, tempOutput);
+                    }
+                }
+                
+                // Update progress (simple increment for now)
+                progressPercentage = min(90, progressPercentage + 5);
+                if (context->progressCallback) {
+                    context->progressCallback(progressPercentage, L"Processing...", context->callbackUserData);
+                }
+            }
+        }
+        
+        // Small delay to prevent excessive CPU usage
+        Sleep(50);
+    }
+    
+    // Handle cancellation
+    if (IsCancellationRequested(&context->threadContext) && processRunning) {
+        TerminateProcess(pi.hProcess, 1);
+        context->result->success = FALSE;
+        context->result->errorMessage = _wcsdup(L"Operation cancelled by user");
+    } else {
+        // Get final exit code
+        DWORD exitCode;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        
+        context->result->success = (exitCode == 0);
+        context->result->exitCode = exitCode;
+        context->result->output = context->accumulatedOutput;
+        context->accumulatedOutput = NULL; // Transfer ownership to result
+        
+        if (!context->result->success && (!context->result->output || wcslen(context->result->output) == 0)) {
+            context->result->errorMessage = _wcsdup(L"yt-dlp process failed");
+        }
+    }
+    
+    // Final progress update
+    if (context->progressCallback) {
+        if (context->result->success) {
+            context->progressCallback(100, L"Completed successfully", context->callbackUserData);
+        } else {
+            context->progressCallback(100, L"Operation failed", context->callbackUserData);
+        }
+    }
+    
+    // Cleanup
+    free(cmdLine);
+    if (context->hOutputRead) {
+        CloseHandle(context->hOutputRead);
+        context->hOutputRead = NULL;
+    }
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    context->hProcess = NULL;
+    
+    // Mark as completed
+    context->completed = TRUE;
+    context->completionTime = GetTickCount();
+    
+    // Mark thread as no longer running
+    EnterCriticalSection(&context->threadContext.criticalSection);
+    context->threadContext.isRunning = FALSE;
+    LeaveCriticalSection(&context->threadContext.criticalSection);
+    
+    return 0;
+}
+
+// Create subprocess context for multithreaded execution
+SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
+                                          ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow) {
+    if (!config || !request) return NULL;
+    
+    SubprocessContext* context = (SubprocessContext*)malloc(sizeof(SubprocessContext));
+    if (!context) return NULL;
+    
+    memset(context, 0, sizeof(SubprocessContext));
+    
+    // Initialize thread context
+    if (!InitializeThreadContext(&context->threadContext)) {
+        free(context);
+        return NULL;
+    }
+    
+    // Copy configuration and request (deep copy for thread safety)
+    context->config = (YtDlpConfig*)malloc(sizeof(YtDlpConfig));
+    context->request = (YtDlpRequest*)malloc(sizeof(YtDlpRequest));
+    
+    if (!context->config || !context->request) {
+        CleanupThreadContext(&context->threadContext);
+        if (context->config) free(context->config);
+        if (context->request) free(context->request);
+        free(context);
+        return NULL;
+    }
+    
+    // Deep copy config
+    memcpy(context->config, config, sizeof(YtDlpConfig));
+    
+    // Deep copy request
+    memcpy(context->request, request, sizeof(YtDlpRequest));
+    if (request->url) {
+        context->request->url = _wcsdup(request->url);
+    }
+    if (request->outputPath) {
+        context->request->outputPath = _wcsdup(request->outputPath);
+    }
+    if (request->tempDir) {
+        context->request->tempDir = _wcsdup(request->tempDir);
+    }
+    if (request->customArgs) {
+        context->request->customArgs = _wcsdup(request->customArgs);
+    }
+    
+    context->progressCallback = progressCallback;
+    context->callbackUserData = callbackUserData;
+    context->parentWindow = parentWindow;
+    
+    return context;
+}
+
+// Start subprocess execution in background thread
+BOOL StartSubprocessExecution(SubprocessContext* context) {
+    if (!context) return FALSE;
+    
+    // Create worker thread
+    context->threadContext.hThread = CreateThread(NULL, 0, SubprocessWorkerThread, context, 0, 
+                                                 &context->threadContext.threadId);
+    
+    if (!context->threadContext.hThread) {
+        return FALSE;
+    }
+    
+    return TRUE;
+}
+
+// Check if subprocess is still running
+BOOL IsSubprocessRunning(const SubprocessContext* context) {
+    if (!context) return FALSE;
+    
+    BOOL running = FALSE;
+    EnterCriticalSection((CRITICAL_SECTION*)&context->threadContext.criticalSection);
+    running = context->threadContext.isRunning;
+    LeaveCriticalSection((CRITICAL_SECTION*)&context->threadContext.criticalSection);
+    
+    return running;
+}
+
+// Cancel subprocess execution
+BOOL CancelSubprocessExecution(SubprocessContext* context) {
+    if (!context) return FALSE;
+    
+    // Set cancellation flag
+    SetCancellationFlag(&context->threadContext);
+    
+    // If process is running, terminate it
+    if (context->hProcess) {
+        TerminateProcess(context->hProcess, 1);
+    }
+    
+    return TRUE;
+}
+
+// Wait for subprocess completion with timeout
+BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs) {
+    if (!context || !context->threadContext.hThread) return FALSE;
+    
+    DWORD waitResult = WaitForSingleObject(context->threadContext.hThread, timeoutMs);
+    return (waitResult == WAIT_OBJECT_0);
+}
+
+// Get subprocess result (transfers ownership to caller)
+YtDlpResult* GetSubprocessResult(SubprocessContext* context) {
+    if (!context || !context->completed) return NULL;
+    
+    YtDlpResult* result = context->result;
+    context->result = NULL; // Transfer ownership
+    return result;
+}
+
+// Free subprocess context and all associated resources
+void FreeSubprocessContext(SubprocessContext* context) {
+    if (!context) return;
+    
+    // Clean up thread context (waits for thread completion)
+    CleanupThreadContext(&context->threadContext);
+    
+    // Free configuration copy
+    if (context->config) {
+        free(context->config);
+    }
+    
+    // Free request copy
+    if (context->request) {
+        if (context->request->url) free(context->request->url);
+        if (context->request->outputPath) free(context->request->outputPath);
+        if (context->request->tempDir) free(context->request->tempDir);
+        if (context->request->customArgs) free(context->request->customArgs);
+        free(context->request);
+    }
+    
+    // Free result if not transferred
+    if (context->result) {
+        FreeYtDlpResult(context->result);
+    }
+    
+    // Free accumulated output if not transferred
+    if (context->accumulatedOutput) {
+        free(context->accumulatedOutput);
+    }
+    
+    free(context);
+}
+
+// Progress callback for updating progress dialog
+void SubprocessProgressCallback(int percentage, const wchar_t* status, void* userData) {
+    ProgressDialog* progress = (ProgressDialog*)userData;
+    if (progress) {
+        UpdateProgressDialog(progress, percentage, status);
+    }
+}
+
+// Convenience function for simple multithreaded execution with progress dialog
+YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
+                                             HWND parentWindow, const wchar_t* operationTitle) {
+    if (!config || !request) return NULL;
+    
+    // Create progress dialog
+    ProgressDialog* progress = CreateProgressDialog(parentWindow, operationTitle ? operationTitle : L"Processing");
+    if (!progress) {
+        // Fallback to synchronous execution if progress dialog fails
+        return ExecuteYtDlpRequest(config, request);
+    }
+    
+    // Create subprocess context
+    SubprocessContext* context = CreateSubprocessContext(config, request, SubprocessProgressCallback, progress, parentWindow);
+    if (!context) {
+        DestroyProgressDialog(progress);
+        return ExecuteYtDlpRequest(config, request);
+    }
+    
+    // Start subprocess execution
+    if (!StartSubprocessExecution(context)) {
+        FreeSubprocessContext(context);
+        DestroyProgressDialog(progress);
+        return ExecuteYtDlpRequest(config, request);
+    }
+    
+    // Wait for completion with UI message pumping
+    YtDlpResult* result = NULL;
+    MSG msg;
+    
+    while (IsSubprocessRunning(context)) {
+        // Process Windows messages to keep UI responsive
+        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (!IsDialogMessageW(progress->hDialog, &msg)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+        
+        // Check if user cancelled via progress dialog
+        if (IsProgressDialogCancelled(progress)) {
+            CancelSubprocessExecution(context);
+            break;
+        }
+        
+        // Small delay to prevent excessive CPU usage
+        Sleep(50);
+    }
+    
+    // Wait a bit more for thread cleanup
+    WaitForSubprocessCompletion(context, 1000);
+    
+    // Get result
+    result = GetSubprocessResult(context);
+    
+    // Cleanup
+    FreeSubprocessContext(context);
+    DestroyProgressDialog(progress);
+    
+    return result;
+}
+
 void FreeYtDlpResult(YtDlpResult* result) {
     if (!result) return;
     
