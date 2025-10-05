@@ -81,40 +81,27 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     // Use fixed, reasonable dimensions for Win32 design
     int baseWidth = 320;
     int baseHeight = 120;     // Height for collapsed state
-    int expandedHeight = 240; // Height for expanded state (much smaller)
+    int expandedHeight = 240; // Height for expanded state
     
     int newHeight = expanded ? expandedHeight : baseHeight;
     
-    // Get current position to maintain it
+    // Get current position
     RECT rect;
     GetWindowRect(hDlg, &rect);
+    int currentX = rect.left;
+    int currentY = rect.top;
     
-    // Convert to client coordinates of parent
-    HWND hParent = GetParent(hDlg);
-    if (hParent) {
-        POINT pt = {rect.left, rect.top};
-        ScreenToClient(hParent, &pt);
-        
-        // Ensure dialog stays within screen bounds
-        RECT screenRect;
-        SystemParametersInfoW(SPI_GETWORKAREA, 0, &screenRect, 0);
-        
-        // Adjust position if it would go off screen
-        if (pt.x + baseWidth > screenRect.right) {
-            pt.x = screenRect.right - baseWidth - 10;
-        }
-        if (pt.y + newHeight > screenRect.bottom) {
-            pt.y = screenRect.bottom - newHeight - 10;
-        }
-        if (pt.x < screenRect.left) pt.x = screenRect.left + 10;
-        if (pt.y < screenRect.top) pt.y = screenRect.top + 10;
-        
-        SetWindowPos(hDlg, NULL, pt.x, pt.y, baseWidth, newHeight, 
-                     SWP_NOZORDER | SWP_NOACTIVATE);
-    } else {
-        SetWindowPos(hDlg, NULL, 0, 0, baseWidth, newHeight, 
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    }
+    // Check screen bounds and adjust if necessary
+    RECT screenRect;
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &screenRect, 0);
+    
+    // Adjust position if dialog would go off screen
+    if (currentX < screenRect.left) currentX = screenRect.left;
+    if (currentY < screenRect.top) currentY = screenRect.top;
+    if (currentX + baseWidth > screenRect.right) currentX = screenRect.right - baseWidth;
+    if (currentY + newHeight > screenRect.bottom) currentY = screenRect.bottom - newHeight;
+    
+    SetWindowPos(hDlg, NULL, currentX, currentY, baseWidth, newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
     
     // Show/hide expanded controls
     HWND hTabControl = GetDlgItem(hDlg, IDC_ERROR_TAB_CONTROL);
@@ -272,37 +259,34 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 SetDlgItemTextW(hDlg, IDC_ERROR_SOLUTION_TEXT, errorDialog->solutions);
             }
             
-            // Position dialog properly on screen
-            RECT parentRect, dialogRect, screenRect;
+            // Center dialog on parent window with screen bounds checking
             HWND hParent = GetParent(hDlg);
+            RECT parentRect, dialogRect, screenRect;
             
-            // Get screen work area (excludes taskbar)
-            SystemParametersInfoW(SPI_GETWORKAREA, 0, &screenRect, 0);
             GetWindowRect(hDlg, &dialogRect);
-            
             int dialogWidth = dialogRect.right - dialogRect.left;
             int dialogHeight = dialogRect.bottom - dialogRect.top;
+            
+            // Get screen work area
+            SystemParametersInfoW(SPI_GETWORKAREA, 0, &screenRect, 0);
+            
             int x, y;
             
             if (hParent && GetWindowRect(hParent, &parentRect)) {
-                // Try to center on parent, but ensure it stays on screen
+                // Center on parent window
                 x = parentRect.left + (parentRect.right - parentRect.left - dialogWidth) / 2;
                 y = parentRect.top + (parentRect.bottom - parentRect.top - dialogHeight) / 2;
-                
-                // Adjust if off screen
-                if (x + dialogWidth > screenRect.right) {
-                    x = screenRect.right - dialogWidth - 10;
-                }
-                if (y + dialogHeight > screenRect.bottom) {
-                    y = screenRect.bottom - dialogHeight - 10;
-                }
-                if (x < screenRect.left) x = screenRect.left + 10;
-                if (y < screenRect.top) y = screenRect.top + 10;
             } else {
                 // Center on screen if no parent
-                x = screenRect.left + (screenRect.right - screenRect.left - dialogWidth) / 2;
-                y = screenRect.top + (screenRect.bottom - screenRect.top - dialogHeight) / 2;
+                x = (screenRect.right - screenRect.left - dialogWidth) / 2;
+                y = (screenRect.bottom - screenRect.top - dialogHeight) / 2;
             }
+            
+            // Adjust if any edge would be off screen
+            if (x < screenRect.left) x = screenRect.left;
+            if (y < screenRect.top) y = screenRect.top;
+            if (x + dialogWidth > screenRect.right) x = screenRect.right - dialogWidth;
+            if (y + dialogHeight > screenRect.bottom) y = screenRect.bottom - dialogHeight;
             
             SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
             
