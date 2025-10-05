@@ -1915,11 +1915,15 @@ void ApplyModernThemeToDialog(HWND hDlg) {
     #ifndef ETDT_ENABLETAB
     #define ETDT_ENABLETAB 0x00000006
     #endif
+    #ifndef ETDT_USETABTEXTURE
+    #define ETDT_USETABTEXTURE 0x00000004
+    #endif
     
     // Function pointers for theming APIs
     typedef BOOL (WINAPI *EnableThemeDialogTextureFunc)(HWND, DWORD);
     typedef HRESULT (WINAPI *SetWindowThemeFunc)(HWND, LPCWSTR, LPCWSTR);
     typedef BOOL (WINAPI *IsThemeActiveFunc)(void);
+    typedef BOOL (WINAPI *IsAppThemedFunc)(void);
     
     EnableThemeDialogTextureFunc EnableThemeDialogTexture = 
         (EnableThemeDialogTextureFunc)GetProcAddress(hUxTheme, "EnableThemeDialogTexture");
@@ -1927,48 +1931,93 @@ void ApplyModernThemeToDialog(HWND hDlg) {
         (SetWindowThemeFunc)GetProcAddress(hUxTheme, "SetWindowTheme");
     IsThemeActiveFunc IsThemeActive = 
         (IsThemeActiveFunc)GetProcAddress(hUxTheme, "IsThemeActive");
+    IsAppThemedFunc IsAppThemed = 
+        (IsAppThemedFunc)GetProcAddress(hUxTheme, "IsAppThemed");
     
-    // Only apply theming if themes are active on the system
-    if (IsThemeActive && IsThemeActive()) {
-        // Enable dialog texture (gives the dialog a modern background)
+    // Only apply theming if themes are active and app is themed
+    if (IsThemeActive && IsThemeActive() && IsAppThemed && IsAppThemed()) {
+        // Enable dialog texture with both tab texture and tab support
         if (EnableThemeDialogTexture) {
-            EnableThemeDialogTexture(hDlg, ETDT_ENABLETAB);
+            EnableThemeDialogTexture(hDlg, ETDT_ENABLETAB | ETDT_USETABTEXTURE);
         }
         
         // Apply modern theme to specific control types
         if (SetWindowTheme) {
-            // Find and theme all child controls
+            // Theme the dialog itself first
+            SetWindowTheme(hDlg, L"Explorer", NULL);
+            
+            // Find and theme all child controls recursively
             HWND hChild = GetWindow(hDlg, GW_CHILD);
             while (hChild) {
                 wchar_t className[256];
                 if (GetClassNameW(hChild, className, 256)) {
-                    // Apply explorer theme to listboxes for modern appearance
-                    if (wcscmp(className, L"ListBox") == 0) {
-                        SetWindowTheme(hChild, L"Explorer", NULL);
+                    BOOL themed = FALSE;
+                    
+                    // Apply specific themes based on control type
+                    if (wcscmp(className, L"Button") == 0) {
+                        // Check if it's a group box (different styling)
+                        LONG style = GetWindowLong(hChild, GWL_STYLE);
+                        if ((style & BS_GROUPBOX) == BS_GROUPBOX) {
+                            SetWindowTheme(hChild, L"Explorer", NULL);
+                        } else {
+                            SetWindowTheme(hChild, L"Explorer", NULL);
+                        }
+                        themed = TRUE;
                     }
-                    // Apply modern button theme
-                    else if (wcscmp(className, L"Button") == 0) {
-                        SetWindowTheme(hChild, L"Explorer", NULL);
-                    }
-                    // Apply modern edit control theme
                     else if (wcscmp(className, L"Edit") == 0) {
                         SetWindowTheme(hChild, L"Explorer", NULL);
+                        themed = TRUE;
                     }
-                    // Apply modern progress bar theme
+                    else if (wcscmp(className, L"ListBox") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                        themed = TRUE;
+                    }
+                    else if (wcscmp(className, L"ComboBox") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                        themed = TRUE;
+                    }
                     else if (wcscmp(className, L"msctls_progress32") == 0) {
                         SetWindowTheme(hChild, L"Explorer", NULL);
+                        themed = TRUE;
                     }
-                    // Apply modern tab control theme (for error dialogs)
                     else if (wcscmp(className, L"SysTabControl32") == 0) {
                         SetWindowTheme(hChild, L"Explorer", NULL);
+                        themed = TRUE;
+                    }
+                    else if (wcscmp(className, L"Static") == 0) {
+                        // For group boxes and other static controls
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                        themed = TRUE;
+                    }
+                    else if (wcscmp(className, L"ScrollBar") == 0) {
+                        SetWindowTheme(hChild, L"Explorer", NULL);
+                        themed = TRUE;
+                    }
+                    
+                    // Force redraw if we applied theming
+                    if (themed) {
+                        InvalidateRect(hChild, NULL, TRUE);
+                        UpdateWindow(hChild);
                     }
                 }
                 hChild = GetWindow(hChild, GW_HWNDNEXT);
             }
         }
+        
+        // Force redraw of the entire dialog
+        InvalidateRect(hDlg, NULL, TRUE);
+        UpdateWindow(hDlg);
     }
     
     FreeLibrary(hUxTheme);
+}
+
+// Apply theming with a slight delay to ensure all controls are ready
+void ApplyDelayedTheming(HWND hDlg) {
+    if (!hDlg) return;
+    
+    // Use a timer to apply theming after the dialog is fully initialized
+    SetTimer(hDlg, 9999, 100, NULL); // 100ms delay
 }
 
 void ResizeControls(HWND hDlg) {
@@ -2840,6 +2889,22 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             }
             break;
             
+        case WM_SHOWWINDOW:
+            // Apply delayed theming when window is shown
+            if (wParam) { // Window is being shown
+                ApplyDelayedTheming(hDlg);
+            }
+            return FALSE;
+            
+        case WM_TIMER:
+            // Handle delayed theming timer
+            if (wParam == 9999) {
+                KillTimer(hDlg, 9999);
+                ApplyModernThemeToDialog(hDlg);
+                return TRUE;
+            }
+            return FALSE;
+            
         case WM_CLOSE:
             // Restore original text field window procedure
             if (OriginalTextFieldProc) {
@@ -2890,9 +2955,35 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     // This ensures theming works even if manifest processing fails
     HMODULE hUxTheme = LoadLibraryW(L"uxtheme.dll");
     if (hUxTheme) {
-        // Verify UxTheme library is available for theming support
-        // The actual theming functions are called in ApplyModernThemeToDialog()
+        // Try to enable theming programmatically as backup
+        typedef BOOL (WINAPI *SetThemeAppPropertiesFunc)(DWORD);
+        SetThemeAppPropertiesFunc SetThemeAppProperties = 
+            (SetThemeAppPropertiesFunc)GetProcAddress(hUxTheme, "SetThemeAppProperties");
+        
+        if (SetThemeAppProperties) {
+            // Enable all theming properties
+            SetThemeAppProperties(0x7); // STAP_ALLOW_NONCLIENT | STAP_ALLOW_CONTROLS | STAP_ALLOW_WEBCONTENT
+        }
+        
         FreeLibrary(hUxTheme);
+    }
+    
+    // Also try the older method for compatibility
+    typedef BOOL (WINAPI *InitCommonControlsExFunc)(LPINITCOMMONCONTROLSEX);
+    HMODULE hComCtl32 = LoadLibraryW(L"comctl32.dll");
+    if (hComCtl32) {
+        InitCommonControlsExFunc InitCommonControlsExPtr = 
+            (InitCommonControlsExFunc)GetProcAddress(hComCtl32, "InitCommonControlsEx");
+        
+        if (InitCommonControlsExPtr) {
+            // Re-initialize with visual styles
+            INITCOMMONCONTROLSEX icex2;
+            icex2.dwSize = sizeof(INITCOMMONCONTROLSEX);
+            icex2.dwICC = ICC_WIN95_CLASSES;
+            InitCommonControlsExPtr(&icex2);
+        }
+        
+        FreeLibrary(hComCtl32);
     }
     
     // Enable DPI awareness for HiDPI support
