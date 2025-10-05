@@ -1,10 +1,14 @@
-# Makefile for basic Windows C program
+# Makefile for native Windows C program
 
-# Compiler and flags
-CC = gcc
-RC = windres
-CFLAGS = -Wall -Wextra -Werror -std=c99 -DUNICODE -D_UNICODE
-LDFLAGS = -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid
+# Ensure we're using MinGW32 environment for native Windows binaries
+export MSYSTEM := MINGW32
+export PATH := /mingw32/bin:$(PATH)
+
+# Compiler and flags - use MinGW32 for native Windows binaries without MSYS2 dependencies
+CC = /mingw32/bin/gcc.exe
+RC = /mingw32/bin/windres.exe
+CFLAGS = -Wall -Wextra -Werror -std=c99 -DUNICODE -D_UNICODE -static-libgcc
+LDFLAGS = -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -static
 
 # Target executable
 TARGET = YouTubeCacher.exe

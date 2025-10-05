@@ -12,33 +12,7 @@
 #include <tlhelp32.h>
 #include <psapi.h>
 
-// Function declarations for missing functions
-wchar_t* _wcsdup(const wchar_t* str);
-int _wcsicmp(const wchar_t* str1, const wchar_t* str2);
-
-// Implementation of missing functions
-wchar_t* _wcsdup(const wchar_t* str) {
-    if (!str) return NULL;
-    size_t len = wcslen(str) + 1;
-    wchar_t* copy = (wchar_t*)malloc(len * sizeof(wchar_t));
-    if (copy) {
-        wcscpy(copy, str);
-    }
-    return copy;
-}
-
-int _wcsicmp(const wchar_t* str1, const wchar_t* str2) {
-    if (!str1 || !str2) return (str1 == str2) ? 0 : (str1 ? 1 : -1);
-    
-    while (*str1 && *str2) {
-        wchar_t c1 = towlower(*str1);
-        wchar_t c2 = towlower(*str2);
-        if (c1 != c2) return (c1 < c2) ? -1 : 1;
-        str1++;
-        str2++;
-    }
-    return (*str1 == *str2) ? 0 : (*str1 ? 1 : -1);
-}
+// MinGW32 provides _wcsdup and _wcsicmp, no custom implementation needed
 
 // Global variable for command line URL
 wchar_t cmdLineURL[MAX_URL_LENGTH] = {0};
