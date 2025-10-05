@@ -54,4 +54,21 @@
 #define IDC_CUSTOM_ARGS_LABEL  1030
 #define IDC_CUSTOM_ARGS_FIELD  1031
 
+// Enhanced Error Dialog
+#define IDD_ERROR_DIALOG       105
+#define IDC_ERROR_ICON         1032
+#define IDC_ERROR_MESSAGE      1033
+#define IDC_ERROR_DETAILS_BTN  1034
+#define IDC_ERROR_TAB_CONTROL  1035
+#define IDC_ERROR_DETAILS_TEXT 1036
+#define IDC_ERROR_DIAG_TEXT    1037
+#define IDC_ERROR_SOLUTION_TEXT 1038
+#define IDC_ERROR_COPY_BTN     1039
+#define IDC_ERROR_OK_BTN       1040
+
+// Error dialog tab IDs
+#define TAB_ERROR_DETAILS      0
+#define TAB_ERROR_DIAGNOSTICS  1
+#define TAB_ERROR_SOLUTIONS    2
+
 #endif // RESOURCE_H

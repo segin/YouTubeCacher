@@ -325,8 +325,8 @@ void SaveSettings(HWND hDlg) {
             SaveSettingToRegistry(REG_CUSTOM_ARGS, buffer);
         } else {
             // Invalid arguments - show warning and don't save
-            MessageBoxW(hDlg, L"Custom yt-dlp arguments contain potentially dangerous options and were not saved.\n\nPlease remove any --exec, --batch-file, or other potentially harmful arguments.", 
-                       L"Invalid Arguments", MB_OK | MB_ICONWARNING);
+            ShowWarningMessage(hDlg, L"Invalid Arguments", 
+                             L"Custom yt-dlp arguments contain potentially dangerous options and were not saved.\n\nPlease remove any --exec, --batch-file, or other potentially harmful arguments.");
         }
     } else {
         // Empty arguments - save empty string
@@ -1182,7 +1182,21 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Initialize YtDlp configuration
                     YtDlpConfig config = {0};
                     if (!InitializeYtDlpConfig(&config)) {
-                        MessageBoxW(hDlg, L"Failed to initialize yt-dlp configuration.", L"Configuration Error", MB_OK | MB_ICONERROR);
+                        EnhancedErrorDialog* errorDialog = CreateEnhancedErrorDialog(
+                            L"Configuration Error",
+                            L"Failed to initialize yt-dlp configuration.",
+                            L"The application could not load or initialize the yt-dlp configuration settings.",
+                            L"This may indicate a problem with registry access, memory allocation, or corrupted settings.",
+                            L"1. Try restarting the application\r\n"
+                            L"2. Check if you have permission to access the registry\r\n"
+                            L"3. Reset settings through the Settings dialog\r\n"
+                            L"4. Reinstall the application if the problem persists",
+                            ERROR_TYPE_UNKNOWN
+                        );
+                        if (errorDialog) {
+                            ShowEnhancedErrorDialog(hDlg, errorDialog);
+                            FreeEnhancedErrorDialog(errorDialog);
+                        }
                         break;
                     }
                     
@@ -1200,7 +1214,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             validationInfo.suggestions ? validationInfo.suggestions : L"Please check yt-dlp installation",
                             config.ytDlpPath);
                         
-                        MessageBoxW(hDlg, diagnosticReport, L"yt-dlp Validation Failed", MB_OK | MB_ICONERROR);
+                        ShowValidationError(hDlg, &validationInfo);
                         FreeValidationInfo(&validationInfo);
                         CleanupYtDlpConfig(&config);
                         break;
@@ -1211,7 +1225,21 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
                     
                     if (wcslen(url) == 0) {
-                        MessageBoxW(hDlg, L"Please enter a URL to download.", L"No URL", MB_OK | MB_ICONWARNING);
+                        EnhancedErrorDialog* errorDialog = CreateEnhancedErrorDialog(
+                            L"No URL Provided",
+                            L"Please enter a URL to download.",
+                            L"A valid YouTube or supported video URL is required to perform the download operation.",
+                            L"The URL field is currently empty. Please paste or type a valid video URL.",
+                            L"1. Copy a video URL from your browser\r\n"
+                            L"2. Paste it into the URL field\r\n"
+                            L"3. Ensure the URL is from a supported site (YouTube, etc.)\r\n"
+                            L"4. Check that the URL is complete and properly formatted",
+                            ERROR_TYPE_URL_INVALID
+                        );
+                        if (errorDialog) {
+                            ShowEnhancedErrorDialog(hDlg, errorDialog);
+                            FreeEnhancedErrorDialog(errorDialog);
+                        }
                         FreeValidationInfo(&validationInfo);
                         CleanupYtDlpConfig(&config);
                         break;
@@ -1226,7 +1254,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                     // Create the download directory if it doesn't exist
                     if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
-                        MessageBoxW(hDlg, L"Failed to create download directory. Please check permissions and disk space.", L"Directory Error", MB_OK | MB_ICONERROR);
+                        ShowTempDirError(hDlg, downloadPath, GetLastError());
                         FreeValidationInfo(&validationInfo);
                         CleanupYtDlpConfig(&config);
                         break;
@@ -1235,7 +1263,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Create YtDlp request for download operation
                     YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_DOWNLOAD, url, downloadPath);
                     if (!request) {
-                        MessageBoxW(hDlg, L"Failed to create yt-dlp request.", L"Memory Error", MB_OK | MB_ICONERROR);
+                        ShowMemoryError(hDlg, L"yt-dlp request creation");
                         FreeValidationInfo(&validationInfo);
                         CleanupYtDlpConfig(&config);
                         break;
@@ -1246,14 +1274,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
                         // Try alternative temp directory strategies
                         if (!CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH)) {
-                            MessageBoxW(hDlg, 
-                                L"Failed to create temporary directory for download operation.\n\n"
-                                L"This may be due to:\n"
-                                L"• Insufficient disk space\n"
-                                L"• Permission restrictions\n"
-                                L"• System temporary directory issues\n\n"
-                                L"Please check your system settings and try again.", 
-                                L"Temp Directory Error", MB_OK | MB_ICONERROR);
+                            ShowTempDirError(hDlg, L"System temporary directory", GetLastError());
                             FreeYtDlpRequest(request);
                             FreeValidationInfo(&validationInfo);
                             CleanupYtDlpConfig(&config);
@@ -1265,7 +1286,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Create progress dialog for the download operation
                     ProgressDialog* progress = CreateProgressDialog(hDlg, L"Downloading Video");
                     if (!progress) {
-                        MessageBoxW(hDlg, L"Failed to create progress dialog.", L"UI Error", MB_OK | MB_ICONERROR);
+                        ShowUIError(hDlg, L"progress dialog");
                         CleanupTempDirectory(tempDir);
                         FreeYtDlpRequest(request);
                         FreeValidationInfo(&validationInfo);
@@ -1286,51 +1307,18 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         wchar_t successMsg[MAX_EXTENDED_PATH + 100];
                         swprintf(successMsg, MAX_EXTENDED_PATH + 100, 
                             L"Download completed successfully!\n\nFiles saved to:\n%ls", downloadPath);
-                        MessageBoxW(hDlg, successMsg, L"Download Complete", MB_OK | MB_ICONINFORMATION);
+                        ShowSuccessMessage(hDlg, L"Download Complete", successMsg);
                     } else {
                         UpdateProgressDialog(progress, 0, L"Download failed");
                         Sleep(500);
                         DestroyProgressDialog(progress);
                         
-                        // Analyze the error and provide enhanced diagnostics
-                        ErrorAnalysis* errorAnalysis = AnalyzeYtDlpError(result);
-                        wchar_t diagnosticReport[4096];
-                        
-                        if (errorAnalysis) {
-                            swprintf(diagnosticReport, 4096,
-                                L"Download failed.\n\n"
-                                L"Error Type: %ls\n\n"
-                                L"Description: %ls\n\n"
-                                L"Solution: %ls\n\n"
-                                L"Technical Details:\n%ls\n\n"
-                                L"Download Path: %ls\n"
-                                L"Temp Directory: %ls",
-                                (errorAnalysis->type == ERROR_TYPE_NETWORK) ? L"Network Error" :
-                                (errorAnalysis->type == ERROR_TYPE_URL_INVALID) ? L"Invalid URL" :
-                                (errorAnalysis->type == ERROR_TYPE_TEMP_DIR) ? L"Temporary Directory Error" :
-                                (errorAnalysis->type == ERROR_TYPE_PERMISSIONS) ? L"Permission Error" :
-                                (errorAnalysis->type == ERROR_TYPE_DISK_SPACE) ? L"Disk Space Error" :
-                                (errorAnalysis->type == ERROR_TYPE_DEPENDENCIES) ? L"Missing Dependencies" : L"Unknown Error",
-                                errorAnalysis->description ? errorAnalysis->description : L"No description available",
-                                errorAnalysis->solution ? errorAnalysis->solution : L"Please check your configuration and try again",
-                                errorAnalysis->technicalDetails ? errorAnalysis->technicalDetails : L"No technical details available",
-                                downloadPath, tempDir);
-                            
-                            FreeErrorAnalysis(errorAnalysis);
+                        // Show enhanced error dialog with comprehensive diagnostics
+                        if (result) {
+                            ShowYtDlpError(hDlg, result, request);
                         } else {
-                            // Fallback error message
-                            if (result && result->errorMessage) {
-                                swprintf(diagnosticReport, 4096, 
-                                    L"Download failed.\n\nError: %ls\n\nDownload Path: %ls\nTemp Directory: %ls", 
-                                    result->errorMessage, downloadPath, tempDir);
-                            } else {
-                                swprintf(diagnosticReport, 4096, 
-                                    L"Download failed or was cancelled.\n\nDownload Path: %ls\nTemp Directory: %ls", 
-                                    downloadPath, tempDir);
-                            }
+                            ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
                         }
-                        
-                        MessageBoxW(hDlg, diagnosticReport, L"Download Failed", MB_OK | MB_ICONERROR);
                     }
                     
                     // Cleanup resources
@@ -1346,7 +1334,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Initialize YtDlp configuration
                     YtDlpConfig config = {0};
                     if (!InitializeYtDlpConfig(&config)) {
-                        MessageBoxW(hDlg, L"Failed to initialize yt-dlp configuration.", L"Configuration Error", MB_OK | MB_ICONERROR);
+                        ShowConfigurationError(hDlg, L"Failed to initialize yt-dlp configuration. Please check your settings.");
                         break;
                     }
                     
@@ -1364,7 +1352,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             validationInfo.suggestions ? validationInfo.suggestions : L"Please check yt-dlp installation",
                             config.ytDlpPath);
                         
-                        MessageBoxW(hDlg, diagnosticReport, L"yt-dlp Validation Failed", MB_OK | MB_ICONERROR);
+                        ShowValidationError(hDlg, &validationInfo);
                         FreeValidationInfo(&validationInfo);
                         CleanupYtDlpConfig(&config);
                         break;
@@ -1379,7 +1367,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                                               wcslen(url) > 0 ? url : NULL, 
                                                               NULL);
                     if (!request) {
-                        MessageBoxW(hDlg, L"Failed to create yt-dlp request.", L"Memory Error", MB_OK | MB_ICONERROR);
+                        ShowMemoryError(hDlg, L"yt-dlp request creation");
                         FreeValidationInfo(&validationInfo);
                         CleanupYtDlpConfig(&config);
                         break;
@@ -1388,7 +1376,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Create temporary directory for operation
                     wchar_t tempDir[MAX_EXTENDED_PATH];
                     if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
-                        MessageBoxW(hDlg, L"Failed to create temporary directory for yt-dlp operation.", L"Temp Directory Error", MB_OK | MB_ICONERROR);
+                        ShowTempDirError(hDlg, tempDir, GetLastError());
                         FreeYtDlpRequest(request);
                         FreeValidationInfo(&validationInfo);
                         CleanupYtDlpConfig(&config);
@@ -1399,7 +1387,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Create progress dialog for the operation
                     ProgressDialog* progress = CreateProgressDialog(hDlg, L"Getting Video Information");
                     if (!progress) {
-                        MessageBoxW(hDlg, L"Failed to create progress dialog.", L"UI Error", MB_OK | MB_ICONERROR);
+                        ShowUIError(hDlg, L"progress dialog");
                         CleanupTempDirectory(tempDir);
                         FreeYtDlpRequest(request);
                         FreeValidationInfo(&validationInfo);
@@ -1418,46 +1406,17 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         
                         // Display the video information
                         if (result->output && wcslen(result->output) > 0) {
-                            MessageBoxW(hDlg, result->output, L"Video Information", MB_OK | MB_ICONINFORMATION);
+                            ShowInfoMessage(hDlg, L"Video Information", result->output);
                         } else {
-                            MessageBoxW(hDlg, L"Operation completed successfully but no information was returned.", L"No Information", MB_OK | MB_ICONWARNING);
+                            ShowWarningMessage(hDlg, L"No Information", L"Operation completed successfully but no information was returned.");
                         }
                     } else {
                         UpdateProgressDialog(progress, 0, L"Operation failed");
                         Sleep(500);
                         DestroyProgressDialog(progress);
                         
-                        // Analyze the error and provide enhanced diagnostics
-                        ErrorAnalysis* errorAnalysis = AnalyzeYtDlpError(result);
-                        wchar_t diagnosticReport[4096];
-                        
-                        if (errorAnalysis) {
-                            swprintf(diagnosticReport, 4096,
-                                L"Failed to get video information.\n\n"
-                                L"Error Type: %ls\n\n"
-                                L"Description: %ls\n\n"
-                                L"Solution: %ls\n\n"
-                                L"Technical Details:\n%ls",
-                                (errorAnalysis->type == ERROR_TYPE_NETWORK) ? L"Network Error" :
-                                (errorAnalysis->type == ERROR_TYPE_URL_INVALID) ? L"Invalid URL" :
-                                (errorAnalysis->type == ERROR_TYPE_TEMP_DIR) ? L"Temporary Directory Error" :
-                                (errorAnalysis->type == ERROR_TYPE_PERMISSIONS) ? L"Permission Error" :
-                                (errorAnalysis->type == ERROR_TYPE_DEPENDENCIES) ? L"Missing Dependencies" : L"Unknown Error",
-                                errorAnalysis->description ? errorAnalysis->description : L"No description available",
-                                errorAnalysis->solution ? errorAnalysis->solution : L"Please check your configuration and try again",
-                                errorAnalysis->technicalDetails ? errorAnalysis->technicalDetails : L"No technical details available");
-                            
-                            FreeErrorAnalysis(errorAnalysis);
-                        } else {
-                            // Fallback error message
-                            if (result && result->errorMessage) {
-                                swprintf(diagnosticReport, 4096, L"Failed to get video information.\n\nError: %ls", result->errorMessage);
-                            } else {
-                                wcscpy(diagnosticReport, L"Failed to get video information. Unknown error occurred.");
-                            }
-                        }
-                        
-                        MessageBoxW(hDlg, diagnosticReport, L"Get Info Failed", MB_OK | MB_ICONERROR);
+                        // Show enhanced error dialog with comprehensive diagnostics
+                        ShowYtDlpError(hDlg, result, request);
                     }
                     
                     // Cleanup resources
@@ -1470,11 +1429,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                     
                 case IDC_BUTTON2:
-                    MessageBoxW(hDlg, L"Play functionality not implemented yet", L"Play", MB_OK);
+                    ShowInfoMessage(hDlg, L"Play", L"Play functionality not implemented yet");
                     break;
                     
                 case IDC_BUTTON3:
-                    MessageBoxW(hDlg, L"Delete functionality not implemented yet", L"Delete", MB_OK);
+                    ShowInfoMessage(hDlg, L"Delete", L"Delete functionality not implemented yet");
                     break;
                     
                 case IDC_COLOR_GREEN:
@@ -1530,6 +1489,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(nCmdShow);
     
+    // Initialize error logging
+    InitializeErrorLogging();
+    
     // Initialize common controls for progress bar
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
@@ -1573,6 +1535,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
             DispatchMessage(&msg);
         }
     }
+    
+    // Cleanup error logging
+    CleanupErrorLogging();
     
     return (int)msg.wParam;
 }

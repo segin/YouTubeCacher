@@ -77,7 +77,6 @@
 
 - [x] 6. Implement progress dialog and user feedback
 
-
   - [x] 6.1 Create progress dialog UI
 
     - Design and implement progress dialog resource in YouTubeCacher.rc
@@ -94,21 +93,14 @@
 
 - [x] 7. Enhance command line argument management
 
-
-
-
-
   - [x] 7.1 Implement operation-specific argument sets
-
 
     - Create GetYtDlpArgsForOperation() function for different operation types
     - Add optimized arguments for info retrieval vs download operations
     - Implement fallback argument sets for compatibility issues
     - _Requirements: 6.1, 6.2, 6.3, 6.5_
 
-
   - [x] 7.2 Add user-customizable arguments support
-
 
     - Extend settings dialog to include custom yt-dlp arguments field
     - Implement argument validation and sanitization
@@ -117,36 +109,40 @@
 
 - [x] 8. Update existing UI integration points
 
-
-
-
   - [x] 8.1 Modify Get Info button implementation
-
 
     - Replace current yt-dlp execution with new YtDlp Manager system
     - Add progress dialog integration for info retrieval operations
     - Implement enhanced error display with diagnostic information
     - _Requirements: 1.1, 1.2, 3.1, 4.1_
 
-  - [x] 8.2 Update Download button implementation
 
+  - [x] 8.2 Update Download button implementation
 
     - Integrate new yt-dlp management system for download operations
     - Add progress tracking and cancellation support for downloads
     - Implement proper temp directory management for download operations
     - _Requirements: 2.1, 2.2, 3.1, 3.2_
 
-- [ ] 9. Add comprehensive error message dialogs
-  - [ ] 9.1 Create enhanced error dialog
+- [-] 9. Add comprehensive error message dialogs
+
+
+
+  - [x] 9.1 Create enhanced error dialog
+
     - Design expandable error dialog with basic and detailed views
     - Add copy-to-clipboard functionality for diagnostic information
     - Implement tabbed interface for error details, diagnostics, and solutions
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [ ] 9.2 Integrate enhanced error dialogs throughout application
+
+  - [-] 9.2 Integrate enhanced error dialogs throughout application
+
+
     - Replace existing MessageBox calls with enhanced error dialogs
     - Add context-specific error information and solutions
     - Implement error logging for troubleshooting support
+
     - _Requirements: 1.1, 1.4, 1.5_
 
 - [ ] 10. Implement startup validation and configuration

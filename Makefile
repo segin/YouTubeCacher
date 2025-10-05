@@ -10,7 +10,7 @@ LDFLAGS = -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -l
 TARGET = YouTubeCacher.exe
 
 # Source files
-SOURCES = main.c uri.c
+SOURCES = main.c uri.c errordialog.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object files

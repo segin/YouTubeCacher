@@ -160,6 +160,19 @@ typedef struct {
     BOOL operationActive;
 } YtDlpContext;
 
+// Enhanced error dialog structure
+typedef struct {
+    wchar_t* title;
+    wchar_t* message;
+    wchar_t* details;
+    wchar_t* diagnostics;
+    wchar_t* solutions;
+    ErrorType errorType;
+    BOOL isExpanded;
+    HWND hDialog;
+    HWND hTabControl;
+} EnhancedErrorDialog;
+
 // Function prototypes
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
@@ -175,6 +188,7 @@ void SaveSettings(HWND hDlg);
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 // YtDlp management function prototypes
 BOOL InitializeYtDlpConfig(YtDlpConfig* config);
@@ -277,6 +291,38 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
 
 // Registry constants for custom arguments
 #define REG_CUSTOM_ARGS     L"CustomYtDlpArgs"
+
+// Enhanced error dialog functions
+EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message, 
+                                              const wchar_t* details, const wchar_t* diagnostics, 
+                                              const wchar_t* solutions, ErrorType errorType);
+INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog);
+void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog);
+BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog);
+void ResizeErrorDialog(HWND hDlg, BOOL expanded);
+void InitializeErrorDialogTabs(HWND hTabControl);
+void ShowErrorDialogTab(HWND hDlg, int tabIndex);
+
+// Convenience functions for common error scenarios
+INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpRequest* request);
+INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo);
+INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation);
+INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode);
+
+// Additional convenience functions for common scenarios
+INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation);
+INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details);
+INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
+INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+
+// Error logging functions
+BOOL InitializeErrorLogging(void);
+void LogError(const wchar_t* category, const wchar_t* message, const wchar_t* details);
+void LogWarning(const wchar_t* category, const wchar_t* message);
+void LogInfo(const wchar_t* category, const wchar_t* message);
+void CleanupErrorLogging(void);
 
 // Global variables (extern declarations)
 extern wchar_t cmdLineURL[MAX_URL_LENGTH];
