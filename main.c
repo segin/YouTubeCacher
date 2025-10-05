@@ -1270,21 +1270,21 @@ void ResizeControls(HWND hDlg) {
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
     
-    // Calculate button position with proper margin
-    int buttonX = width - BUTTON_WIDTH - 10;  // 10 pixel margin from right edge
-    int sideButtonX = width - BUTTON_WIDTH - 10;
+    // Calculate button position with proper margin (20px from window edge, 10px from group box edge)
+    int buttonX = width - BUTTON_WIDTH - 20;  // 20 pixel margin from window edge
+    int sideButtonX = width - BUTTON_WIDTH - 20;
     
-    // Resize Download video group box (taller to accommodate progress bar)
+    // Resize Download video group box with 10px margin from window edges
     SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 10, 10, width - 20, 110, SWP_NOZORDER);
     
     // Position URL label (within download group) - moved down to align better
     SetWindowPos(GetDlgItem(hDlg, IDC_LABEL1), NULL, 20, 32, 30, 16, SWP_NOZORDER);
     
-    // Resize URL text field (within download group) - aligned with label
-    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 30, buttonX - 65, 22, SWP_NOZORDER);
+    // Resize URL text field (within download group) - leave 10px gap before buttons
+    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 30, buttonX - 55 - 10, 22, SWP_NOZORDER);
     
-    // Position progress bar below URL field
-    SetWindowPos(GetDlgItem(hDlg, IDC_PROGRESS_BAR), NULL, 55, 58, buttonX - 65, 16, SWP_NOZORDER);
+    // Position progress bar below URL field with same width as text field
+    SetWindowPos(GetDlgItem(hDlg, IDC_PROGRESS_BAR), NULL, 55, 58, buttonX - 55 - 10, 16, SWP_NOZORDER);
     
     // Position color buttons under progress bar
     SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_GREEN), NULL, 55, 78, 20, 16, SWP_NOZORDER);
@@ -1308,7 +1308,7 @@ void ResizeControls(HWND hDlg) {
     // Position listbox below the labels with more spacing
     int listY = labelY + 37;  // 37 pixels below labels (15 more pixels for label space)
     int listHeight = height - listY - 20;  // 20 pixels from bottom
-    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, listY, sideButtonX - 30, listHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, listY, sideButtonX - 20 - 10, listHeight, SWP_NOZORDER);
     
     // Position side buttons aligned with the listbox
     SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, listY, BUTTON_WIDTH, 32, SWP_NOZORDER);
