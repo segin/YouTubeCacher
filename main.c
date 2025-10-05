@@ -20,6 +20,9 @@ HBRUSH hBrushLightBlue = NULL;
 HBRUSH hBrushLightTeal = NULL;
 HBRUSH hCurrentBrush = NULL;
 
+// Flag to track programmatic text changes
+BOOL bProgrammaticChange = FALSE;
+
 // Function to get the default download path (Downloads/YouTubeCacher)
 void GetDefaultDownloadPath(wchar_t* path, size_t pathSize) {
     PWSTR downloadsPathW = NULL;
@@ -262,9 +265,11 @@ void CheckClipboardForYouTubeURL(HWND hDlg) {
             if (hData != NULL) {
                 wchar_t* clipText = (wchar_t*)GlobalLock(hData);
                 if (clipText != NULL && IsYouTubeURL(clipText)) {
+                    bProgrammaticChange = TRUE;
                     SetDlgItemTextW(hDlg, IDC_TEXT_FIELD, clipText);
                     hCurrentBrush = hBrushLightGreen;
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+                    bProgrammaticChange = FALSE;
                 }
                 GlobalUnlock(hData);
             }
@@ -432,9 +437,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
             // Check command line first, then clipboard
             if (wcslen(cmdLineURL) > 0) {
+                bProgrammaticChange = TRUE;
                 SetDlgItemTextW(hDlg, IDC_TEXT_FIELD, cmdLineURL);
                 hCurrentBrush = hBrushLightTeal;
                 InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
+                bProgrammaticChange = FALSE;
             } else {
                 // Check clipboard for YouTube URL
                 CheckClipboardForYouTubeURL(hDlg);
@@ -545,17 +552,26 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case IDC_TEXT_FIELD:
                     if (HIWORD(wParam) == EN_CHANGE) {
-                        // Check if it's a paste operation with YouTube URL
+                        // Skip processing if this is a programmatic change
+                        if (bProgrammaticChange) {
+                            break;
+                        }
+                        
+                        // Get current text
                         wchar_t buffer[MAX_BUFFER_SIZE];
                         GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, buffer, MAX_BUFFER_SIZE);
                         
-                        if (IsYouTubeURL(buffer) && hCurrentBrush != hBrushLightGreen) {
+                        // If currently light green (autopaste) and user is typing, clear autopaste status
+                        if (hCurrentBrush == hBrushLightGreen) {
+                            // User has modified the autopasted content - return to white
+                            hCurrentBrush = hBrushWhite;
+                        } else if (IsYouTubeURL(buffer) && hCurrentBrush == hBrushWhite) {
                             // Manual paste of YouTube URL - set to light blue
                             hCurrentBrush = hBrushLightBlue;
-                        } else if (hCurrentBrush != hBrushLightGreen) {
-                            // Manual input - set to white
-                            hCurrentBrush = hBrushWhite;
                         }
+                        // Note: We don't change from light blue or light teal as those indicate 
+                        // manual paste or command line input respectively
+                        
                         InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     }
                     break;

@@ -61,5 +61,6 @@ extern HBRUSH hBrushLightGreen;
 extern HBRUSH hBrushLightBlue;
 extern HBRUSH hBrushLightTeal;
 extern HBRUSH hCurrentBrush;
+extern BOOL bProgrammaticChange;
 
 #endif // YOUTUBECACHER_H
