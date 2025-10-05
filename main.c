@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include "YouTubeCacher.h"
 #include "uri.h"
@@ -14,6 +15,50 @@ HBRUSH hBrushLightGreen = NULL;
 HBRUSH hBrushLightBlue = NULL;
 HBRUSH hBrushLightTeal = NULL;
 HBRUSH hCurrentBrush = NULL;
+
+// Function to get the default download path (Downloads/YouTubeCacher)
+void GetDefaultDownloadPath(char* path, size_t pathSize) {
+    char downloadsPath[MAX_PATH];
+    
+    // Get the user's Downloads folder
+    if (SHGetFolderPath(NULL, CSIDL_PERSONAL, NULL, SHGFP_TYPE_CURRENT, downloadsPath) == S_OK) {
+        // Try to get Downloads folder specifically
+        char* lastBackslash = strrchr(downloadsPath, '\\');
+        if (lastBackslash) {
+            *lastBackslash = '\0';
+            strcat(downloadsPath, "\\Downloads");
+        }
+    } else {
+        // Fallback to user profile + Downloads
+        if (GetEnvironmentVariable("USERPROFILE", downloadsPath, sizeof(downloadsPath)) > 0) {
+            strcat(downloadsPath, "\\Downloads");
+        } else {
+            // Ultimate fallback
+            strcpy(downloadsPath, "C:\\Users\\Public\\Downloads");
+        }
+    }
+    
+    // Append YouTubeCacher subdirectory
+    snprintf(path, pathSize, "%s\\YouTubeCacher", downloadsPath);
+}
+
+// Function to create the download directory if it doesn't exist
+BOOL CreateDownloadDirectoryIfNeeded(const char* path) {
+    DWORD attributes = GetFileAttributes(path);
+    
+    // If directory doesn't exist, create it
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        return CreateDirectory(path, NULL);
+    }
+    
+    // If it exists and is a directory, return success
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
+        return TRUE;
+    }
+    
+    // If it exists but is not a directory, return failure
+    return FALSE;
+}
 
 
 
@@ -90,10 +135,16 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     UNREFERENCED_PARAMETER(lParam);
     
     switch (message) {
-        case WM_INITDIALOG:
-            // Set default values
+        case WM_INITDIALOG: {
+            // Set default download folder path
+            char defaultDownloadPath[MAX_PATH];
+            GetDefaultDownloadPath(defaultDownloadPath, sizeof(defaultDownloadPath));
+            SetDlgItemText(hDlg, IDC_FOLDER_PATH, defaultDownloadPath);
+            
+            // Set default media player path
             SetDlgItemText(hDlg, IDC_PLAYER_PATH, "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe");
             return TRUE;
+        }
             
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
@@ -279,9 +330,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     break;
                     
-                case IDC_DOWNLOAD_BTN:
-                    MessageBox(hDlg, "Download functionality not implemented yet", "Download", MB_OK);
+                case IDC_DOWNLOAD_BTN: {
+                    // Get the current download folder path from settings (for now use default)
+                    char downloadPath[MAX_PATH];
+                    GetDefaultDownloadPath(downloadPath, sizeof(downloadPath));
+                    
+                    // Create the download directory if it doesn't exist
+                    if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
+                        MessageBox(hDlg, "Failed to create download directory", "Error", MB_OK | MB_ICONERROR);
+                        break;
+                    }
+                    
+                    // TODO: Implement actual download functionality
+                    char message[MAX_PATH + 100];
+                    snprintf(message, sizeof(message), "Download directory ready: %s\n\nDownload functionality not implemented yet", downloadPath);
+                    MessageBox(hDlg, message, "Download", MB_OK);
                     break;
+                }
                     
                 case IDC_GETINFO_BTN:
                     MessageBox(hDlg, "Get Info functionality not implemented yet", "Get Info", MB_OK);
