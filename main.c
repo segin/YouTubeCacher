@@ -1083,13 +1083,7 @@ BOOL ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* valid
         return FALSE;
     }
     
-    // Test basic yt-dlp functionality
-    if (!TestYtDlpFunctionality(config->ytDlpPath)) {
-        validationInfo->result = VALIDATION_MISSING_DEPENDENCIES;
-        validationInfo->errorDetails = _wcsdup(L"yt-dlp executable found but failed basic functionality test");
-        validationInfo->suggestions = _wcsdup(L"Please ensure Python is installed and yt-dlp dependencies are available");
-        return FALSE;
-    }
+    // Skip functionality test during startup - it will be tested when actually used
     
     // Validate temporary directory access
     if (wcslen(config->defaultTempDir) > 0) {
@@ -1277,8 +1271,8 @@ void ResizeControls(HWND hDlg) {
     int height = rect.bottom - rect.top;
     
     // Calculate button position with proper margin
-    int buttonX = width - 90;
-    int sideButtonX = width - 90;
+    int buttonX = width - BUTTON_WIDTH - 10;  // 10 pixel margin from right edge
+    int sideButtonX = width - BUTTON_WIDTH - 10;
     
     // Resize Download video group box (taller to accommodate progress bar)
     SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 10, 10, width - 20, 110, SWP_NOZORDER);
