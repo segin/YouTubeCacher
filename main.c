@@ -685,7 +685,79 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    MessageBoxW(hDlg, L"Get Info functionality not implemented yet", L"Get Info", MB_OK);
+                    // Execute yt-dlp --verbose to get version information
+                    STARTUPINFOW si = {0};
+                    PROCESS_INFORMATION pi = {0};
+                    HANDLE hReadPipe, hWritePipe;
+                    SECURITY_ATTRIBUTES sa = {0};
+                    
+                    si.cb = sizeof(STARTUPINFOW);
+                    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+                    si.wShowWindow = SW_HIDE; // Hide console window
+                    
+                    // Create pipe for capturing output
+                    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+                    sa.bInheritHandle = TRUE;
+                    sa.lpSecurityDescriptor = NULL;
+                    
+                    if (CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+                        si.hStdOutput = hWritePipe;
+                        si.hStdError = hWritePipe;
+                        
+                        // Build command line: "path\to\yt-dlp.exe" --verbose
+                        wchar_t cmdLine[MAX_EXTENDED_PATH + 50];
+                        swprintf(cmdLine, MAX_EXTENDED_PATH + 50, L"\"%s\" --verbose", ytDlpPath);
+                        
+                        // Execute yt-dlp
+                        if (CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+                            // Close write handle so ReadFile will return when process ends
+                            CloseHandle(hWritePipe);
+                            
+                            // Wait for process to complete (with timeout)
+                            DWORD waitResult = WaitForSingleObject(pi.hProcess, 10000); // 10 second timeout
+                            
+                            if (waitResult == WAIT_OBJECT_0) {
+                                // Read output from pipe
+                                char buffer[4096];
+                                DWORD bytesRead;
+                                wchar_t output[2048] = L"";
+                                
+                                if (ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+                                    buffer[bytesRead] = '\0';
+                                    // Convert to wide string
+                                    MultiByteToWideChar(CP_UTF8, 0, buffer, -1, output, 2048);
+                                    
+                                    // Extract version info (look for version number in output)
+                                    wchar_t* versionStart = wcsstr(output, L"yt-dlp ");
+                                    if (versionStart) {
+                                        wchar_t* versionEnd = wcschr(versionStart, L'\n');
+                                        if (versionEnd) *versionEnd = L'\0';
+                                        MessageBoxW(hDlg, versionStart, L"yt-dlp Version Info", MB_OK | MB_ICONINFORMATION);
+                                    } else {
+                                        MessageBoxW(hDlg, output, L"yt-dlp Output", MB_OK | MB_ICONINFORMATION);
+                                    }
+                                } else {
+                                    MessageBoxW(hDlg, L"yt-dlp executed successfully but no output was captured.", L"yt-dlp Info", MB_OK | MB_ICONINFORMATION);
+                                }
+                            } else if (waitResult == WAIT_TIMEOUT) {
+                                TerminateProcess(pi.hProcess, 1);
+                                MessageBoxW(hDlg, L"yt-dlp execution timed out after 10 seconds.", L"yt-dlp Timeout", MB_OK | MB_ICONWARNING);
+                            } else {
+                                MessageBoxW(hDlg, L"Failed to wait for yt-dlp process completion.", L"yt-dlp Error", MB_OK | MB_ICONERROR);
+                            }
+                            
+                            // Clean up process handles
+                            CloseHandle(pi.hProcess);
+                            CloseHandle(pi.hThread);
+                        } else {
+                            CloseHandle(hWritePipe);
+                            MessageBoxW(hDlg, L"Failed to execute yt-dlp. Please check the path in settings.", L"yt-dlp Execution Error", MB_OK | MB_ICONERROR);
+                        }
+                        
+                        CloseHandle(hReadPipe);
+                    } else {
+                        MessageBoxW(hDlg, L"Failed to create pipe for yt-dlp output capture.", L"System Error", MB_OK | MB_ICONERROR);
+                    }
                     break;
                 }
                     
