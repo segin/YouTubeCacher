@@ -163,26 +163,97 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     // Get DPI for this window
     int dpi = GetDpiForWindowSafe(hDlg);
     
+    // Get all control handles at the start
+    HWND hIcon = GetDlgItem(hDlg, IDC_ERROR_ICON);
+    HWND hMessage = GetDlgItem(hDlg, IDC_ERROR_MESSAGE);
+    HWND hDetailsBtn = GetDlgItem(hDlg, IDC_ERROR_DETAILS_BTN);
+    HWND hCopyBtn = GetDlgItem(hDlg, IDC_ERROR_COPY_BTN);
+    HWND hOkBtn = GetDlgItem(hDlg, IDC_ERROR_OK_BTN);
+    HWND hTabControl = GetDlgItem(hDlg, IDC_ERROR_TAB_CONTROL);
+    HWND hDetailsText = GetDlgItem(hDlg, IDC_ERROR_DETAILS_TEXT);
+    HWND hDiagText = GetDlgItem(hDlg, IDC_ERROR_DIAG_TEXT);
+    HWND hSolutionText = GetDlgItem(hDlg, IDC_ERROR_SOLUTION_TEXT);
+    
     // Get the current message text for dynamic sizing
     wchar_t messageText[1024];
     GetDlgItemTextW(hDlg, IDC_ERROR_MESSAGE, messageText, 1024);
     
-    // Calculate optimal dialog size based on message content
-    int optimalWidth, baseHeight;
-    CalculateOptimalDialogSize(hDlg, messageText, &optimalWidth, &baseHeight);
+    // === STEP 1: Calculate base metrics scaled for DPI ===
+    int margin = ScaleForDpi(10, dpi);           // Standard margin
+    int iconSize = ScaleForDpi(32, dpi);         // Icon dimensions
+    int buttonWidth = ScaleForDpi(60, dpi);      // Details button width
+    int buttonHeight = ScaleForDpi(14, dpi);     // Button height
+    int smallButtonWidth = ScaleForDpi(35, dpi); // Copy/OK button width
+    int buttonGap = ScaleForDpi(10, dpi);        // Gap between buttons
     
-    // Scale expanded height
-    int expandedHeight = baseHeight + ScaleForDpi(140, dpi); // Add space for tabs/details
+    // === STEP 2: Calculate text metrics ===
+    HDC hdc = GetDC(hDlg);
+    HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    HFONT hOldFont = NULL;
+    if (hFont) hOldFont = (HFONT)SelectObject(hdc, hFont);
     
-    int newHeight = expanded ? expandedHeight : baseHeight;
+    // Get single line height for vertical centering calculations
+    TEXTMETRICW tm;
+    GetTextMetricsW(hdc, &tm);
+    int lineHeight = tm.tmHeight;
     
-    // Get current position
+    // === STEP 3: Calculate dialog width ===
+    int minWidth = ScaleForDpi(320, dpi);
+    int maxWidth = ScaleForDpi(480, dpi);
+    int textAreaWidth = maxWidth - margin - iconSize - margin - margin; // Left margin + icon + gap + right margin
+    
+    // Measure text with word wrapping to determine required height
+    RECT textRect = {0, 0, textAreaWidth, 0};
+    int textHeight = DrawTextW(hdc, messageText, -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    
+    // Calculate optimal dialog width (may be less than max if text is short)
+    int requiredWidth = textRect.right + margin + iconSize + margin + margin;
+    int dialogWidth = max(minWidth, min(maxWidth, requiredWidth));
+    
+    // Recalculate text area width based on actual dialog width
+    textAreaWidth = dialogWidth - margin - iconSize - margin - margin;
+    
+    // === STEP 4: Position icon ===
+    int iconX = margin;
+    int iconY = margin;
+    
+    // === STEP 5: Position message label ===
+    // First line of text should be vertically centered with icon center
+    int iconCenterY = iconY + iconSize / 2;
+    int textStartY = iconCenterY - lineHeight / 2;
+    
+    int messageX = iconX + iconSize + margin;
+    int messageY = textStartY;
+    int messageWidth = textAreaWidth;
+    int messageHeight = textHeight;
+    
+    // === STEP 6: Position buttons ===
+    // Buttons go below the larger of (icon bottom, text bottom)
+    int contentBottom = max(iconY + iconSize, messageY + messageHeight);
+    int buttonY = contentBottom + margin;
+    
+    // Details button on left
+    int detailsX = margin;
+    
+    // Copy and OK buttons on right
+    int okX = dialogWidth - margin - smallButtonWidth;
+    int copyX = okX - buttonGap - smallButtonWidth;
+    
+    // === STEP 7: Calculate collapsed dialog height ===
+    int collapsedHeight = buttonY + buttonHeight + margin;
+    
+    // === STEP 8: Calculate expanded height ===
+    int tabHeight = ScaleForDpi(140, dpi);
+    int expandedHeight = collapsedHeight + margin + tabHeight;
+    
+    int finalHeight = expanded ? expandedHeight : collapsedHeight;
+    
+    // === STEP 9: Position dialog on screen ===
     RECT rect;
     GetWindowRect(hDlg, &rect);
     int currentX = rect.left;
     int currentY = rect.top;
     
-    // Get screen work area for the monitor containing this dialog
     HMONITOR hMonitor = MonitorFromWindow(hDlg, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi;
     mi.cbSize = sizeof(mi);
@@ -192,41 +263,78 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     // Adjust position if dialog would go off screen
     if (currentX < screenRect.left) currentX = screenRect.left;
     if (currentY < screenRect.top) currentY = screenRect.top;
-    if (currentX + optimalWidth > screenRect.right) currentX = screenRect.right - optimalWidth;
-    if (currentY + newHeight > screenRect.bottom) currentY = screenRect.bottom - newHeight;
+    if (currentX + dialogWidth > screenRect.right) currentX = screenRect.right - dialogWidth;
+    if (currentY + finalHeight > screenRect.bottom) currentY = screenRect.bottom - finalHeight;
     
-    SetWindowPos(hDlg, NULL, currentX, currentY, optimalWidth, newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    // === STEP 10: Apply all positioning ===
+    SetWindowPos(hDlg, NULL, currentX, currentY, dialogWidth, finalHeight, SWP_NOZORDER | SWP_NOACTIVATE);
     
-    // Update message control to enable word wrapping and proper sizing
-    HWND hMessage = GetDlgItem(hDlg, IDC_ERROR_MESSAGE);
+    // Position icon
+    if (hIcon) {
+        SetWindowPos(hIcon, NULL, iconX, iconY, iconSize, iconSize, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    
+    // Position message
     if (hMessage) {
-        // Position message text with proper margins for icon
-        int iconSpace = ScaleForDpi(50, dpi);
-        int margin = ScaleForDpi(10, dpi);
-        int messageWidth = optimalWidth - iconSpace - margin;
-        int messageHeight = baseHeight - ScaleForDpi(60, dpi); // Leave space for buttons
+        SetWindowPos(hMessage, NULL, messageX, messageY, messageWidth, messageHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    
+    // Position buttons
+    if (hDetailsBtn) {
+        SetWindowPos(hDetailsBtn, NULL, detailsX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    
+    if (hCopyBtn) {
+        SetWindowPos(hCopyBtn, NULL, copyX, buttonY, smallButtonWidth, buttonHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    
+    if (hOkBtn) {
+        SetWindowPos(hOkBtn, NULL, okX, buttonY, smallButtonWidth, buttonHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    
+    // Position expanded controls if needed
+    if (expanded) {
+        int tabY = buttonY + buttonHeight + margin;
+        int tabWidth = dialogWidth - 2 * margin;
         
-        SetWindowPos(hMessage, NULL, iconSpace, margin, messageWidth, messageHeight, 
-                     SWP_NOZORDER | SWP_NOACTIVATE);
+        if (hTabControl) {
+            SetWindowPos(hTabControl, NULL, margin, tabY, tabWidth, tabHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        
+        // Position text areas inside tab control
+        int textX = margin + ScaleForDpi(5, dpi);
+        int textY = tabY + ScaleForDpi(20, dpi); // Account for tab header
+        int textW = tabWidth - ScaleForDpi(10, dpi);
+        int textH = tabHeight - ScaleForDpi(25, dpi);
+        
+        if (hDetailsText) {
+            SetWindowPos(hDetailsText, NULL, textX, textY, textW, textH, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        
+        if (hDiagText) {
+            SetWindowPos(hDiagText, NULL, textX, textY, textW, textH, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        
+        if (hSolutionText) {
+            SetWindowPos(hSolutionText, NULL, textX, textY, textW, textH, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
     }
     
     // Show/hide expanded controls
-    HWND hTabControl = GetDlgItem(hDlg, IDC_ERROR_TAB_CONTROL);
-    HWND hDetailsText = GetDlgItem(hDlg, IDC_ERROR_DETAILS_TEXT);
-    HWND hDiagText = GetDlgItem(hDlg, IDC_ERROR_DIAG_TEXT);
-    HWND hSolutionText = GetDlgItem(hDlg, IDC_ERROR_SOLUTION_TEXT);
-    HWND hCopyBtn = GetDlgItem(hDlg, IDC_ERROR_COPY_BTN);
-    
     int showState = expanded ? SW_SHOW : SW_HIDE;
-    ShowWindow(hTabControl, showState);
-    ShowWindow(hDetailsText, showState);
-    ShowWindow(hDiagText, showState);
-    ShowWindow(hSolutionText, showState);
-    ShowWindow(hCopyBtn, showState);
+    if (hTabControl) ShowWindow(hTabControl, showState);
+    if (hDetailsText) ShowWindow(hDetailsText, showState);
+    if (hDiagText) ShowWindow(hDiagText, showState);
+    if (hSolutionText) ShowWindow(hSolutionText, showState);
     
     // Update details button text
-    HWND hDetailsBtn = GetDlgItem(hDlg, IDC_ERROR_DETAILS_BTN);
-    SetWindowTextW(hDetailsBtn, expanded ? L"<< Details" : L"Details >>");
+    if (hDetailsBtn) {
+        SetWindowTextW(hDetailsBtn, expanded ? L"<< Details" : L"Details >>");
+    }
+    
+    // Cleanup
+    if (hOldFont) SelectObject(hdc, hOldFont);
+    ReleaseDC(hDlg, hdc);
 }
 
 // Initialize error dialog tabs
