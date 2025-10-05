@@ -11,6 +11,36 @@
 #define _countof(array) (sizeof(array) / sizeof(array[0]))
 #endif
 
+// HiDPI helper functions
+static int GetDpiForWindowSafe(HWND hwnd) {
+    // Try to use GetDpiForWindow (Windows 10 1607+)
+    typedef UINT (WINAPI *GetDpiForWindowFunc)(HWND);
+    static GetDpiForWindowFunc pGetDpiForWindow = NULL;
+    static BOOL checked = FALSE;
+    
+    if (!checked) {
+        HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+        if (hUser32) {
+            pGetDpiForWindow = (GetDpiForWindowFunc)GetProcAddress(hUser32, "GetDpiForWindow");
+        }
+        checked = TRUE;
+    }
+    
+    if (pGetDpiForWindow) {
+        return pGetDpiForWindow(hwnd);
+    }
+    
+    // Fallback to system DPI
+    HDC hdc = GetDC(NULL);
+    int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+    ReleaseDC(NULL, hdc);
+    return dpi;
+}
+
+static int ScaleForDpi(int value, int dpi) {
+    return MulDiv(value, dpi, 96); // 96 is the standard DPI
+}
+
 // Tab names for the error dialog
 static const wchar_t* TAB_NAMES[] = {
     L"Error Details",
@@ -78,10 +108,13 @@ void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog) {
 
 // Resize error dialog for expanded/collapsed state
 void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
-    // Use fixed, reasonable dimensions for Win32 design
-    int baseWidth = 320;
-    int baseHeight = 120;     // Height for collapsed state
-    int expandedHeight = 240; // Height for expanded state
+    // Get DPI for this window
+    int dpi = GetDpiForWindowSafe(hDlg);
+    
+    // Scale dimensions for current DPI
+    int baseWidth = ScaleForDpi(320, dpi);
+    int baseHeight = ScaleForDpi(120, dpi);     // Height for collapsed state
+    int expandedHeight = ScaleForDpi(240, dpi); // Height for expanded state
     
     int newHeight = expanded ? expandedHeight : baseHeight;
     
@@ -91,9 +124,12 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int currentX = rect.left;
     int currentY = rect.top;
     
-    // Check screen bounds and adjust if necessary
-    RECT screenRect;
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &screenRect, 0);
+    // Get screen work area for the monitor containing this dialog
+    HMONITOR hMonitor = MonitorFromWindow(hDlg, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi;
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(hMonitor, &mi);
+    RECT screenRect = mi.rcWork;
     
     // Adjust position if dialog would go off screen
     if (currentX < screenRect.left) currentX = screenRect.left;
@@ -259,16 +295,29 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 SetDlgItemTextW(hDlg, IDC_ERROR_SOLUTION_TEXT, errorDialog->solutions);
             }
             
-            // Center dialog on parent window with screen bounds checking
+            // Center dialog on parent window with HiDPI-aware screen bounds checking
             HWND hParent = GetParent(hDlg);
-            RECT parentRect, dialogRect, screenRect;
+            RECT parentRect, dialogRect;
             
             GetWindowRect(hDlg, &dialogRect);
             int dialogWidth = dialogRect.right - dialogRect.left;
             int dialogHeight = dialogRect.bottom - dialogRect.top;
             
-            // Get screen work area
-            SystemParametersInfoW(SPI_GETWORKAREA, 0, &screenRect, 0);
+            // Get screen work area for the appropriate monitor
+            HMONITOR hMonitor;
+            MONITORINFO mi;
+            mi.cbSize = sizeof(mi);
+            
+            if (hParent && GetWindowRect(hParent, &parentRect)) {
+                // Use monitor containing parent window
+                hMonitor = MonitorFromWindow(hParent, MONITOR_DEFAULTTONEAREST);
+            } else {
+                // Use monitor containing dialog
+                hMonitor = MonitorFromWindow(hDlg, MONITOR_DEFAULTTONEAREST);
+            }
+            
+            GetMonitorInfoW(hMonitor, &mi);
+            RECT screenRect = mi.rcWork;
             
             int x, y;
             
@@ -278,8 +327,8 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 y = parentRect.top + (parentRect.bottom - parentRect.top - dialogHeight) / 2;
             } else {
                 // Center on screen if no parent
-                x = (screenRect.right - screenRect.left - dialogWidth) / 2;
-                y = (screenRect.bottom - screenRect.top - dialogHeight) / 2;
+                x = screenRect.left + (screenRect.right - screenRect.left - dialogWidth) / 2;
+                y = screenRect.top + (screenRect.bottom - screenRect.top - dialogHeight) / 2;
             }
             
             // Adjust if any edge would be off screen
