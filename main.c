@@ -915,6 +915,37 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
         case WM_INITDIALOG: {
             // Load settings from registry (with defaults if not found)
             LoadSettings(hDlg);
+            
+            // Apply DPI-aware positioning (similar to error dialog)
+            HWND hParent = GetParent(hDlg);
+            if (hParent) {
+                RECT parentRect, dialogRect;
+                GetWindowRect(hDlg, &dialogRect);
+                GetWindowRect(hParent, &parentRect);
+                
+                int dialogWidth = dialogRect.right - dialogRect.left;
+                int dialogHeight = dialogRect.bottom - dialogRect.top;
+                
+                // Get monitor-specific work area for HiDPI awareness
+                HMONITOR hMonitor = MonitorFromWindow(hParent, MONITOR_DEFAULTTONEAREST);
+                MONITORINFO mi;
+                mi.cbSize = sizeof(mi);
+                GetMonitorInfoW(hMonitor, &mi);
+                RECT screenRect = mi.rcWork;
+                
+                // Center on parent window
+                int x = parentRect.left + (parentRect.right - parentRect.left - dialogWidth) / 2;
+                int y = parentRect.top + (parentRect.bottom - parentRect.top - dialogHeight) / 2;
+                
+                // Adjust if any edge would be off screen
+                if (x < screenRect.left) x = screenRect.left;
+                if (y < screenRect.top) y = screenRect.top;
+                if (x + dialogWidth > screenRect.right) x = screenRect.right - dialogWidth;
+                if (y + dialogHeight > screenRect.bottom) y = screenRect.bottom - dialogHeight;
+                
+                SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+            }
+            
             return TRUE;
         }
             
@@ -1011,18 +1042,46 @@ INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 SendMessageW(pProgress->hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
                 SendMessageW(pProgress->hProgressBar, PBM_SETPOS, 0, 0);
                 
-                // Center the dialog
-                RECT rcParent, rcDialog;
+                // Center the dialog with HiDPI awareness
                 HWND hParent = GetParent(hDlg);
-                if (hParent) {
-                    GetWindowRect(hParent, &rcParent);
-                } else {
-                    SystemParametersInfoW(SPI_GETWORKAREA, 0, &rcParent, 0);
-                }
-                GetWindowRect(hDlg, &rcDialog);
+                RECT parentRect, dialogRect;
                 
-                int x = rcParent.left + (rcParent.right - rcParent.left - (rcDialog.right - rcDialog.left)) / 2;
-                int y = rcParent.top + (rcParent.bottom - rcParent.top - (rcDialog.bottom - rcDialog.top)) / 2;
+                GetWindowRect(hDlg, &dialogRect);
+                int dialogWidth = dialogRect.right - dialogRect.left;
+                int dialogHeight = dialogRect.bottom - dialogRect.top;
+                
+                // Get monitor-specific work area for HiDPI awareness
+                HMONITOR hMonitor;
+                MONITORINFO mi;
+                mi.cbSize = sizeof(mi);
+                
+                if (hParent && GetWindowRect(hParent, &parentRect)) {
+                    hMonitor = MonitorFromWindow(hParent, MONITOR_DEFAULTTONEAREST);
+                } else {
+                    hMonitor = MonitorFromWindow(hDlg, MONITOR_DEFAULTTONEAREST);
+                }
+                
+                GetMonitorInfoW(hMonitor, &mi);
+                RECT screenRect = mi.rcWork;
+                
+                int x, y;
+                
+                if (hParent && GetWindowRect(hParent, &parentRect)) {
+                    // Center on parent window
+                    x = parentRect.left + (parentRect.right - parentRect.left - dialogWidth) / 2;
+                    y = parentRect.top + (parentRect.bottom - parentRect.top - dialogHeight) / 2;
+                } else {
+                    // Center on screen if no parent
+                    x = screenRect.left + (screenRect.right - screenRect.left - dialogWidth) / 2;
+                    y = screenRect.top + (screenRect.bottom - screenRect.top - dialogHeight) / 2;
+                }
+                
+                // Adjust if any edge would be off screen
+                if (x < screenRect.left) x = screenRect.left;
+                if (y < screenRect.top) y = screenRect.top;
+                if (x + dialogWidth > screenRect.right) x = screenRect.right - dialogWidth;
+                if (y + dialogHeight > screenRect.bottom) y = screenRect.bottom - dialogHeight;
+                
                 SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
             }
             return TRUE;

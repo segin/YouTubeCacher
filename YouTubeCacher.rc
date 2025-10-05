@@ -50,40 +50,40 @@ BEGIN
 END
 
 
-// Settings Dialog
-IDD_SETTINGS DIALOGEX 0, 0, 320, 175
+// Settings Dialog - Optimized with proper Win32 metrics
+IDD_SETTINGS DIALOGEX 0, 0, 280, 155
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Settings"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT           "yt-dlp:", IDC_YTDLP_LABEL, 10, 10, 40, 10
-    EDITTEXT        IDC_YTDLP_PATH, 10, 22, 270, 16, ES_AUTOHSCROLL | WS_TABSTOP
-    PUSHBUTTON      "...", IDC_YTDLP_BROWSE, 285, 22, 25, 16
+    LTEXT           "yt-dlp:", IDC_YTDLP_LABEL, 7, 7, 35, 8
+    EDITTEXT        IDC_YTDLP_PATH, 7, 17, 250, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    PUSHBUTTON      "...", IDC_YTDLP_BROWSE, 260, 17, 16, 14
     
-    LTEXT           "Download folder:", IDC_FOLDER_LABEL, 10, 45, 70, 10
-    EDITTEXT        IDC_FOLDER_PATH, 10, 57, 270, 16, ES_AUTOHSCROLL | WS_TABSTOP
-    PUSHBUTTON      "...", IDC_FOLDER_BROWSE, 285, 57, 25, 16
+    LTEXT           "Download folder:", IDC_FOLDER_LABEL, 7, 37, 65, 8
+    EDITTEXT        IDC_FOLDER_PATH, 7, 47, 250, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    PUSHBUTTON      "...", IDC_FOLDER_BROWSE, 260, 47, 16, 14
     
-    LTEXT           "Media player:", IDC_PLAYER_LABEL, 10, 80, 60, 10
-    EDITTEXT        IDC_PLAYER_PATH, 10, 92, 270, 16, ES_AUTOHSCROLL | WS_TABSTOP
-    PUSHBUTTON      "...", IDC_PLAYER_BROWSE, 285, 92, 25, 16
+    LTEXT           "Media player:", IDC_PLAYER_LABEL, 7, 67, 55, 8
+    EDITTEXT        IDC_PLAYER_PATH, 7, 77, 250, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    PUSHBUTTON      "...", IDC_PLAYER_BROWSE, 260, 77, 16, 14
     
-    LTEXT           "Custom yt-dlp arguments:", IDC_CUSTOM_ARGS_LABEL, 10, 115, 100, 10
-    EDITTEXT        IDC_CUSTOM_ARGS_FIELD, 10, 127, 300, 16, ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT           "Custom yt-dlp arguments:", IDC_CUSTOM_ARGS_LABEL, 7, 97, 95, 8
+    EDITTEXT        IDC_CUSTOM_ARGS_FIELD, 7, 107, 269, 14, ES_AUTOHSCROLL | WS_TABSTOP
     
-    DEFPUSHBUTTON   "OK", IDOK, 210, 150, 45, 16
-    PUSHBUTTON      "Cancel", IDCANCEL, 260, 150, 45, 16
+    DEFPUSHBUTTON   "OK", IDOK, 190, 135, 32, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 227, 135, 32, 14
 END
 
-// Progress Dialog
-IDD_PROGRESS DIALOGEX 0, 0, 300, 100
+// Progress Dialog - Optimized with proper Win32 metrics
+IDD_PROGRESS DIALOGEX 0, 0, 260, 80
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Operation in Progress"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT           "Initializing...", IDC_PROGRESS_STATUS, 10, 10, 280, 20, SS_PATHELLIPSIS
-    CONTROL         "", IDC_PROGRESS_PROGRESS, "msctls_progress32", WS_BORDER, 10, 35, 280, 16
-    PUSHBUTTON      "Cancel", IDC_PROGRESS_CANCEL, 125, 65, 50, 20
+    LTEXT           "Initializing...", IDC_PROGRESS_STATUS, 7, 7, 246, 8, SS_PATHELLIPSIS
+    CONTROL         "", IDC_PROGRESS_PROGRESS, "msctls_progress32", WS_BORDER, 7, 20, 246, 14
+    PUSHBUTTON      "Cancel", IDC_PROGRESS_CANCEL, 114, 45, 32, 14
 END
 
 // Enhanced Error Dialog
