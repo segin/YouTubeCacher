@@ -443,7 +443,31 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
     // Get system temp directory
     DWORD result = GetTempPathW((DWORD)tempDirSize, tempDir);
     if (result == 0 || result >= tempDirSize) {
-        return FALSE;
+        // Fallback to user's local app data if GetTempPath fails
+        PWSTR localAppDataW = NULL;
+        HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
+        if (SUCCEEDED(hr) && localAppDataW) {
+            swprintf(tempDir, tempDirSize, L"%ls\\Temp\\", localAppDataW);
+            CoTaskMemFree(localAppDataW);
+        } else {
+            // Ultimate fallback to current directory
+            wcscpy(tempDir, L".\\");
+        }
+    }
+    
+    // Validate that we're not trying to use a system directory
+    if (wcsstr(tempDir, L"\\Windows\\") != NULL || 
+        wcsstr(tempDir, L"\\System32\\") != NULL ||
+        wcsstr(tempDir, L"\\SysWOW64\\") != NULL) {
+        // Force fallback to user's local app data
+        PWSTR localAppDataW = NULL;
+        HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
+        if (SUCCEEDED(hr) && localAppDataW) {
+            swprintf(tempDir, tempDirSize, L"%ls\\YouTubeCacher\\Temp\\", localAppDataW);
+            CoTaskMemFree(localAppDataW);
+        } else {
+            wcscpy(tempDir, L".\\temp\\");
+        }
     }
     
     // Append unique subdirectory name
@@ -457,26 +481,71 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
     wcscat(tempDir, uniqueName);
     wcscat(tempDir, L"\\");
     
-    // Create the directory
+    // Create the directory (and parent directories if needed)
+    wchar_t parentDir[MAX_EXTENDED_PATH];
+    wcscpy(parentDir, tempDir);
+    wchar_t* lastSlash = wcsrchr(parentDir, L'\\');
+    if (lastSlash) {
+        *lastSlash = L'\0';
+        CreateDirectoryW(parentDir, NULL); // Create parent if it doesn't exist
+    }
+    
     return CreateDirectoryW(tempDir, NULL);
 }
 
 BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
-    // Try system temp directory first
+    // Try user's local app data first (safer than system temp)
+    PWSTR localAppDataW = NULL;
+    HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
+    if (SUCCEEDED(hr) && localAppDataW) {
+        wchar_t uniqueName[64];
+        swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+        swprintf(tempPath, pathSize, L"%ls\\YouTubeCacher\\Temp\\%ls\\", localAppDataW, uniqueName);
+        CoTaskMemFree(localAppDataW);
+        
+        // Create parent directories
+        wchar_t parentDir[MAX_EXTENDED_PATH];
+        wcscpy(parentDir, tempPath);
+        wchar_t* lastSlash = wcsrchr(parentDir, L'\\');
+        if (lastSlash) {
+            *lastSlash = L'\0';
+            // Create intermediate directories
+            wchar_t* slash = wcschr(parentDir + 3, L'\\'); // Skip drive letter
+            while (slash) {
+                *slash = L'\0';
+                CreateDirectoryW(parentDir, NULL);
+                *slash = L'\\';
+                slash = wcschr(slash + 1, L'\\');
+            }
+            CreateDirectoryW(parentDir, NULL);
+        }
+        
+        if (CreateDirectoryW(tempPath, NULL)) {
+            return TRUE;
+        }
+    }
+    
+    // Try system temp directory as second option
     DWORD result = GetTempPathW((DWORD)pathSize, tempPath);
     if (result > 0 && result < pathSize) {
-        wchar_t uniqueName[64];
-        swprintf(uniqueName, 64, L"YouTubeCacher_%lu\\", GetTickCount());
-        
-        if (wcslen(tempPath) + wcslen(uniqueName) < pathSize) {
-            wcscat(tempPath, uniqueName);
-            if (CreateDirectoryW(tempPath, NULL)) {
-                return TRUE;
+        // Validate it's not a system directory
+        if (wcsstr(tempPath, L"\\Windows\\") == NULL && 
+            wcsstr(tempPath, L"\\System32\\") == NULL &&
+            wcsstr(tempPath, L"\\SysWOW64\\") == NULL) {
+            
+            wchar_t uniqueName[64];
+            swprintf(uniqueName, 64, L"YouTubeCacher_%lu\\", GetTickCount());
+            
+            if (wcslen(tempPath) + wcslen(uniqueName) < pathSize) {
+                wcscat(tempPath, uniqueName);
+                if (CreateDirectoryW(tempPath, NULL)) {
+                    return TRUE;
+                }
             }
         }
     }
     
-    // Fallback to current directory
+    // Final fallback to current directory
     wcscpy(tempPath, L".\\temp\\");
     return CreateDirectoryW(tempPath, NULL);
 }
