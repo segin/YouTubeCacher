@@ -48,18 +48,22 @@ void GetDefaultDownloadPath(wchar_t* path, size_t pathSize) {
 
 // Function to get the default yt-dlp path (check WinGet installation)
 void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize) {
-    wchar_t localAppData[MAX_EXTENDED_PATH];
+    PWSTR localAppDataW = NULL;
     wchar_t ytDlpPath[MAX_EXTENDED_PATH];
     
     // Initialize path as empty
     path[0] = L'\0';
     
-    // Get %LocalAppData% environment variable
-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_EXTENDED_PATH) > 0) {
+    // Get the user's LocalAppData folder using the proper API
+    HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
+    if (SUCCEEDED(hr) && localAppDataW != NULL) {
         // Construct the WinGet yt-dlp path
         int result = swprintf(ytDlpPath, MAX_EXTENDED_PATH, 
                 L"%s\\Microsoft\\WinGet\\Packages\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\\yt-dlp.exe",
-                localAppData);
+                localAppDataW);
+        
+        // Free the allocated path string
+        CoTaskMemFree(localAppDataW);
         
         // Check if path was truncated
         if (result > 0 && (size_t)result < MAX_EXTENDED_PATH) {
