@@ -324,6 +324,15 @@ void LogWarning(const wchar_t* category, const wchar_t* message);
 void LogInfo(const wchar_t* category, const wchar_t* message);
 void CleanupErrorLogging(void);
 
+// Startup validation and configuration management functions
+BOOL InitializeYtDlpSystem(HWND hMainWindow);
+BOOL LoadYtDlpConfig(YtDlpConfig* config);
+BOOL SaveYtDlpConfig(const YtDlpConfig* config);
+BOOL ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo);
+BOOL MigrateYtDlpConfiguration(YtDlpConfig* config);
+BOOL SetupDefaultYtDlpConfiguration(YtDlpConfig* config);
+void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInfo);
+
 // Global variables (extern declarations)
 extern wchar_t cmdLineURL[MAX_URL_LENGTH];
 extern HBRUSH hBrushWhite;

@@ -851,6 +851,398 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     return TRUE;
 }
 
+// Startup validation and configuration management functions
+
+BOOL InitializeYtDlpSystem(HWND hMainWindow) {
+    // Load configuration from registry
+    YtDlpConfig config;
+    if (!LoadYtDlpConfig(&config)) {
+        // Failed to load configuration, set up defaults
+        if (!SetupDefaultYtDlpConfiguration(&config)) {
+            ShowConfigurationError(hMainWindow, L"Failed to initialize yt-dlp configuration with default values.");
+            return FALSE;
+        }
+        
+        // Save the default configuration
+        SaveYtDlpConfig(&config);
+    }
+    
+    // Validate the loaded/default configuration
+    ValidationInfo validationInfo;
+    if (!ValidateYtDlpConfiguration(&config, &validationInfo)) {
+        // Configuration validation failed - notify user
+        NotifyConfigurationIssues(hMainWindow, &validationInfo);
+        FreeValidationInfo(&validationInfo);
+        return FALSE;
+    }
+    
+    FreeValidationInfo(&validationInfo);
+    return TRUE;
+}
+
+BOOL LoadYtDlpConfig(YtDlpConfig* config) {
+    if (!config) return FALSE;
+    
+    // Initialize with default values first
+    memset(config, 0, sizeof(YtDlpConfig));
+    
+    // Load yt-dlp path from registry
+    if (!LoadSettingFromRegistry(REG_YTDLP_PATH, config->ytDlpPath, MAX_EXTENDED_PATH)) {
+        // No path in registry, use default
+        GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
+    }
+    
+    // Load default temporary directory
+    wchar_t tempBuffer[MAX_EXTENDED_PATH];
+    if (LoadSettingFromRegistry(L"DefaultTempDir", tempBuffer, MAX_EXTENDED_PATH)) {
+        wcscpy(config->defaultTempDir, tempBuffer);
+    } else {
+        // Use system temp directory as default
+        DWORD result = GetTempPathW(MAX_EXTENDED_PATH, config->defaultTempDir);
+        if (result == 0 || result >= MAX_EXTENDED_PATH) {
+            wcscpy(config->defaultTempDir, L"C:\\Temp\\");
+        }
+    }
+    
+    // Load custom yt-dlp arguments
+    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
+        config->defaultArgs[0] = L'\0';
+    }
+    
+    // Load timeout setting (stored as string in registry)
+    wchar_t timeoutStr[32];
+    if (LoadSettingFromRegistry(L"TimeoutSeconds", timeoutStr, 32)) {
+        config->timeoutSeconds = (DWORD)wcstoul(timeoutStr, NULL, 10);
+        if (config->timeoutSeconds == 0) {
+            config->timeoutSeconds = 300; // Default 5 minutes
+        }
+    } else {
+        config->timeoutSeconds = 300; // Default 5 minutes
+    }
+    
+    // Load boolean settings
+    wchar_t boolBuffer[16];
+    if (LoadSettingFromRegistry(L"EnableVerboseLogging", boolBuffer, 16)) {
+        config->enableVerboseLogging = (wcscmp(boolBuffer, L"1") == 0);
+    } else {
+        config->enableVerboseLogging = FALSE;
+    }
+    
+    if (LoadSettingFromRegistry(L"AutoRetryOnFailure", boolBuffer, 16)) {
+        config->autoRetryOnFailure = (wcscmp(boolBuffer, L"1") == 0);
+    } else {
+        config->autoRetryOnFailure = FALSE;
+    }
+    
+    // Load temp directory strategy
+    wchar_t strategyStr[32];
+    if (LoadSettingFromRegistry(L"TempDirStrategy", strategyStr, 32)) {
+        config->tempDirStrategy = (TempDirStrategy)wcstoul(strategyStr, NULL, 10);
+        if (config->tempDirStrategy > TEMP_DIR_APPDATA) {
+            config->tempDirStrategy = TEMP_DIR_SYSTEM; // Default
+        }
+    } else {
+        config->tempDirStrategy = TEMP_DIR_SYSTEM;
+    }
+    
+    return TRUE;
+}
+
+BOOL SaveYtDlpConfig(const YtDlpConfig* config) {
+    if (!config) return FALSE;
+    
+    BOOL allSuccess = TRUE;
+    
+    // Save yt-dlp path
+    if (!SaveSettingToRegistry(REG_YTDLP_PATH, config->ytDlpPath)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save default temporary directory
+    if (!SaveSettingToRegistry(L"DefaultTempDir", config->defaultTempDir)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save custom yt-dlp arguments
+    if (!SaveSettingToRegistry(REG_CUSTOM_ARGS, config->defaultArgs)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save timeout setting
+    wchar_t timeoutStr[32];
+    swprintf(timeoutStr, 32, L"%lu", config->timeoutSeconds);
+    if (!SaveSettingToRegistry(L"TimeoutSeconds", timeoutStr)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save boolean settings
+    if (!SaveSettingToRegistry(L"EnableVerboseLogging", config->enableVerboseLogging ? L"1" : L"0")) {
+        allSuccess = FALSE;
+    }
+    
+    if (!SaveSettingToRegistry(L"AutoRetryOnFailure", config->autoRetryOnFailure ? L"1" : L"0")) {
+        allSuccess = FALSE;
+    }
+    
+    // Save temp directory strategy
+    wchar_t strategyStr[32];
+    swprintf(strategyStr, 32, L"%d", (int)config->tempDirStrategy);
+    if (!SaveSettingToRegistry(L"TempDirStrategy", strategyStr)) {
+        allSuccess = FALSE;
+    }
+    
+    return allSuccess;
+}
+
+BOOL TestYtDlpFunctionality(const wchar_t* path) {
+    if (!path || wcslen(path) == 0) return FALSE;
+    
+    // Build command line to test yt-dlp version
+    size_t cmdLineLen = wcslen(path) + 20;
+    wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
+    if (!cmdLine) return FALSE;
+    
+    swprintf(cmdLine, cmdLineLen, L"\"%ls\" --version", path);
+    
+    // Create pipes for output capture
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+    HANDLE hRead = NULL, hWrite = NULL;
+    
+    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
+        free(cmdLine);
+        return FALSE;
+    }
+    
+    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+    
+    // Set up process creation
+    STARTUPINFOW si = {0};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = hWrite;
+    si.hStdError = hWrite;
+    si.hStdInput = NULL;
+    
+    PROCESS_INFORMATION pi = {0};
+    
+    // Create process
+    BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+    
+    if (!processCreated) {
+        free(cmdLine);
+        CloseHandle(hRead);
+        CloseHandle(hWrite);
+        return FALSE;
+    }
+    
+    CloseHandle(hWrite);
+    
+    // Wait for process completion with timeout
+    DWORD waitResult = WaitForSingleObject(pi.hProcess, 10000); // 10 second timeout
+    
+    BOOL success = FALSE;
+    if (waitResult == WAIT_OBJECT_0) {
+        // Process completed, check exit code
+        DWORD exitCode;
+        if (GetExitCodeProcess(pi.hProcess, &exitCode) && exitCode == 0) {
+            success = TRUE;
+        }
+    } else {
+        // Process timed out or failed, terminate it
+        TerminateProcess(pi.hProcess, 1);
+    }
+    
+    // Cleanup
+    free(cmdLine);
+    CloseHandle(hRead);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    
+    return success;
+}
+
+BOOL ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo) {
+    if (!config || !validationInfo) return FALSE;
+    
+    // Initialize validation info
+    memset(validationInfo, 0, sizeof(ValidationInfo));
+    
+    // Check if yt-dlp path is set and valid
+    if (wcslen(config->ytDlpPath) == 0) {
+        validationInfo->result = VALIDATION_NOT_FOUND;
+        validationInfo->errorDetails = _wcsdup(L"yt-dlp path is not configured");
+        validationInfo->suggestions = _wcsdup(L"Please configure the yt-dlp path in File > Settings");
+        return FALSE;
+    }
+    
+    // Validate the yt-dlp executable
+    if (!ValidateYtDlpExecutable(config->ytDlpPath)) {
+        validationInfo->result = VALIDATION_NOT_EXECUTABLE;
+        validationInfo->errorDetails = _wcsdup(L"yt-dlp executable not found or not accessible");
+        validationInfo->suggestions = _wcsdup(L"Please check the yt-dlp path in File > Settings and ensure the file exists and is executable");
+        return FALSE;
+    }
+    
+    // Test basic yt-dlp functionality
+    if (!TestYtDlpFunctionality(config->ytDlpPath)) {
+        validationInfo->result = VALIDATION_MISSING_DEPENDENCIES;
+        validationInfo->errorDetails = _wcsdup(L"yt-dlp executable found but failed basic functionality test");
+        validationInfo->suggestions = _wcsdup(L"Please ensure Python is installed and yt-dlp dependencies are available");
+        return FALSE;
+    }
+    
+    // Validate temporary directory access
+    if (wcslen(config->defaultTempDir) > 0) {
+        DWORD attributes = GetFileAttributesW(config->defaultTempDir);
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            // Try to create the directory
+            if (!CreateDirectoryW(config->defaultTempDir, NULL)) {
+                validationInfo->result = VALIDATION_PERMISSION_DENIED;
+                validationInfo->errorDetails = _wcsdup(L"Default temporary directory is not accessible");
+                validationInfo->suggestions = _wcsdup(L"Please check permissions for the temporary directory or choose a different location");
+                return FALSE;
+            }
+        }
+    }
+    
+    // Validate custom arguments if present
+    if (wcslen(config->defaultArgs) > 0) {
+        if (!ValidateYtDlpArguments(config->defaultArgs)) {
+            validationInfo->result = VALIDATION_PERMISSION_DENIED;
+            validationInfo->errorDetails = _wcsdup(L"Custom yt-dlp arguments contain potentially dangerous options");
+            validationInfo->suggestions = _wcsdup(L"Please remove --exec, --batch-file, or other potentially harmful arguments from custom arguments");
+            return FALSE;
+        }
+    }
+    
+    // All validation passed
+    validationInfo->result = VALIDATION_OK;
+    validationInfo->version = _wcsdup(L"Configuration validated successfully");
+    return TRUE;
+}
+
+BOOL MigrateYtDlpConfiguration(YtDlpConfig* config) {
+    if (!config) return FALSE;
+    
+    BOOL migrationPerformed = FALSE;
+    
+    // Check if this is an old configuration that needs migration
+    // For now, we'll just ensure all fields have reasonable defaults
+    
+    // Migrate timeout if it's unreasonable
+    if (config->timeoutSeconds < 30 || config->timeoutSeconds > 3600) {
+        config->timeoutSeconds = 300; // 5 minutes default
+        migrationPerformed = TRUE;
+    }
+    
+    // Migrate temp directory strategy if invalid
+    if (config->tempDirStrategy > TEMP_DIR_APPDATA) {
+        config->tempDirStrategy = TEMP_DIR_SYSTEM;
+        migrationPerformed = TRUE;
+    }
+    
+    // Ensure temp directory is set
+    if (wcslen(config->defaultTempDir) == 0) {
+        DWORD result = GetTempPathW(MAX_EXTENDED_PATH, config->defaultTempDir);
+        if (result == 0 || result >= MAX_EXTENDED_PATH) {
+            wcscpy(config->defaultTempDir, L"C:\\Temp\\");
+        }
+        migrationPerformed = TRUE;
+    }
+    
+    // If migration was performed, save the updated configuration
+    if (migrationPerformed) {
+        SaveYtDlpConfig(config);
+    }
+    
+    return TRUE;
+}
+
+BOOL SetupDefaultYtDlpConfiguration(YtDlpConfig* config) {
+    if (!config) return FALSE;
+    
+    // Initialize all fields to default values
+    memset(config, 0, sizeof(YtDlpConfig));
+    
+    // Set default yt-dlp path
+    GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
+    
+    // Set default temporary directory
+    DWORD result = GetTempPathW(MAX_EXTENDED_PATH, config->defaultTempDir);
+    if (result == 0 || result >= MAX_EXTENDED_PATH) {
+        wcscpy(config->defaultTempDir, L"C:\\Temp\\");
+    }
+    
+    // Set default arguments (empty)
+    config->defaultArgs[0] = L'\0';
+    
+    // Set default timeout (5 minutes)
+    config->timeoutSeconds = 300;
+    
+    // Set default boolean options
+    config->enableVerboseLogging = FALSE;
+    config->autoRetryOnFailure = FALSE;
+    
+    // Set default temp directory strategy
+    config->tempDirStrategy = TEMP_DIR_SYSTEM;
+    
+    return TRUE;
+}
+
+void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInfo) {
+    if (!validationInfo) return;
+    
+    wchar_t title[256];
+    wchar_t message[1024];
+    
+    switch (validationInfo->result) {
+        case VALIDATION_NOT_FOUND:
+            wcscpy(title, L"yt-dlp Not Found");
+            swprintf(message, 1024, L"yt-dlp could not be found.\n\n%ls\n\n%ls", 
+                    validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
+                    validationInfo->suggestions ? validationInfo->suggestions : L"Please check your configuration");
+            break;
+            
+        case VALIDATION_NOT_EXECUTABLE:
+            wcscpy(title, L"yt-dlp Not Executable");
+            swprintf(message, 1024, L"yt-dlp executable is not valid or accessible.\n\n%ls\n\n%ls", 
+                    validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
+                    validationInfo->suggestions ? validationInfo->suggestions : L"Please check your configuration");
+            break;
+            
+        case VALIDATION_MISSING_DEPENDENCIES:
+            wcscpy(title, L"yt-dlp Dependencies Missing");
+            swprintf(message, 1024, L"yt-dlp is installed but missing required dependencies.\n\n%ls\n\n%ls", 
+                    validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
+                    validationInfo->suggestions ? validationInfo->suggestions : L"Please install Python and yt-dlp dependencies");
+            break;
+            
+        case VALIDATION_VERSION_INCOMPATIBLE:
+            wcscpy(title, L"yt-dlp Version Incompatible");
+            swprintf(message, 1024, L"yt-dlp version is not compatible.\n\n%ls\n\n%ls", 
+                    validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
+                    validationInfo->suggestions ? validationInfo->suggestions : L"Please update yt-dlp");
+            break;
+            
+        case VALIDATION_PERMISSION_DENIED:
+            wcscpy(title, L"Configuration Permission Error");
+            swprintf(message, 1024, L"Configuration has permission or security issues.\n\n%ls\n\n%ls", 
+                    validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
+                    validationInfo->suggestions ? validationInfo->suggestions : L"Please check permissions");
+            break;
+            
+        default:
+            wcscpy(title, L"Configuration Error");
+            swprintf(message, 1024, L"An unknown configuration error occurred.\n\n%ls", 
+                    validationInfo->errorDetails ? validationInfo->errorDetails : L"Please check your yt-dlp configuration");
+            break;
+    }
+    
+    MessageBoxW(hParent, message, title, MB_OK | MB_ICONWARNING);
+}
+
+
+
 
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
@@ -1650,6 +2042,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     }
     
     ShowWindow(hDlg, nCmdShow);
+    
+    // Initialize and validate yt-dlp system after UI is shown
+    InitializeYtDlpSystem(hDlg);
     
     // Message loop with accelerator handling
     MSG msg;
