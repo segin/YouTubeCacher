@@ -709,13 +709,21 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     PROCESS_INFORMATION pi = {0};
                     
                     // Build command line: "path\to\yt-dlp.exe" --verbose
-                    wchar_t cmdLine[MAX_EXTENDED_PATH + 50];
-                    swprintf(cmdLine, MAX_EXTENDED_PATH + 50, L"\"%s\" --verbose", ytDlpPath);
+                    // CreateProcessW requires a mutable command line buffer
+                    size_t cmdLineLen = wcslen(ytDlpPath) + 50;
+                    wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
+                    if (!cmdLine) {
+                        CloseHandle(hRead);
+                        CloseHandle(hWrite);
+                        MessageBoxW(hDlg, L"Memory allocation failed for command line.", L"System Error", MB_OK | MB_ICONERROR);
+                        break;
+                    }
+                    swprintf(cmdLine, cmdLineLen, L"\"%s\" --verbose", ytDlpPath);
                     
                     // Create process hidden
                     BOOL processCreated = CreateProcessW(
                         NULL,               // application name
-                        cmdLine,            // command line string
+                        cmdLine,            // command line string (mutable)
                         NULL, NULL,         // process and thread security attributes
                         TRUE,               // inherit handles
                         CREATE_NO_WINDOW,   // hide console window
@@ -779,6 +787,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             LocalFree(errorBuffer);
                         }
                         
+                        free(cmdLine);
                         CloseHandle(hRead);
                         CloseHandle(hWrite);
                         break;
@@ -792,6 +801,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     DWORD bytesRead;
                     wchar_t* output = (wchar_t*)malloc(8192 * sizeof(wchar_t));
                     if (!output) {
+                        free(cmdLine);
                         CloseHandle(hRead);
                         WaitForSingleObject(pi.hProcess, INFINITE);
                         CloseHandle(pi.hProcess);
@@ -834,6 +844,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                     // Cleanup
                     free(output);
+                    free(cmdLine);
                     CloseHandle(hRead);
                     CloseHandle(pi.hProcess);
                     CloseHandle(pi.hThread);
