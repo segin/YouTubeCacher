@@ -725,9 +725,62 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     );
                     
                     if (!processCreated) {
+                        // Get detailed error information
+                        DWORD errorCode = GetLastError();
+                        wchar_t* errorBuffer = NULL;
+                        
+                        // Format the Windows error message
+                        FormatMessageW(
+                            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                            NULL,
+                            errorCode,
+                            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                            (LPWSTR)&errorBuffer,
+                            0,
+                            NULL
+                        );
+                        
+                        // Create comprehensive error message
+                        wchar_t* detailedError = (wchar_t*)malloc(4096 * sizeof(wchar_t));
+                        if (detailedError) {
+                            swprintf(detailedError, 4096,
+                                L"Failed to execute yt-dlp process.\n\n"
+                                L"Command Line:\n%s\n\n"
+                                L"yt-dlp Path:\n%s\n\n"
+                                L"Windows Error Code: %lu (0x%08X)\n"
+                                L"Error Description: %s\n\n"
+                                L"Possible causes:\n"
+                                L"• File does not exist at the specified path\n"
+                                L"• File is not executable or corrupted\n"
+                                L"• Missing dependencies (Python, Visual C++ Runtime)\n"
+                                L"• Insufficient permissions\n"
+                                L"• Path contains invalid characters\n"
+                                L"• Antivirus software blocking execution\n\n"
+                                L"Troubleshooting:\n"
+                                L"1. Verify the file exists and is executable\n"
+                                L"2. Try running the command manually in Command Prompt\n"
+                                L"3. Check Windows Event Viewer for additional details\n"
+                                L"4. Ensure all dependencies are installed",
+                                cmdLine,
+                                ytDlpPath,
+                                errorCode,
+                                errorCode,
+                                errorBuffer ? errorBuffer : L"Unknown error"
+                            );
+                            
+                            MessageBoxW(hDlg, detailedError, L"yt-dlp Execution Error - Detailed Diagnostics", MB_OK | MB_ICONERROR);
+                            free(detailedError);
+                        } else {
+                            MessageBoxW(hDlg, L"Failed to execute yt-dlp and unable to allocate memory for error details.", L"yt-dlp Execution Error", MB_OK | MB_ICONERROR);
+                        }
+                        
+                        // Clean up error message buffer
+                        if (errorBuffer) {
+                            LocalFree(errorBuffer);
+                        }
+                        
                         CloseHandle(hRead);
                         CloseHandle(hWrite);
-                        MessageBoxW(hDlg, L"Failed to execute yt-dlp. Please check the path in settings.", L"yt-dlp Execution Error", MB_OK | MB_ICONERROR);
                         break;
                     }
                     
