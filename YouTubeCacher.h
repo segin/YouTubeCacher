@@ -380,7 +380,14 @@ INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* messag
 
 // Video information retrieval functions
 BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
+BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
+DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
 void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration);
+
+// Main window progress bar functions
+void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status);
+void ShowMainProgressBar(HWND hDlg, BOOL show);
+void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData);
 
 // Multithreaded subprocess execution functions
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 

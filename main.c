@@ -1214,9 +1214,33 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
     return result;
 }
 
-// Get video title and duration using yt-dlp --get-title and --get-duration flags
-BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
-    UNREFERENCED_PARAMETER(hDlg); // May be used for future UI updates during processing
+// Structure for passing data to the video info thread
+typedef struct {
+    HWND hDlg;
+    wchar_t url[MAX_URL_LENGTH];
+    wchar_t title[512];
+    wchar_t duration[64];
+    BOOL success;
+    HANDLE hThread;
+    DWORD threadId;
+} VideoInfoThreadData;
+
+// Thread function for getting video info without blocking UI
+DWORD WINAPI GetVideoInfoThread(LPVOID lpParam) {
+    VideoInfoThreadData* data = (VideoInfoThreadData*)lpParam;
+    if (!data) return 1;
+    
+    // Get video title and duration using the existing synchronous function
+    data->success = GetVideoTitleAndDurationSync(data->url, data->title, 512, data->duration, 64);
+    
+    // Notify main thread that we're done
+    PostMessageW(data->hDlg, WM_USER + 101, 0, (LPARAM)data);
+    
+    return 0;
+}
+
+// Synchronous version of the video info function (renamed from original)
+BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
     if (!url || !title || !duration || titleSize == 0 || durationSize == 0) return FALSE;
     
     // Initialize output strings
@@ -1312,6 +1336,39 @@ BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, siz
     return success;
 }
 
+// Threaded version that doesn't block the UI
+BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
+    UNREFERENCED_PARAMETER(title);      // Not used in threaded version
+    UNREFERENCED_PARAMETER(titleSize);  // Not used in threaded version
+    UNREFERENCED_PARAMETER(duration);   // Not used in threaded version
+    UNREFERENCED_PARAMETER(durationSize); // Not used in threaded version
+    
+    if (!hDlg || !url) return FALSE;
+    
+    // Create thread data structure
+    VideoInfoThreadData* data = (VideoInfoThreadData*)malloc(sizeof(VideoInfoThreadData));
+    if (!data) return FALSE;
+    
+    // Initialize thread data
+    data->hDlg = hDlg;
+    wcsncpy(data->url, url, MAX_URL_LENGTH - 1);
+    data->url[MAX_URL_LENGTH - 1] = L'\0';
+    data->title[0] = L'\0';
+    data->duration[0] = L'\0';
+    data->success = FALSE;
+    
+    // Create thread to get video info
+    data->hThread = CreateThread(NULL, 0, GetVideoInfoThread, data, 0, &data->threadId);
+    if (!data->hThread) {
+        free(data);
+        return FALSE;
+    }
+    
+    // Don't wait for completion - let the thread notify us when done
+    // The thread will send WM_USER + 101 message when complete
+    return TRUE; // Return TRUE to indicate thread started successfully
+}
+
 // Update the video info UI fields with title and duration
 void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration) {
     if (!hDlg) return;
@@ -1333,6 +1390,61 @@ void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration)
     // Force redraw of the updated fields
     InvalidateRect(GetDlgItem(hDlg, IDC_VIDEO_TITLE), NULL, TRUE);
     InvalidateRect(GetDlgItem(hDlg, IDC_VIDEO_DURATION), NULL, TRUE);
+}
+
+// Update the main window's progress bar instead of using separate dialogs
+void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status) {
+    if (!hDlg) return;
+    
+    // Update the progress bar
+    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+    if (hProgressBar) {
+        SendMessageW(hProgressBar, PBM_SETPOS, percentage, 0);
+        
+        // Enable/show the progress bar during operations
+        EnableWindow(hProgressBar, TRUE);
+        ShowWindow(hProgressBar, SW_SHOW);
+    }
+    
+    // Update the progress text if we have it
+    HWND hProgressText = GetDlgItem(hDlg, IDC_PROGRESS_TEXT);
+    if (hProgressText && status) {
+        SetWindowTextW(hProgressText, status);
+    }
+    
+    // Force UI update
+    UpdateWindow(hDlg);
+}
+
+// Show or hide the main window's progress bar
+void ShowMainProgressBar(HWND hDlg, BOOL show) {
+    if (!hDlg) return;
+    
+    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+    if (hProgressBar) {
+        ShowWindow(hProgressBar, show ? SW_SHOW : SW_HIDE);
+        EnableWindow(hProgressBar, show);
+        
+        if (!show) {
+            // Reset progress bar when hiding
+            SendMessageW(hProgressBar, PBM_SETPOS, 0, 0);
+        }
+    }
+    
+    // Clear progress text when hiding
+    HWND hProgressText = GetDlgItem(hDlg, IDC_PROGRESS_TEXT);
+    if (hProgressText) {
+        SetWindowTextW(hProgressText, show ? L"" : L"");
+    }
+}
+
+// Progress callback for the main window (thread-safe)
+void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData) {
+    HWND hDlg = (HWND)userData;
+    if (hDlg) {
+        // Use PostMessage for thread-safe UI updates
+        PostMessageW(hDlg, WM_USER + 100, (WPARAM)percentage, (LPARAM)status);
+    }
 }
 
 void FreeYtDlpResult(YtDlpResult* result) {
@@ -2903,25 +3015,17 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     request->tempDir = _wcsdup(tempDir);
                     
-                    // Create progress dialog for the download operation
-                    ProgressDialog* progress = CreateProgressDialog(hDlg, L"Downloading Video");
-                    if (!progress) {
-                        ShowUIError(hDlg, L"progress dialog");
-                        CleanupTempDirectory(tempDir);
-                        FreeYtDlpRequest(request);
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
-                        break;
-                    }
+                    // Show progress in main window instead of separate dialog
+                    ShowMainProgressBar(hDlg, TRUE);
+                    UpdateMainProgressBar(hDlg, 5, L"Initializing download...");
                     
-                    // Execute the download operation with enhanced error handling and progress tracking
-                    UpdateProgressDialog(progress, 5, L"Initializing download...");
-                    YtDlpResult* result = ExecuteYtDlpRequest(&config, request);
+                    // Execute the download operation using multithreaded approach
+                    YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&config, request, hDlg, L"Downloading Video");
                     
                     if (result && result->success) {
-                        UpdateProgressDialog(progress, 100, L"Download completed successfully");
+                        UpdateMainProgressBar(hDlg, 100, L"Download completed successfully");
                         Sleep(1000);
-                        DestroyProgressDialog(progress);
+                        ShowMainProgressBar(hDlg, FALSE);
                         
                         // Show success message with download location
                         wchar_t successMsg[MAX_EXTENDED_PATH + 100];
@@ -2929,9 +3033,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             L"Download completed successfully!\n\nFiles saved to:\n%ls", downloadPath);
                         ShowSuccessMessage(hDlg, L"Download Complete", successMsg);
                     } else {
-                        UpdateProgressDialog(progress, 0, L"Download failed");
+                        UpdateMainProgressBar(hDlg, 0, L"Download failed");
                         Sleep(500);
-                        DestroyProgressDialog(progress);
+                        ShowMainProgressBar(hDlg, FALSE);
                         
                         // Show enhanced error dialog with comprehensive diagnostics
                         if (result) {
@@ -2961,60 +3065,22 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Create progress dialog for the operation
-                    ProgressDialog* progress = CreateProgressDialog(hDlg, L"Getting Video Information");
-                    if (!progress) {
-                        ShowUIError(hDlg, L"progress dialog creation");
-                        break;
-                    }
+                    // Show progress in main window and start threaded operation
+                    ShowMainProgressBar(hDlg, TRUE);
+                    UpdateMainProgressBar(hDlg, 10, L"Starting video information retrieval...");
                     
-                    // Update progress
-                    UpdateProgressDialog(progress, 10, L"Retrieving video title...");
-                    
-                    // Get video title and duration
+                    // Start threaded video info retrieval (non-blocking)
                     wchar_t title[512] = {0};
                     wchar_t duration[64] = {0};
                     
-                    UpdateProgressDialog(progress, 50, L"Retrieving video information...");
+                    BOOL threadStarted = GetVideoTitleAndDuration(hDlg, url, title, sizeof(title)/sizeof(wchar_t), 
+                                                                 duration, sizeof(duration)/sizeof(wchar_t));
                     
-                    BOOL success = GetVideoTitleAndDuration(hDlg, url, title, sizeof(title)/sizeof(wchar_t), 
-                                                           duration, sizeof(duration)/sizeof(wchar_t));
-                    
-                    if (success) {
-                        UpdateProgressDialog(progress, 90, L"Updating interface...");
-                        
-                        // Update the UI with the retrieved information
-                        UpdateVideoInfoUI(hDlg, title, duration);
-                        
-                        UpdateProgressDialog(progress, 100, L"Video information retrieved successfully");
-                        Sleep(500);
-                        DestroyProgressDialog(progress);
-                        
-                        // Show success message with the retrieved information
-                        wchar_t successMsg[1024];
-                        swprintf(successMsg, 1024, 
-                            L"Video information retrieved successfully!\n\n"
-                            L"Title: %ls\n\n"
-                            L"Duration: %ls",
-                            wcslen(title) > 0 ? title : L"Not available",
-                            wcslen(duration) > 0 ? duration : L"Not available");
-                        
-                        ShowSuccessMessage(hDlg, L"Video Information Retrieved", successMsg);
-                    } else {
-                        UpdateProgressDialog(progress, 0, L"Failed to retrieve video information");
-                        Sleep(500);
-                        DestroyProgressDialog(progress);
-                        
-                        // Clear any existing video info
-                        UpdateVideoInfoUI(hDlg, L"", L"");
-                        
-                        ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
-                            L"Could not retrieve video information. Please check:\n\n"
-                            L"• The URL is valid and accessible\n"
-                            L"• yt-dlp is properly installed and configured\n"
-                            L"• You have an internet connection\n"
-                            L"• The video is not private or restricted");
+                    if (!threadStarted) {
+                        ShowMainProgressBar(hDlg, FALSE);
+                        ShowWarningMessage(hDlg, L"Operation Failed", L"Could not start video information retrieval. Please try again.");
                     }
+                    // Note: Success/failure handling is now done in WM_USER + 101 message handler
                     
                     break;
                 }
@@ -3084,6 +3150,63 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
             DestroyWindow(hDlg);
             return TRUE;
+            
+        case WM_USER + 100: {
+            // Handle thread-safe progress updates from worker threads
+            int percentage = (int)wParam;
+            const wchar_t* status = (const wchar_t*)lParam;
+            UpdateMainProgressBar(hDlg, percentage, status);
+            return TRUE;
+        }
+        
+        case WM_USER + 101: {
+            // Handle video info thread completion
+            VideoInfoThreadData* data = (VideoInfoThreadData*)lParam;
+            if (data) {
+                if (data->success) {
+                    UpdateMainProgressBar(hDlg, 90, L"Updating interface...");
+                    
+                    // Update the UI with the retrieved information
+                    UpdateVideoInfoUI(hDlg, data->title, data->duration);
+                    
+                    UpdateMainProgressBar(hDlg, 100, L"Video information retrieved successfully");
+                    Sleep(500);
+                    ShowMainProgressBar(hDlg, FALSE);
+                    
+                    // Show success message with the retrieved information
+                    wchar_t successMsg[1024];
+                    swprintf(successMsg, 1024, 
+                        L"Video information retrieved successfully!\n\n"
+                        L"Title: %ls\n\n"
+                        L"Duration: %ls",
+                        wcslen(data->title) > 0 ? data->title : L"Not available",
+                        wcslen(data->duration) > 0 ? data->duration : L"Not available");
+                    
+                    ShowSuccessMessage(hDlg, L"Video Information Retrieved", successMsg);
+                } else {
+                    UpdateMainProgressBar(hDlg, 0, L"Failed to retrieve video information");
+                    Sleep(500);
+                    ShowMainProgressBar(hDlg, FALSE);
+                    
+                    // Clear any existing video info
+                    UpdateVideoInfoUI(hDlg, L"", L"");
+                    
+                    ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
+                        L"Could not retrieve video information. Please check:\n\n"
+                        L"• The URL is valid and accessible\n"
+                        L"• yt-dlp is properly installed and configured\n"
+                        L"• You have an internet connection\n"
+                        L"• The video is not private or restricted");
+                }
+                
+                // Cleanup thread data
+                if (data->hThread) {
+                    CloseHandle(data->hThread);
+                }
+                free(data);
+            }
+            return TRUE;
+        }
             
         case WM_DESTROY:
             PostQuitMessage(0);
