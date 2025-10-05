@@ -2559,6 +2559,9 @@ void ResizeControls(HWND hDlg) {
     SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 
                 downloadGroupX + margin, listY, listWidth, listHeight, SWP_NOZORDER);
     
+    // Resize ListView columns
+    ResizeCacheListViewColumns(GetDlgItem(hDlg, IDC_LIST), listWidth);
+    
     // Side buttons (Play, Delete, and Add)
     int sideButtonHeight = (int)(32 * scaleY);
     SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, 
@@ -2794,12 +2797,16 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
             }
             
+            // Initialize ListView with columns
+            HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+            InitializeCacheListView(hListView);
+            
             if (InitializeCacheManager(&g_cacheManager, downloadPath)) {
                 // Scan for existing videos in download folder
                 ScanDownloadFolderForVideos(&g_cacheManager, downloadPath);
                 
                 // Refresh the UI with cached videos
-                RefreshCacheList(GetDlgItem(hDlg, IDC_LIST), &g_cacheManager);
+                RefreshCacheList(hListView, &g_cacheManager);
                 UpdateCacheListStatus(hDlg, &g_cacheManager);
             } else {
                 // Initialize dialog controls with defaults if cache fails
@@ -3219,8 +3226,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                     
                 case IDC_BUTTON2: { // Play button
-                    HWND hListBox = GetDlgItem(hDlg, IDC_LIST);
-                    wchar_t* selectedVideoId = GetSelectedVideoId(hListBox);
+                    HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                    wchar_t* selectedVideoId = GetSelectedVideoId(hListView);
                     
                     if (!selectedVideoId) {
                         ShowWarningMessage(hDlg, L"No Selection", 
@@ -3244,22 +3251,20 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Play the video
-                    if (PlayCacheEntry(&g_cacheManager, selectedVideoId, playerPath)) {
-                        ShowInfoMessage(hDlg, L"Playing Video", L"Video launched in media player.");
-                    } else {
+                    // Play the video (no success popup)
+                    if (!PlayCacheEntry(&g_cacheManager, selectedVideoId, playerPath)) {
                         ShowWarningMessage(hDlg, L"Playback Failed", 
                                          L"Failed to launch the video. The file may have been moved or deleted.");
                         // Refresh cache to remove invalid entries
-                        RefreshCacheList(hListBox, &g_cacheManager);
+                        RefreshCacheList(hListView, &g_cacheManager);
                         UpdateCacheListStatus(hDlg, &g_cacheManager);
                     }
                     break;
                 }
                     
                 case IDC_BUTTON3: { // Delete button
-                    HWND hListBox = GetDlgItem(hDlg, IDC_LIST);
-                    wchar_t* selectedVideoId = GetSelectedVideoId(hListBox);
+                    HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                    wchar_t* selectedVideoId = GetSelectedVideoId(hListView);
                     
                     if (!selectedVideoId) {
                         ShowWarningMessage(hDlg, L"No Selection", 
@@ -3290,11 +3295,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         
                         if (deleteResult) {
                             if (deleteResult->errorCount == 0) {
-                                // All files deleted successfully
-                                ShowInfoMessage(hDlg, L"Video Deleted", L"Video and associated files have been deleted.");
-                                
+                                // All files deleted successfully (no success popup)
                                 // Refresh the list
-                                RefreshCacheList(hListBox, &g_cacheManager);
+                                RefreshCacheList(hListView, &g_cacheManager);
                                 UpdateCacheListStatus(hDlg, &g_cacheManager);
                             } else {
                                 // Some files failed to delete - show detailed error
@@ -3325,7 +3328,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                 }
                                 
                                 // Refresh the list anyway to show current state
-                                RefreshCacheList(hListBox, &g_cacheManager);
+                                RefreshCacheList(hListView, &g_cacheManager);
                                 UpdateCacheListStatus(hDlg, &g_cacheManager);
                             }
                             
@@ -3348,14 +3351,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Create download directory if it doesn't exist
                     CreateDownloadDirectoryIfNeeded(downloadPath);
                     
-                    // Add dummy video
+                    // Add dummy video (no success popup)
                     if (AddDummyVideo(&g_cacheManager, downloadPath)) {
                         // Refresh the list
-                        HWND hListBox = GetDlgItem(hDlg, IDC_LIST);
-                        RefreshCacheList(hListBox, &g_cacheManager);
+                        HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                        RefreshCacheList(hListView, &g_cacheManager);
                         UpdateCacheListStatus(hDlg, &g_cacheManager);
-                        
-                        ShowInfoMessage(hDlg, L"Debug Video Added", L"A dummy video has been added to the cache for testing purposes.");
                     } else {
                         ShowWarningMessage(hDlg, L"Add Failed", L"Failed to add dummy video to cache.");
                     }
@@ -3469,8 +3470,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             // Clean up cache manager
             CleanupCacheManager(&g_cacheManager);
             
-            // Clean up listbox item data
-            CleanupListboxItemData(GetDlgItem(hDlg, IDC_LIST));
+            // Clean up ListView item data
+            CleanupListViewItemData(GetDlgItem(hDlg, IDC_LIST));
             
             // Clean up brushes
             if (hBrushWhite) DeleteObject(hBrushWhite);

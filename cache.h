@@ -61,7 +61,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
 void FreeDeleteResult(DeleteResult* result);
 wchar_t* FormatDeleteErrorDetails(const DeleteResult* result);
 BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t* playerPath);
-void RefreshCacheList(HWND hListBox, CacheManager* manager);
+void RefreshCacheList(HWND hListView, CacheManager* manager);
 wchar_t* ExtractVideoIdFromUrl(const wchar_t* url);
 BOOL ScanDownloadFolderForVideos(CacheManager* manager, const wchar_t* downloadPath);
 BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath);
@@ -74,11 +74,11 @@ BOOL FindSubtitleFiles(const wchar_t* videoFilePath, wchar_t*** subtitleFiles, i
 wchar_t* FormatFileSize(DWORD sizeBytes);
 wchar_t* FormatCacheEntryDisplay(const CacheEntry* entry);
 
-// UI helper functions for listbox management
+// UI helper functions for ListView management
 void UpdateCacheListStatus(HWND hDlg, CacheManager* manager);
-wchar_t* GetSelectedVideoId(HWND hListBox);
-BOOL SetListboxHorizontalExtent(HWND hListBox, CacheManager* manager);
-void EnsureListboxScrollable(HWND hListBox);
-void CleanupListboxItemData(HWND hListBox);
+wchar_t* GetSelectedVideoId(HWND hListView);
+void InitializeCacheListView(HWND hListView);
+void ResizeCacheListViewColumns(HWND hListView, int totalWidth);
+void CleanupListViewItemData(HWND hListView);
 
 #endif // CACHE_H

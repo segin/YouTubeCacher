@@ -5,6 +5,7 @@
 #include <string.h>
 #include <wchar.h>
 #include <shlwapi.h>
+#include <commctrl.h>
 
 // Initialize the cache manager
 BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) {
@@ -528,42 +529,93 @@ BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t
     return result;
 }
 
+// Initialize ListView with columns
+void InitializeCacheListView(HWND hListView) {
+    if (!hListView) return;
+    
+    // Set extended styles for better appearance
+    DWORD exStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER;
+    SendMessageW(hListView, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, exStyle);
+    
+    // Add columns
+    LVCOLUMNW column = {0};
+    column.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+    
+    // Title column (will resize with window)
+    column.pszText = L"Title";
+    column.cx = 300; // Initial width
+    column.iSubItem = 0;
+    SendMessageW(hListView, LVM_INSERTCOLUMNW, 0, (LPARAM)&column);
+    
+    // Duration column (fixed width)
+    column.pszText = L"Duration";
+    column.cx = 80; // Fixed width
+    column.iSubItem = 1;
+    SendMessageW(hListView, LVM_INSERTCOLUMNW, 1, (LPARAM)&column);
+}
+
+// Resize ListView columns
+void ResizeCacheListViewColumns(HWND hListView, int totalWidth) {
+    if (!hListView) return;
+    
+    const int durationColumnWidth = 80; // Fixed width for duration
+    const int scrollbarWidth = GetSystemMetrics(SM_CXVSCROLL);
+    const int borderWidth = 4; // Account for borders
+    
+    int titleColumnWidth = totalWidth - durationColumnWidth - scrollbarWidth - borderWidth;
+    if (titleColumnWidth < 100) titleColumnWidth = 100; // Minimum width
+    
+    // Resize title column
+    SendMessageW(hListView, LVM_SETCOLUMNWIDTH, 0, titleColumnWidth);
+    
+    // Duration column stays fixed
+    SendMessageW(hListView, LVM_SETCOLUMNWIDTH, 1, durationColumnWidth);
+}
+
 // Refresh the cache list in the UI
-void RefreshCacheList(HWND hListBox, CacheManager* manager) {
-    if (!hListBox || !manager) return;
+void RefreshCacheList(HWND hListView, CacheManager* manager) {
+    if (!hListView || !manager) return;
     
     // Clean up existing item data before clearing
-    CleanupListboxItemData(hListBox);
+    CleanupListViewItemData(hListView);
     
     // Clear existing items
-    SendMessageW(hListBox, LB_RESETCONTENT, 0, 0);
-    
-    // Ensure listbox is properly configured for scrolling
-    EnsureListboxScrollable(hListBox);
+    SendMessageW(hListView, LVM_DELETEALLITEMS, 0, 0);
     
     EnterCriticalSection(&manager->lock);
     
     CacheEntry* current = manager->entries;
+    int itemIndex = 0;
+    
     while (current) {
         if (ValidateCacheEntry(current)) {
-            wchar_t* displayText = FormatCacheEntryDisplay(current);
-            if (displayText) {
-                int index = (int)SendMessageW(hListBox, LB_ADDSTRING, 0, (LPARAM)displayText);
-                // Store video ID as item data
-                if (current->videoId && index != LB_ERR) {
-                    wchar_t* videoIdCopy = _wcsdup(current->videoId);
-                    SendMessageW(hListBox, LB_SETITEMDATA, index, (LPARAM)videoIdCopy);
-                }
-                free(displayText);
+            LVITEMW item = {0};
+            item.mask = LVIF_TEXT | LVIF_PARAM;
+            item.iItem = itemIndex;
+            
+            // Title column
+            item.iSubItem = 0;
+            item.pszText = current->title ? current->title : L"Unknown Title";
+            item.lParam = (LPARAM)_wcsdup(current->videoId); // Store video ID
+            
+            int insertedIndex = (int)SendMessageW(hListView, LVM_INSERTITEMW, 0, (LPARAM)&item);
+            
+            if (insertedIndex != -1) {
+                // Duration column
+                LVITEMW subItem = {0};
+                subItem.mask = LVIF_TEXT;
+                subItem.iItem = insertedIndex;
+                subItem.iSubItem = 1;
+                subItem.pszText = current->duration ? current->duration : L"Unknown";
+                
+                SendMessageW(hListView, LVM_SETITEMW, 0, (LPARAM)&subItem);
+                itemIndex++;
             }
         }
         current = current->next;
     }
     
     LeaveCriticalSection(&manager->lock);
-    
-    // Set horizontal extent for proper horizontal scrolling
-    SetListboxHorizontalExtent(hListBox, manager);
 }
 
 // Extract video ID from YouTube URL
@@ -902,93 +954,38 @@ void UpdateCacheListStatus(HWND hDlg, CacheManager* manager) {
 }
 
 // Get the video ID of the currently selected item
-wchar_t* GetSelectedVideoId(HWND hListBox) {
-    if (!hListBox) return NULL;
+wchar_t* GetSelectedVideoId(HWND hListView) {
+    if (!hListView) return NULL;
     
-    int selectedIndex = (int)SendMessageW(hListBox, LB_GETCURSEL, 0, 0);
-    if (selectedIndex == LB_ERR) return NULL;
+    int selectedIndex = (int)SendMessageW(hListView, LVM_GETNEXTITEM, -1, LVNI_SELECTED);
+    if (selectedIndex == -1) return NULL;
     
-    wchar_t* videoId = (wchar_t*)SendMessageW(hListBox, LB_GETITEMDATA, selectedIndex, 0);
-    return videoId;
-}
-
-// Set horizontal extent for proper horizontal scrolling
-BOOL SetListboxHorizontalExtent(HWND hListBox, CacheManager* manager) {
-    if (!hListBox || !manager) return FALSE;
+    LVITEMW item = {0};
+    item.mask = LVIF_PARAM;
+    item.iItem = selectedIndex;
     
-    HDC hdc = GetDC(hListBox);
-    if (!hdc) return FALSE;
-    
-    HFONT hFont = (HFONT)SendMessageW(hListBox, WM_GETFONT, 0, 0);
-    HFONT hOldFont = NULL;
-    if (hFont) {
-        hOldFont = (HFONT)SelectObject(hdc, hFont);
+    if (SendMessageW(hListView, LVM_GETITEMW, 0, (LPARAM)&item)) {
+        return (wchar_t*)item.lParam;
     }
     
-    int maxWidth = 0;
-    
-    EnterCriticalSection(&manager->lock);
-    
-    CacheEntry* current = manager->entries;
-    while (current) {
-        if (ValidateCacheEntry(current)) {
-            wchar_t* displayText = FormatCacheEntryDisplay(current);
-            if (displayText) {
-                SIZE textSize;
-                if (GetTextExtentPoint32W(hdc, displayText, (int)wcslen(displayText), &textSize)) {
-                    if (textSize.cx > maxWidth) {
-                        maxWidth = textSize.cx;
-                    }
-                }
-                free(displayText);
-            }
-        }
-        current = current->next;
-    }
-    
-    LeaveCriticalSection(&manager->lock);
-    
-    if (hOldFont) {
-        SelectObject(hdc, hOldFont);
-    }
-    ReleaseDC(hListBox, hdc);
-    
-    // Add some padding and set the horizontal extent
-    maxWidth += 20;
-    SendMessageW(hListBox, LB_SETHORIZONTALEXTENT, maxWidth, 0);
-    
-    return TRUE;
+    return NULL;
 }
 
-// Ensure listbox is properly configured for scrolling
-void EnsureListboxScrollable(HWND hListBox) {
-    if (!hListBox) return;
+// Clean up item data when clearing the ListView
+void CleanupListViewItemData(HWND hListView) {
+    if (!hListView) return;
     
-    // Get current window style
-    LONG style = GetWindowLongW(hListBox, GWL_STYLE);
-    
-    // Ensure scrollbars are enabled
-    style |= WS_VSCROLL | WS_HSCROLL;
-    
-    // Ensure proper listbox styles for scrolling
-    style |= LBS_NOINTEGRALHEIGHT; // Allow partial items to be visible
-    
-    SetWindowLongW(hListBox, GWL_STYLE, style);
-    
-    // Force window to update its appearance
-    SetWindowPos(hListBox, NULL, 0, 0, 0, 0, 
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-}
-
-// Clean up item data when clearing the listbox
-void CleanupListboxItemData(HWND hListBox) {
-    if (!hListBox) return;
-    
-    int count = (int)SendMessageW(hListBox, LB_GETCOUNT, 0, 0);
+    int count = (int)SendMessageW(hListView, LVM_GETITEMCOUNT, 0, 0);
     for (int i = 0; i < count; i++) {
-        wchar_t* videoId = (wchar_t*)SendMessageW(hListBox, LB_GETITEMDATA, i, 0);
-        if (videoId && videoId != (wchar_t*)LB_ERR) {
-            free(videoId);
+        LVITEMW item = {0};
+        item.mask = LVIF_PARAM;
+        item.iItem = i;
+        
+        if (SendMessageW(hListView, LVM_GETITEMW, 0, (LPARAM)&item)) {
+            wchar_t* videoId = (wchar_t*)item.lParam;
+            if (videoId) {
+                free(videoId);
+            }
         }
     }
 }
