@@ -704,9 +704,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         si.hStdOutput = hWritePipe;
                         si.hStdError = hWritePipe;
                         
-                        // Build command line using cmd.exe to handle environment properly
+                        // Build command line - use cmd.exe to handle environment and path resolution
                         wchar_t cmdLine[MAX_EXTENDED_PATH + 100];
-                        swprintf(cmdLine, MAX_EXTENDED_PATH + 100, L"cmd.exe /c \"\"%s\" --verbose\"", ytDlpPath);
+                        swprintf(cmdLine, MAX_EXTENDED_PATH + 100, L"cmd.exe /c \"\\\"%s\\\" --verbose\"", ytDlpPath);
                         
                         // Execute yt-dlp through cmd.exe
                         if (CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
