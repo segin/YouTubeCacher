@@ -41,19 +41,36 @@ static int ScaleForDpi(int value, int dpi) {
     return MulDiv(value, dpi, 96); // 96 is the standard DPI
 }
 
-// Dynamic dialog sizing helper function
+// Dynamic dialog layout and sizing with proper icon-text alignment
 static void CalculateOptimalDialogSize(HWND hDlg, const wchar_t* message, int* width, int* height) {
     if (!message || !width || !height) return;
     
     // Get DPI for proper scaling
     int dpi = GetDpiForWindowSafe(hDlg);
     
-    // Define constraints (scaled for DPI)
-    int maxWidth = ScaleForDpi(400, dpi);      // Maximum dialog width
-    int minWidth = ScaleForDpi(280, dpi);      // Minimum dialog width  
-    int iconWidth = ScaleForDpi(50, dpi);      // Space for icon + margin
-    int buttonHeight = ScaleForDpi(30, dpi);   // Space for buttons
-    int margins = ScaleForDpi(20, dpi);        // Top/bottom margins
+    // Base measurements at 96 DPI
+    const int BASE_ICON_SIZE = 32;           // Standard system icon size
+    const int BASE_ICON_MARGIN = 10;        // Space around icon
+    const int BASE_TEXT_MARGIN = 10;        // Space around text
+    const int BASE_BUTTON_HEIGHT = 23;      // Standard button height
+    const int BASE_BUTTON_MARGIN = 7;       // Space around buttons
+    const int BASE_DETAILS_BUTTON_WIDTH = 60; // "Details >>" button width
+    const int BASE_COPY_BUTTON_WIDTH = 35;  // "Copy" button width
+    const int BASE_OK_BUTTON_WIDTH = 35;    // "OK" button width
+    const int BASE_MIN_WIDTH = 280;         // Minimum dialog width
+    const int BASE_MAX_WIDTH = 500;         // Maximum dialog width
+    
+    // Scale measurements to current DPI
+    int iconSize = ScaleForDpi(BASE_ICON_SIZE, dpi);
+    int iconMargin = ScaleForDpi(BASE_ICON_MARGIN, dpi);
+    int textMargin = ScaleForDpi(BASE_TEXT_MARGIN, dpi);
+    int buttonHeight = ScaleForDpi(BASE_BUTTON_HEIGHT, dpi);
+    int buttonMargin = ScaleForDpi(BASE_BUTTON_MARGIN, dpi);
+    int detailsButtonWidth = ScaleForDpi(BASE_DETAILS_BUTTON_WIDTH, dpi);
+    int copyButtonWidth = ScaleForDpi(BASE_COPY_BUTTON_WIDTH, dpi);
+    int okButtonWidth = ScaleForDpi(BASE_OK_BUTTON_WIDTH, dpi);
+    int minWidth = ScaleForDpi(BASE_MIN_WIDTH, dpi);
+    int maxWidth = ScaleForDpi(BASE_MAX_WIDTH, dpi);
     
     // Get device context for text measurement
     HDC hdc = GetDC(hDlg);
@@ -70,21 +87,147 @@ static void CalculateOptimalDialogSize(HWND hDlg, const wchar_t* message, int* w
         hOldFont = (HFONT)SelectObject(hdc, hFont);
     }
     
-    // Calculate text area width (dialog width minus icon and margins)
-    int textAreaWidth = maxWidth - iconWidth - margins;
+    // STEP 1: Create dummy single-line label to measure baseline text metrics
+    RECT dummyRect = {0, 0, 1000, 0};
+    int singleLineHeight = DrawTextW(hdc, L"Dummy", -1, &dummyRect, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
     
-    // Measure text with word wrapping
-    RECT textRect = {0, 0, textAreaWidth, 0};
-    int textHeight = DrawTextW(hdc, message, -1, &textRect, 
-                              DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    // STEP 2: Calculate available text area width
+    // Layout: [margin][icon][margin][text area][margin]
+    int availableTextWidth = maxWidth - (iconMargin + iconSize + iconMargin + textMargin + textMargin);
     
-    // Calculate required dialog dimensions
-    int requiredWidth = textRect.right + iconWidth + margins;
-    int requiredHeight = max(textHeight, ScaleForDpi(32, dpi)) + buttonHeight + margins;
+    // STEP 3: Measure actual message text with word wrapping
+    RECT textRect = {0, 0, availableTextWidth, 0};
+    int actualTextHeight = DrawTextW(hdc, message, -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    int actualTextWidth = textRect.right;
     
-    // Apply constraints
+    // STEP 4: Calculate icon-text alignment
+    // The first line of text should be vertically centered with the icon
+    int iconCenterY = iconSize / 2;
+    int textFirstLineCenterY = singleLineHeight / 2;
+    int textOffsetY = iconCenterY - textFirstLineCenterY;
+    
+    // STEP 5: Calculate total content area dimensions
+    int contentWidth = iconMargin + iconSize + iconMargin + actualTextWidth + textMargin;
+    int contentHeight = max(iconSize, actualTextHeight + max(0, textOffsetY));
+    
+    // STEP 6: Calculate button area requirements
+    // Layout: [Details >>] [space] [Copy] [OK]
+    int buttonAreaWidth = detailsButtonWidth + buttonMargin + copyButtonWidth + buttonMargin + okButtonWidth;
+    int buttonAreaHeight = buttonHeight + (2 * buttonMargin);
+    
+    // STEP 7: Calculate final dialog dimensions
+    int requiredWidth = max(contentWidth + (2 * iconMargin), buttonAreaWidth + (2 * iconMargin));
+    int requiredHeight = iconMargin + contentHeight + buttonMargin + buttonAreaHeight + iconMargin;
+    
+    // STEP 8: Apply constraints and set results
     *width = max(minWidth, min(maxWidth, requiredWidth));
     *height = max(ScaleForDpi(100, dpi), requiredHeight);
+    
+    // Cleanup
+    if (hOldFont) {
+        SelectObject(hdc, hOldFont);
+    }
+    ReleaseDC(hDlg, hdc);
+}
+
+// Dynamically position dialog controls with proper icon-text alignment
+static void PositionDialogControls(HWND hDlg, EnhancedErrorDialog* errorDialog) {
+    if (!hDlg || !errorDialog || !errorDialog->message) return;
+    
+    // Get DPI for proper scaling
+    int dpi = GetDpiForWindowSafe(hDlg);
+    
+    // Base measurements at 96 DPI
+    const int BASE_ICON_SIZE = 32;
+    const int BASE_ICON_MARGIN = 10;
+    const int BASE_TEXT_MARGIN = 10;
+    const int BASE_BUTTON_HEIGHT = 23;
+    const int BASE_BUTTON_MARGIN = 7;
+    const int BASE_DETAILS_BUTTON_WIDTH = 60;
+    const int BASE_COPY_BUTTON_WIDTH = 35;
+    const int BASE_OK_BUTTON_WIDTH = 35;
+    
+    // Scale measurements to current DPI
+    int iconSize = ScaleForDpi(BASE_ICON_SIZE, dpi);
+    int iconMargin = ScaleForDpi(BASE_ICON_MARGIN, dpi);
+    int textMargin = ScaleForDpi(BASE_TEXT_MARGIN, dpi);
+    int buttonHeight = ScaleForDpi(BASE_BUTTON_HEIGHT, dpi);
+    int buttonMargin = ScaleForDpi(BASE_BUTTON_MARGIN, dpi);
+    int detailsButtonWidth = ScaleForDpi(BASE_DETAILS_BUTTON_WIDTH, dpi);
+    int copyButtonWidth = ScaleForDpi(BASE_COPY_BUTTON_WIDTH, dpi);
+    int okButtonWidth = ScaleForDpi(BASE_OK_BUTTON_WIDTH, dpi);
+    
+    // Get dialog client area
+    RECT dialogRect;
+    GetClientRect(hDlg, &dialogRect);
+    int dialogWidth = dialogRect.right - dialogRect.left;
+    int dialogHeight = dialogRect.bottom - dialogRect.top;
+    
+    // Determine control IDs based on dialog type
+    int messageId, iconId, detailsButtonId, copyButtonId, okButtonId;
+    if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
+        messageId = IDC_SUCCESS_MESSAGE;
+        iconId = IDC_SUCCESS_ICON;
+        detailsButtonId = IDC_SUCCESS_DETAILS_BTN;
+        copyButtonId = IDC_SUCCESS_COPY_BTN;
+        okButtonId = IDC_SUCCESS_OK_BTN;
+    } else {
+        messageId = IDC_ERROR_MESSAGE;
+        iconId = IDC_ERROR_ICON;
+        detailsButtonId = IDC_ERROR_DETAILS_BTN;
+        copyButtonId = IDC_ERROR_COPY_BTN;
+        okButtonId = IDC_ERROR_OK_BTN;
+    }
+    
+    // Get device context for text measurement
+    HDC hdc = GetDC(hDlg);
+    if (!hdc) return;
+    
+    HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    HFONT hOldFont = NULL;
+    if (hFont) {
+        hOldFont = (HFONT)SelectObject(hdc, hFont);
+    }
+    
+    // Measure single line height for alignment calculation
+    RECT dummyRect = {0, 0, 1000, 0};
+    int singleLineHeight = DrawTextW(hdc, L"Dummy", -1, &dummyRect, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
+    
+    // Calculate text area width
+    int textAreaWidth = dialogWidth - (iconMargin + iconSize + iconMargin + textMargin + textMargin);
+    
+    // Measure actual message text
+    RECT textRect = {0, 0, textAreaWidth, 0};
+    int textHeight = DrawTextW(hdc, errorDialog->message, -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    
+    // Calculate vertical alignment
+    int iconCenterY = iconSize / 2;
+    int textFirstLineCenterY = singleLineHeight / 2;
+    int textOffsetY = max(0, iconCenterY - textFirstLineCenterY);
+    
+    // Position icon (left side, vertically centered in content area)
+    int iconX = iconMargin;
+    int iconY = iconMargin;
+    SetWindowPos(GetDlgItem(hDlg, iconId), NULL, iconX, iconY, iconSize, iconSize, SWP_NOZORDER);
+    
+    // Position message text (aligned with icon center for first line)
+    int textX = iconMargin + iconSize + iconMargin;
+    int textY = iconMargin + textOffsetY;
+    SetWindowPos(GetDlgItem(hDlg, messageId), NULL, textX, textY, textAreaWidth, textHeight, SWP_NOZORDER);
+    
+    // Calculate button positions (bottom of dialog)
+    int buttonY = dialogHeight - buttonMargin - buttonHeight;
+    
+    // Position buttons from left to right
+    int detailsButtonX = iconMargin;
+    SetWindowPos(GetDlgItem(hDlg, detailsButtonId), NULL, detailsButtonX, buttonY, detailsButtonWidth, buttonHeight, SWP_NOZORDER);
+    
+    // Position Copy and OK buttons from right to left
+    int okButtonX = dialogWidth - iconMargin - okButtonWidth;
+    SetWindowPos(GetDlgItem(hDlg, okButtonId), NULL, okButtonX, buttonY, okButtonWidth, buttonHeight, SWP_NOZORDER);
+    
+    int copyButtonX = okButtonX - buttonMargin - copyButtonWidth;
+    SetWindowPos(GetDlgItem(hDlg, copyButtonId), NULL, copyButtonX, buttonY, copyButtonWidth, buttonHeight, SWP_NOZORDER);
     
     // Cleanup
     if (hOldFont) {
@@ -546,6 +689,12 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             // Calculate optimal dialog size based on message content
             int optimalWidth, optimalHeight;
             CalculateOptimalDialogSize(hDlg, errorDialog->message, &optimalWidth, &optimalHeight);
+            
+            // Resize dialog to optimal dimensions first
+            SetWindowPos(hDlg, NULL, 0, 0, optimalWidth, optimalHeight, SWP_NOMOVE | SWP_NOZORDER);
+            
+            // Now position all controls dynamically with proper alignment
+            PositionDialogControls(hDlg, errorDialog);
             
             // Center dialog on parent window with HiDPI-aware screen bounds checking
             HWND hParent = GetParent(hDlg);
