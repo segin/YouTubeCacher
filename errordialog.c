@@ -100,6 +100,13 @@ static const wchar_t* TAB_NAMES[] = {
     L"Solutions"
 };
 
+// Tab names for the success dialog
+static const wchar_t* SUCCESS_TAB_NAMES[] = {
+    L"Operation Details",
+    L"Information",
+    L"Summary"
+};
+
 // Enhanced error dialog creation
 EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message,
                                               const wchar_t* details, const wchar_t* diagnostics,
@@ -110,6 +117,7 @@ EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar
     // Initialize structure
     memset(dialog, 0, sizeof(EnhancedErrorDialog));
     dialog->errorType = errorType;
+    dialog->dialogType = DIALOG_TYPE_ERROR; // Default to error type
     dialog->isExpanded = FALSE;
 
     // Allocate and copy strings
@@ -366,6 +374,19 @@ void InitializeErrorDialogTabs(HWND hTabControl) {
     TabCtrl_SetCurSel(hTabControl, 0);
 }
 
+// Initialize success dialog tabs
+void InitializeSuccessDialogTabs(HWND hTabControl) {
+    TCITEMW tie;
+    tie.mask = TCIF_TEXT;
+    
+    for (int i = 0; i < 3; i++) {
+        tie.pszText = (wchar_t*)SUCCESS_TAB_NAMES[i];
+        TabCtrl_InsertItem(hTabControl, i, &tie);
+    }
+    
+    TabCtrl_SetCurSel(hTabControl, 0);
+}
+
 // Show specific error dialog tab
 void ShowErrorDialogTab(HWND hDlg, int tabIndex) {
     HWND hDetailsText = GetDlgItem(hDlg, IDC_ERROR_DETAILS_TEXT);
@@ -462,35 +483,64 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             ApplyModernThemeToDialog(hDlg);
             
             errorDialog->hDialog = hDlg;
-            errorDialog->hTabControl = GetDlgItem(hDlg, IDC_ERROR_TAB_CONTROL);
+            
+            // Determine control IDs based on dialog type
+            int tabControlId, messageId, iconId, detailsTextId, diagTextId, solutionTextId;
+            LPCWSTR iconResource;
+            
+            if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
+                tabControlId = IDC_SUCCESS_TAB_CONTROL;
+                messageId = IDC_SUCCESS_MESSAGE;
+                iconId = IDC_SUCCESS_ICON;
+                detailsTextId = IDC_SUCCESS_DETAILS_TEXT;
+                diagTextId = IDC_SUCCESS_INFO_TEXT;
+                solutionTextId = IDC_SUCCESS_SUMMARY_TEXT;
+                iconResource = IDI_INFORMATION; // Use information icon for success
+            } else {
+                tabControlId = IDC_ERROR_TAB_CONTROL;
+                messageId = IDC_ERROR_MESSAGE;
+                iconId = IDC_ERROR_ICON;
+                detailsTextId = IDC_ERROR_DETAILS_TEXT;
+                diagTextId = IDC_ERROR_DIAG_TEXT;
+                solutionTextId = IDC_ERROR_SOLUTION_TEXT;
+                iconResource = IDI_ERROR;
+            }
+            
+            errorDialog->hTabControl = GetDlgItem(hDlg, tabControlId);
             
             // Set dialog title
             if (errorDialog->title) {
                 SetWindowTextW(hDlg, errorDialog->title);
             }
             
-            // Set error message
+            // Set message
             if (errorDialog->message) {
-                SetDlgItemTextW(hDlg, IDC_ERROR_MESSAGE, errorDialog->message);
+                SetDlgItemTextW(hDlg, messageId, errorDialog->message);
             }
             
-            // Set error icon based on error type
-            HWND hIcon = GetDlgItem(hDlg, IDC_ERROR_ICON);
-            HICON hErrorIcon = LoadIconW(NULL, IDI_ERROR);
-            SendMessageW(hIcon, STM_SETICON, (WPARAM)hErrorIcon, 0);
+            // Set appropriate icon
+            HWND hIcon = GetDlgItem(hDlg, iconId);
+            if (hIcon) {
+                HICON hDialogIcon = LoadIconW(NULL, iconResource);
+                SendMessageW(hIcon, STM_SETICON, (WPARAM)hDialogIcon, 0);
+            }
             
-            // Initialize tabs
-            InitializeErrorDialogTabs(errorDialog->hTabControl);
+            // Initialize tabs with appropriate labels
+            if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
+                InitializeSuccessDialogTabs(errorDialog->hTabControl);
+            } else {
+                InitializeErrorDialogTabs(errorDialog->hTabControl);
+            }
             
             // Set text content for each tab
             if (errorDialog->details) {
-                SetDlgItemTextW(hDlg, IDC_ERROR_DETAILS_TEXT, errorDialog->details);
+                SetDlgItemTextW(hDlg, detailsTextId, errorDialog->details);
             }
             if (errorDialog->diagnostics) {
-                SetDlgItemTextW(hDlg, IDC_ERROR_DIAG_TEXT, errorDialog->diagnostics);
+                SetDlgItemTextW(hDlg, diagTextId, errorDialog->diagnostics);
             }
             if (errorDialog->solutions) {
-                SetDlgItemTextW(hDlg, IDC_ERROR_SOLUTION_TEXT, errorDialog->solutions);
+                SetDlgItemTextW(hDlg, solutionTextId, errorDialog->solutions);
             }
             
             // Calculate optimal dialog size based on message content
@@ -611,7 +661,11 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog) {
     if (!errorDialog) return IDCANCEL;
     
-    return DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_ERROR_DIALOG),
+    // Choose the appropriate dialog resource based on dialog type
+    int dialogResource = (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) ? 
+                        IDD_SUCCESS_DIALOG : IDD_ERROR_DIALOG;
+    
+    return DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(dialogResource),
                           parent, EnhancedErrorDialogProc, (LPARAM)errorDialog);
 }
 
@@ -949,8 +1003,8 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation) {
 }
 
 INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message) {
-    wchar_t solutions[512];
-    wcscpy(solutions, L"Operation completed successfully. No further action required.");
+    wchar_t nextSteps[512];
+    wcscpy(nextSteps, L"The operation completed successfully. You can now use the downloaded files or perform additional operations.");
     
     // Log the success
     LogInfo(L"Success", message ? message : L"Operation completed");
@@ -959,10 +1013,15 @@ INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* mes
         title ? title : L"Success",
         message ? message : L"Operation completed successfully",
         L"The requested operation has been completed without errors.",
-        L"Operation completed successfully with no issues detected.",
-        solutions,
-        ERROR_TYPE_UNKNOWN  // Not really an error, but we need a type
+        L"All processes executed successfully with no issues detected.",
+        nextSteps,
+        ERROR_TYPE_UNKNOWN  // Will be overridden by dialogType
     );
+    
+    if (dialog) {
+        // Set this as a success dialog
+        dialog->dialogType = DIALOG_TYPE_SUCCESS;
+    }
     
     INT_PTR result = IDCANCEL;
     if (dialog) {

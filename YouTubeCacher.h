@@ -166,7 +166,15 @@ typedef struct {
     BOOL operationActive;
 } YtDlpContext;
 
-// Enhanced error dialog structure
+// Dialog types for enhanced dialogs
+typedef enum {
+    DIALOG_TYPE_ERROR,
+    DIALOG_TYPE_SUCCESS,
+    DIALOG_TYPE_WARNING,
+    DIALOG_TYPE_INFO
+} DialogType;
+
+// Enhanced dialog structure (supports both error and success dialogs)
 typedef struct {
     wchar_t* title;
     wchar_t* message;
@@ -174,6 +182,7 @@ typedef struct {
     wchar_t* diagnostics;
     wchar_t* solutions;
     ErrorType errorType;
+    DialogType dialogType;
     BOOL isExpanded;
     HWND hDialog;
     HWND hTabControl;
@@ -350,6 +359,7 @@ void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog);
 BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog);
 void ResizeErrorDialog(HWND hDlg, BOOL expanded);
 void InitializeErrorDialogTabs(HWND hTabControl);
+void InitializeSuccessDialogTabs(HWND hTabControl);
 void ShowErrorDialogTab(HWND hDlg, int tabIndex);
 
 // Convenience functions for common error scenarios
