@@ -2669,3 +2669,349 @@ BOOL HandleTempDirFailure(HWND hParent, const YtDlpConfig* config) {
     MessageBoxW(hParent, errorMsg, L"Temporary Directory Error", MB_OK | MB_ICONWARNING);
     return FALSE;
 }
+
+// ============================================================================
+// Enhanced Error Handling and Analysis Functions
+// ============================================================================
+
+// Function to analyze yt-dlp error output and categorize error types
+ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result) {
+    if (!result) {
+        return NULL;
+    }
+    
+    ErrorAnalysis* analysis = (ErrorAnalysis*)malloc(sizeof(ErrorAnalysis));
+    if (!analysis) {
+        return NULL;
+    }
+    
+    // Initialize structure
+    memset(analysis, 0, sizeof(ErrorAnalysis));
+    analysis->type = ERROR_TYPE_UNKNOWN;
+    
+    // Analyze based on exit code and error output
+    const wchar_t* errorOutput = result->errorMessage ? result->errorMessage : L"";
+    const wchar_t* standardOutput = result->output ? result->output : L"";
+    
+    // Check for temporary directory errors
+    if (wcsstr(errorOutput, L"temp") || wcsstr(errorOutput, L"temporary") ||
+        wcsstr(errorOutput, L"Unable to create") || wcsstr(errorOutput, L"Permission denied") ||
+        wcsstr(standardOutput, L"temp") || wcsstr(standardOutput, L"temporary")) {
+        
+        analysis->type = ERROR_TYPE_TEMP_DIR;
+        analysis->description = _wcsdup(L"Temporary directory creation or access failed");
+        analysis->solution = _wcsdup(L"Try running as administrator, check disk space, or change the temporary directory location in settings");
+        analysis->technicalDetails = _wcsdup(L"yt-dlp requires write access to a temporary directory for processing downloads");
+    }
+    // Check for network-related errors
+    else if (wcsstr(errorOutput, L"network") || wcsstr(errorOutput, L"connection") ||
+             wcsstr(errorOutput, L"timeout") || wcsstr(errorOutput, L"HTTP") ||
+             wcsstr(errorOutput, L"SSL") || wcsstr(errorOutput, L"certificate") ||
+             wcsstr(standardOutput, L"Unable to download") || 
+             result->exitCode == 1) { // Common network error exit code
+        
+        analysis->type = ERROR_TYPE_NETWORK;
+        analysis->description = _wcsdup(L"Network connection or download error occurred");
+        analysis->solution = _wcsdup(L"Check your internet connection, try again later, or verify the URL is accessible");
+        analysis->technicalDetails = _wcsdup(L"Network errors can be caused by connectivity issues, server problems, or blocked content");
+    }
+    // Check for permission errors
+    else if (wcsstr(errorOutput, L"permission") || wcsstr(errorOutput, L"access") ||
+             wcsstr(errorOutput, L"denied") || wcsstr(errorOutput, L"forbidden") ||
+             result->exitCode == 13) { // Permission denied exit code
+        
+        analysis->type = ERROR_TYPE_PERMISSIONS;
+        analysis->description = _wcsdup(L"File system permission error");
+        analysis->solution = _wcsdup(L"Run as administrator or check file/folder permissions for the download location");
+        analysis->technicalDetails = _wcsdup(L"The application lacks sufficient permissions to write to the specified location");
+    }
+    // Check for missing dependencies
+    else if (wcsstr(errorOutput, L"python") || wcsstr(errorOutput, L"not found") ||
+             wcsstr(errorOutput, L"command not found") || wcsstr(errorOutput, L"ffmpeg") ||
+             result->exitCode == 127) { // Command not found exit code
+        
+        analysis->type = ERROR_TYPE_DEPENDENCIES;
+        analysis->description = _wcsdup(L"Missing required dependencies (Python, ffmpeg, or yt-dlp)");
+        analysis->solution = _wcsdup(L"Install Python and yt-dlp, ensure they are in your PATH, or update the yt-dlp path in settings");
+        analysis->technicalDetails = _wcsdup(L"yt-dlp requires Python runtime and may need ffmpeg for certain operations");
+    }
+    // Check for invalid URL errors
+    else if (wcsstr(errorOutput, L"URL") || wcsstr(errorOutput, L"invalid") ||
+             wcsstr(errorOutput, L"unsupported") || wcsstr(errorOutput, L"not supported") ||
+             wcsstr(standardOutput, L"Unsupported URL")) {
+        
+        analysis->type = ERROR_TYPE_URL_INVALID;
+        analysis->description = _wcsdup(L"Invalid or unsupported URL provided");
+        analysis->solution = _wcsdup(L"Verify the URL is correct and from a supported site (YouTube, etc.)");
+        analysis->technicalDetails = _wcsdup(L"The provided URL format is not recognized or the site is not supported by yt-dlp");
+    }
+    // Check for disk space errors
+    else if (wcsstr(errorOutput, L"space") || wcsstr(errorOutput, L"disk") ||
+             wcsstr(errorOutput, L"full") || wcsstr(errorOutput, L"No space left") ||
+             result->exitCode == 28) { // No space left on device
+        
+        analysis->type = ERROR_TYPE_DISK_SPACE;
+        analysis->description = _wcsdup(L"Insufficient disk space for download");
+        analysis->solution = _wcsdup(L"Free up disk space or choose a different download location");
+        analysis->technicalDetails = _wcsdup(L"The download requires more disk space than is currently available");
+    }
+    // Default unknown error handling
+    else {
+        analysis->type = ERROR_TYPE_UNKNOWN;
+        
+        // Create a more descriptive error message based on exit code
+        wchar_t* description = (wchar_t*)malloc(512 * sizeof(wchar_t));
+        if (description) {
+            if (result->exitCode == 0) {
+                wcscpy(description, L"Operation completed but with unexpected output");
+            } else {
+                swprintf(description, 512, L"yt-dlp operation failed with exit code %lu", result->exitCode);
+            }
+            analysis->description = description;
+        } else {
+            analysis->description = _wcsdup(L"Unknown error occurred during yt-dlp operation");
+        }
+        
+        analysis->solution = _wcsdup(L"Check the detailed error output, verify yt-dlp installation, or try a different URL");
+        analysis->technicalDetails = _wcsdup(L"The error type could not be automatically determined from the output");
+    }
+    
+    return analysis;
+}
+
+// Function to free ErrorAnalysis structure and its allocated memory
+void FreeErrorAnalysis(ErrorAnalysis* analysis) {
+    if (!analysis) {
+        return;
+    }
+    
+    if (analysis->description) {
+        free(analysis->description);
+        analysis->description = NULL;
+    }
+    
+    if (analysis->solution) {
+        free(analysis->solution);
+        analysis->solution = NULL;
+    }
+    
+    if (analysis->technicalDetails) {
+        free(analysis->technicalDetails);
+        analysis->technicalDetails = NULL;
+    }
+    
+    free(analysis);
+}
+
+// Function to generate comprehensive diagnostic report for troubleshooting
+BOOL GenerateDiagnosticReport(const YtDlpRequest* request, const YtDlpResult* result, 
+                             const YtDlpConfig* config, wchar_t* report, size_t reportSize) {
+    if (!request || !result || !report || reportSize == 0) {
+        return FALSE;
+    }
+    
+    // Initialize report buffer
+    report[0] = L'\0';
+    
+    // Get current system time
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    
+    // Start building the diagnostic report
+    wchar_t tempBuffer[2048];
+    
+    // Header section
+    swprintf(tempBuffer, sizeof(tempBuffer)/sizeof(wchar_t), 
+        L"=== YouTube Cacher Diagnostic Report ===\n"
+        L"Generated: %04d-%02d-%02d %02d:%02d:%02d\n"
+        L"Application: %s %s\n\n",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+        APP_NAME, APP_VERSION);
+    
+    if (wcslen(report) + wcslen(tempBuffer) < reportSize - 1) {
+        wcscat(report, tempBuffer);
+    }
+    
+    // Operation details section
+    const wchar_t* operationType = L"Unknown";
+    switch (request->operation) {
+        case YTDLP_OP_GET_INFO:
+            operationType = L"Get Video Information";
+            break;
+        case YTDLP_OP_DOWNLOAD:
+            operationType = L"Download Video";
+            break;
+        case YTDLP_OP_VALIDATE:
+            operationType = L"Validate yt-dlp";
+            break;
+    }
+    
+    swprintf(tempBuffer, sizeof(tempBuffer)/sizeof(wchar_t),
+        L"=== Operation Details ===\n"
+        L"Operation Type: %s\n"
+        L"URL: %s\n"
+        L"Output Path: %s\n"
+        L"Temp Directory: %s\n"
+        L"Custom Arguments: %s\n"
+        L"Exit Code: %lu\n"
+        L"Success: %s\n\n",
+        operationType,
+        request->url ? request->url : L"(not specified)",
+        request->outputPath ? request->outputPath : L"(not specified)",
+        request->tempDir ? request->tempDir : L"(not specified)",
+        (request->useCustomArgs && request->customArgs) ? request->customArgs : L"(none)",
+        result->exitCode,
+        result->success ? L"Yes" : L"No");
+    
+    if (wcslen(report) + wcslen(tempBuffer) < reportSize - 1) {
+        wcscat(report, tempBuffer);
+    }
+    
+    // Configuration section
+    if (config) {
+        swprintf(tempBuffer, sizeof(tempBuffer)/sizeof(wchar_t),
+            L"=== Configuration ===\n"
+            L"yt-dlp Path: %s\n"
+            L"Default Temp Dir: %s\n"
+            L"Default Arguments: %s\n"
+            L"Timeout (seconds): %lu\n"
+            L"Verbose Logging: %s\n"
+            L"Auto Retry: %s\n"
+            L"Temp Dir Strategy: %d\n\n",
+            config->ytDlpPath,
+            config->defaultTempDir,
+            config->defaultArgs,
+            config->timeoutSeconds,
+            config->enableVerboseLogging ? L"Yes" : L"No",
+            config->autoRetryOnFailure ? L"Yes" : L"No",
+            config->tempDirStrategy);
+        
+        if (wcslen(report) + wcslen(tempBuffer) < reportSize - 1) {
+            wcscat(report, tempBuffer);
+        }
+    }
+    
+    // System information section
+    OSVERSIONINFOEXW osvi;
+    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXW));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXW);
+    
+    wchar_t computerName[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD computerNameSize = sizeof(computerName) / sizeof(wchar_t);
+    GetComputerNameW(computerName, &computerNameSize);
+    
+    // Get available disk space for temp directory
+    ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
+    BOOL diskSpaceResult = FALSE;
+    if (request->tempDir && wcslen(request->tempDir) > 0) {
+        diskSpaceResult = GetDiskFreeSpaceExW(request->tempDir, &freeBytesAvailable, &totalBytes, &totalFreeBytes);
+    }
+    
+    swprintf(tempBuffer, sizeof(tempBuffer)/sizeof(wchar_t),
+        L"=== System Information ===\n"
+        L"Computer Name: %s\n"
+        L"Windows Version: %lu.%lu Build %lu\n"
+        L"Available Disk Space: %s\n\n",
+        computerName,
+        osvi.dwMajorVersion, osvi.dwMinorVersion, osvi.dwBuildNumber,
+        diskSpaceResult ? L"Available" : L"Unknown");
+    
+    if (wcslen(report) + wcslen(tempBuffer) < reportSize - 1) {
+        wcscat(report, tempBuffer);
+    }
+    
+    // Error analysis section
+    ErrorAnalysis* analysis = AnalyzeYtDlpError(result);
+    if (analysis) {
+        const wchar_t* errorTypeName = L"Unknown";
+        switch (analysis->type) {
+            case ERROR_TYPE_TEMP_DIR:
+                errorTypeName = L"Temporary Directory";
+                break;
+            case ERROR_TYPE_NETWORK:
+                errorTypeName = L"Network/Connection";
+                break;
+            case ERROR_TYPE_PERMISSIONS:
+                errorTypeName = L"File Permissions";
+                break;
+            case ERROR_TYPE_DEPENDENCIES:
+                errorTypeName = L"Missing Dependencies";
+                break;
+            case ERROR_TYPE_URL_INVALID:
+                errorTypeName = L"Invalid URL";
+                break;
+            case ERROR_TYPE_DISK_SPACE:
+                errorTypeName = L"Insufficient Disk Space";
+                break;
+            case ERROR_TYPE_UNKNOWN:
+            default:
+                errorTypeName = L"Unknown";
+                break;
+        }
+        
+        swprintf(tempBuffer, sizeof(tempBuffer)/sizeof(wchar_t),
+            L"=== Error Analysis ===\n"
+            L"Error Type: %s\n"
+            L"Description: %s\n"
+            L"Suggested Solution: %s\n"
+            L"Technical Details: %s\n\n",
+            errorTypeName,
+            analysis->description ? analysis->description : L"(none)",
+            analysis->solution ? analysis->solution : L"(none)",
+            analysis->technicalDetails ? analysis->technicalDetails : L"(none)");
+        
+        if (wcslen(report) + wcslen(tempBuffer) < reportSize - 1) {
+            wcscat(report, tempBuffer);
+        }
+        
+        FreeErrorAnalysis(analysis);
+    }
+    
+    // Output section (truncated if too long)
+    if (result->output && wcslen(result->output) > 0) {
+        wcscat(report, L"=== yt-dlp Output ===\n");
+        
+        size_t remainingSpace = reportSize - wcslen(report) - 1;
+        size_t outputLen = wcslen(result->output);
+        
+        if (outputLen < remainingSpace - 100) { // Leave some space for error output
+            wcscat(report, result->output);
+            wcscat(report, L"\n\n");
+        } else {
+            // Truncate output if too long
+            wcsncat(report, result->output, remainingSpace - 150);
+            wcscat(report, L"\n... (output truncated) ...\n\n");
+        }
+    }
+    
+    // Error output section
+    if (result->errorMessage && wcslen(result->errorMessage) > 0) {
+        wcscat(report, L"=== Error Output ===\n");
+        
+        size_t remainingSpace = reportSize - wcslen(report) - 1;
+        size_t errorLen = wcslen(result->errorMessage);
+        
+        if (errorLen < remainingSpace - 50) {
+            wcscat(report, result->errorMessage);
+            wcscat(report, L"\n\n");
+        } else {
+            // Truncate error output if too long
+            wcsncat(report, result->errorMessage, remainingSpace - 100);
+            wcscat(report, L"\n... (error output truncated) ...\n\n");
+        }
+    }
+    
+    // Troubleshooting steps section
+    wcscat(report, L"=== Troubleshooting Steps ===\n");
+    wcscat(report, L"1. Verify yt-dlp is installed and accessible\n");
+    wcscat(report, L"2. Check internet connection and URL validity\n");
+    wcscat(report, L"3. Ensure sufficient disk space and permissions\n");
+    wcscat(report, L"4. Try running as administrator if permission errors occur\n");
+    wcscat(report, L"5. Update yt-dlp to the latest version\n");
+    wcscat(report, L"6. Check Windows Defender or antivirus software settings\n\n");
+    
+    // Footer
+    wcscat(report, L"=== End of Diagnostic Report ===\n");
+    
+    return TRUE;
+}

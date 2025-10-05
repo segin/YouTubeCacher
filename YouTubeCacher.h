@@ -206,7 +206,7 @@ wchar_t* ReadProcessOutput(ProcessHandle* handle);
 // Process status structure for detailed monitoring
 typedef struct {
     DWORD processId;
-    wchar_t processName[260]; // MAX_PATH
+    wchar_t processName[MAX_PATH];
     DWORD cpuTime;
     BOOL isResponding;
     DWORD memoryUsage;
@@ -235,6 +235,8 @@ void FreeCancellationFlag(BOOL* cancelFlag);
 // Error analysis functions
 ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result);
 void FreeErrorAnalysis(ErrorAnalysis* analysis);
+BOOL GenerateDiagnosticReport(const YtDlpRequest* request, const YtDlpResult* result, 
+                             const YtDlpConfig* config, wchar_t* report, size_t reportSize);
 
 // Temporary directory management
 BOOL CreateYtDlpTempDir(wchar_t* tempPath, size_t pathSize, TempDirStrategy strategy);
