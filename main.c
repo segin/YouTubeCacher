@@ -704,12 +704,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         si.hStdOutput = hWritePipe;
                         si.hStdError = hWritePipe;
                         
-                        // Build command line - use cmd.exe to handle environment and path resolution
-                        wchar_t cmdLine[MAX_EXTENDED_PATH + 100];
-                        swprintf(cmdLine, MAX_EXTENDED_PATH + 100, L"cmd.exe /c \"\\\"%s\\\" --verbose\"", ytDlpPath);
+                        // Build command line arguments
+                        wchar_t cmdLine[MAX_EXTENDED_PATH + 50];
+                        swprintf(cmdLine, MAX_EXTENDED_PATH + 50, L"\"%s\" --verbose", ytDlpPath);
                         
-                        // Execute yt-dlp through cmd.exe
-                        if (CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+                        // Execute yt-dlp directly with environment inheritance
+                        if (CreateProcessW(ytDlpPath, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
                             // Close write handle so ReadFile will return when process ends
                             CloseHandle(hWritePipe);
                             
