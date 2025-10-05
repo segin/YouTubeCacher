@@ -20,11 +20,17 @@
 #define MAX_LONG_PATH       32767  // Windows 10 long path limit
 #define MAX_EXTENDED_PATH   (MAX_LONG_PATH + 1)
 
-// Window sizing constants
-#define MIN_WINDOW_WIDTH    500
-#define MIN_WINDOW_HEIGHT   350
-#define DEFAULT_WIDTH       550
-#define DEFAULT_HEIGHT      420
+// Window sizing constants - these will be calculated dynamically
+#define BASE_MIN_WINDOW_WIDTH    500
+#define BASE_MIN_WINDOW_HEIGHT   380
+#define BASE_DEFAULT_WIDTH       550
+#define BASE_DEFAULT_HEIGHT      450
+
+// Function to calculate minimum window dimensions based on DPI and content
+void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX, double dpiScaleY);
+
+// Function to calculate optimal default window dimensions based on DPI and content
+void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dpiScaleX, double dpiScaleY);
 
 // Layout constants
 #define BUTTON_PADDING      80

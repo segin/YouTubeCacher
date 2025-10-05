@@ -1263,56 +1263,319 @@ void CheckClipboardForYouTubeURL(HWND hDlg) {
     }
 }
 
+// Function to calculate minimum window dimensions based on DPI and content requirements
+void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX, double dpiScaleY) {
+    if (!minWidth || !minHeight) return;
+    
+    // Base measurements in logical units (96 DPI)
+    const int BASE_MARGIN = 10;
+    const int BASE_WINDOW_MARGIN = 10;
+    const int BASE_BUTTON_WIDTH = 78;
+    const int BASE_TEXT_HEIGHT = 22;
+    const int BASE_LABEL_HEIGHT = 16;
+    const int BASE_PROGRESS_HEIGHT = 16;
+    const int BASE_GROUP_TITLE_HEIGHT = 18;
+    const int BASE_LIST_MIN_HEIGHT = 100;  // Minimum height for the offline videos list
+    const int BASE_SIDE_BUTTON_HEIGHT = 32;
+    
+    // Scale measurements to current DPI
+    int margin = (int)(BASE_MARGIN * dpiScaleX);
+    int windowMargin = (int)(BASE_WINDOW_MARGIN * dpiScaleX);
+    int buttonWidth = (int)(BASE_BUTTON_WIDTH * dpiScaleX);
+    int textHeight = (int)(BASE_TEXT_HEIGHT * dpiScaleY);
+    int labelHeight = (int)(BASE_LABEL_HEIGHT * dpiScaleY);
+    int progressHeight = (int)(BASE_PROGRESS_HEIGHT * dpiScaleY);
+    int groupTitleHeight = (int)(BASE_GROUP_TITLE_HEIGHT * dpiScaleY);
+    int listMinHeight = (int)(BASE_LIST_MIN_HEIGHT * dpiScaleY);
+    int sideButtonHeight = (int)(BASE_SIDE_BUTTON_HEIGHT * dpiScaleY);
+    
+    // Calculate minimum width requirements
+    // Logic: Window margins (20) + text field min width (200) + gap (10) + button width (78) + margin (10) = 318
+    int minTextFieldWidth = (int)(200 * dpiScaleX);  // Minimum usable text field width
+    int minContentWidth = minTextFieldWidth + margin + buttonWidth + margin;  // Content within group
+    int totalMinWidth = (2 * windowMargin) + minContentWidth + (2 * margin);  // Add group margins
+    
+    // Ensure minimum for UI elements like labels
+    int minUIWidth = (int)(400 * dpiScaleX);  // Absolute minimum for UI readability
+    *minWidth = (totalMinWidth > minUIWidth) ? totalMinWidth : minUIWidth;
+    
+    // Calculate minimum height requirements with detailed breakdown
+    
+    // DOWNLOAD GROUP HEIGHT CALCULATION (136px at 96 DPI):
+    // - Group title area: 18px (group box border + "Download video" text)
+    // - Top margin: 10px (breathing room after title)
+    // - URL input row: 22px (standard edit control height)
+    // - Reduced margin: 8px (3/4 × 10px for tighter spacing between related elements)
+    // - Video title row: 16px (static text showing retrieved video title)
+    // - Small margin: 6px (1/2 × 10px for minimal spacing between related info)
+    // - Duration row: 16px (static text showing video length like "5:23")
+    // - Reduced margin: 8px (space before progress section)
+    // - Progress bar: 16px (standard progress control height)
+    // - Small margin: 6px (tight spacing between progress bar and status text)
+    // - Progress text: 16px (shows "15.2MB of 45.7MB / 33%" download status)
+    // - Bottom margin: 10px (separation from offline videos group)
+    int downloadGroupHeight = groupTitleHeight +           // 18px: group title space
+                             margin +                      // 10px: top margin
+                             textHeight +                  // 22px: URL field
+                             (margin * 3/4) +             //  8px: reduced margin
+                             labelHeight +                 // 16px: video title
+                             (margin / 2) +               //  6px: small margin
+                             labelHeight +                 // 16px: duration
+                             (margin * 3/4) +             //  8px: reduced margin
+                             progressHeight +              // 16px: progress bar
+                             (margin / 2) +               //  6px: small margin
+                             labelHeight +                 // 16px: progress text
+                             margin;                       // 10px: bottom margin
+                                                          // Total: 136px
+    
+    // OFFLINE VIDEOS GROUP MINIMUM HEIGHT CALCULATION (159px at 96 DPI):
+    // - Group title area: 18px (group box border + "Offline videos" text)
+    // - Small margin: 5px (1/2 × 10px for tight spacing after title)
+    // - Status labels row: 16px (shows "Status: Ready" and "Items: 0")
+    // - Standard margin: 10px (separation before main list content)
+    // - Minimum list height: 100px (enough to display 4-5 video entries comfortably)
+    // - Bottom margin: 10px (space from window bottom edge)
+    int offlineGroupMinHeight = groupTitleHeight +         // 18px: group title space
+                               (margin / 2) +             //  5px: small top margin
+                               labelHeight +               // 16px: status labels
+                               margin +                    // 10px: standard margin
+                               listMinHeight +             // 100px: minimum list space
+                               margin;                     // 10px: bottom margin
+                                                          // Total: 159px
+    
+    // SIDE BUTTON SPACE VALIDATION:
+    // Ensure offline group can accommodate side buttons (Play/Delete)
+    // - Two buttons: 2 × 32px = 64px
+    // - Spacing between: 5px (1/2 × 10px)
+    // - Total button area needed: 69px
+    // Since our list minimum (100px) > button area (69px), we have adequate space
+    int minSideButtonSpace = (2 * sideButtonHeight) + (margin / 2);  // 64 + 5 = 69px
+    if (offlineGroupMinHeight < (groupTitleHeight + (margin / 2) + labelHeight + margin + minSideButtonSpace + margin)) {
+        // This should never trigger with our current calculations, but provides safety
+        offlineGroupMinHeight = groupTitleHeight + (margin / 2) + labelHeight + margin + minSideButtonSpace + margin;
+    }
+    
+    // TOTAL WINDOW HEIGHT CALCULATION:
+    // - Top window margin: 10px (space from window top edge)
+    // - Download group: 136px (calculated above)
+    // - Inter-group margin: 10px (visual separation between main sections)
+    // - Offline group: 159px (calculated above)
+    // - Bottom window margin: 10px (space from window bottom edge)
+    // - Content subtotal: 325px
+    // - Window chrome: ~60px (title bar, menu bar, window borders - OS dependent)
+    // - Total minimum: ~385px
+    *minHeight = windowMargin +                    // 10px: top margin
+                downloadGroupHeight +              // 136px: download section
+                margin +                           // 10px: inter-group spacing
+                offlineGroupMinHeight +            // 159px: offline section
+                windowMargin;                      // 10px: bottom margin
+                                                  // Subtotal: 325px
+    
+    // Add window chrome space (title bar, menu, borders)
+    // This varies by Windows version and theme, but ~60px is typical
+    *minHeight += (int)(60 * dpiScaleY);          // 60px: window chrome
+                                                  // Final total: ~385px at 96 DPI
+}
+
+// Function to calculate optimal default window dimensions based on DPI and content requirements
+void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dpiScaleX, double dpiScaleY) {
+    if (!defaultWidth || !defaultHeight) return;
+    
+    // Start with minimum size as baseline
+    CalculateMinimumWindowSize(defaultWidth, defaultHeight, dpiScaleX, dpiScaleY);
+    
+    // Add comfortable extra space for better user experience
+    
+    // Width reasoning:
+    // - Minimum gives us ~200px text field width
+    // - For default, target ~400px text field width (comfortable for long YouTube URLs/titles)
+    // - YouTube video titles can be 60-100+ characters, need more space
+    int extraWidth = (int)(200 * dpiScaleX);  // Add 200px for more comfortable text field width
+    *defaultWidth += extraWidth;
+    
+    // Height reasoning:
+    // - Minimum gives us ~100px list height (shows ~3-4 items)
+    // - For default, target ~200px list height (shows ~8-10 items comfortably)
+    // - Users typically have multiple downloaded videos, need to see more at once
+    int extraHeight = (int)(120 * dpiScaleY);  // Add 120px for more comfortable list viewing
+    *defaultHeight += extraHeight;
+    
+    // Ensure we don't exceed reasonable screen space (80% of typical small screen)
+    int maxReasonableWidth = (int)(1090 * dpiScaleX);   // 80% of 1366px width
+    int maxReasonableHeight = (int)(614 * dpiScaleY);   // 80% of 768px height
+    
+    if (*defaultWidth > maxReasonableWidth) {
+        *defaultWidth = maxReasonableWidth;
+    }
+    if (*defaultHeight > maxReasonableHeight) {
+        *defaultHeight = maxReasonableHeight;
+    }
+}
+
 void ResizeControls(HWND hDlg) {
     RECT rect;
     GetClientRect(hDlg, &rect);
     
-    int width = rect.right - rect.left;
-    int height = rect.bottom - rect.top;
+    // Get DPI for this window to scale all measurements appropriately
+    HDC hdc = GetDC(hDlg);
+    int dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+    int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+    ReleaseDC(hDlg, hdc);
     
-    // Calculate button position with proper margin (20px from window edge, 10px from group box edge)
-    int buttonX = width - BUTTON_WIDTH - 20;  // 20 pixel margin from window edge
-    int sideButtonX = width - BUTTON_WIDTH - 20;
+    // Calculate DPI scaling factors (96 DPI = 100% scaling)
+    double scaleX = (double)dpiX / 96.0;
+    double scaleY = (double)dpiY / 96.0;
     
-    // Resize Download video group box with 10px margin from window edges
-    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 10, 10, width - 20, 110, SWP_NOZORDER);
+    // Base measurements in logical units (96 DPI)
+    const int BASE_MARGIN = 10;           // Standard margin between elements
+    const int BASE_WINDOW_MARGIN = 10;    // Margin from window edges
+    const int BASE_BUTTON_WIDTH = 78;     // Standard button width
+    const int BASE_BUTTON_HEIGHT = 26;    // Standard button height
+    const int BASE_SMALL_BUTTON_HEIGHT = 16; // Small button height (color indicators)
+    const int BASE_TEXT_HEIGHT = 22;      // Text field height
+    const int BASE_LABEL_HEIGHT = 16;     // Label height
+    const int BASE_PROGRESS_HEIGHT = 16;  // Progress bar height
+    const int BASE_GROUP_TITLE_HEIGHT = 18; // Group box title area height
     
-    // Position URL label (within download group) - moved down to align better
-    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL1), NULL, 20, 32, 30, 16, SWP_NOZORDER);
+    // Scale all measurements to current DPI
+    int margin = (int)(BASE_MARGIN * scaleX);
+    int windowMargin = (int)(BASE_WINDOW_MARGIN * scaleX);
+    int buttonWidth = (int)(BASE_BUTTON_WIDTH * scaleX);
+    int buttonHeight = (int)(BASE_BUTTON_HEIGHT * scaleY);
+    int smallButtonHeight = (int)(BASE_SMALL_BUTTON_HEIGHT * scaleY);
+    int textHeight = (int)(BASE_TEXT_HEIGHT * scaleY);
+    int labelHeight = (int)(BASE_LABEL_HEIGHT * scaleY);
+    int progressHeight = (int)(BASE_PROGRESS_HEIGHT * scaleY);
+    int groupTitleHeight = (int)(BASE_GROUP_TITLE_HEIGHT * scaleY);
     
-    // Resize URL text field (within download group) - leave 10px gap before buttons
-    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 55, 30, buttonX - 55 - 10, 22, SWP_NOZORDER);
+    // Calculate available space
+    int clientWidth = rect.right - rect.left;
+    int clientHeight = rect.bottom - rect.top;
     
-    // Position progress bar below URL field with same width as text field
-    SetWindowPos(GetDlgItem(hDlg, IDC_PROGRESS_BAR), NULL, 55, 58, buttonX - 55 - 10, 16, SWP_NOZORDER);
+    // Calculate Download video group dimensions
+    // Logic: Need space for URL field + video title + duration + progress bar + progress text + margins
+    // Vertical layout: Group title (18) + margin (10) + URL row (22) + margin (8) + title row (16) + 
+    //                  margin (6) + duration row (16) + margin (8) + progress bar (16) + margin (6) + 
+    //                  progress text (16) + bottom margin (10) = 136 total
+    int downloadGroupHeight = groupTitleHeight + margin + textHeight + (margin * 3/4) + labelHeight + 
+                             (margin / 2) + labelHeight + (margin * 3/4) + progressHeight + 
+                             (margin / 2) + labelHeight + margin;
     
-    // Position color buttons under progress bar
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_GREEN), NULL, 55, 78, 20, 16, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_TEAL), NULL, 80, 78, 20, 16, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_BLUE), NULL, 105, 78, 20, 16, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_WHITE), NULL, 130, 78, 20, 16, SWP_NOZORDER);
+    // Position Download video group box
+    int downloadGroupX = windowMargin;
+    int downloadGroupY = windowMargin;
+    int downloadGroupWidth = clientWidth - (2 * windowMargin);
     
-    // Position URL buttons (within download group) - aligned with text field and progress bar
-    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, buttonX, 28, BUTTON_WIDTH, 26, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, buttonX, 58, BUTTON_WIDTH, 26, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_GROUP), NULL, 
+                downloadGroupX, downloadGroupY, downloadGroupWidth, downloadGroupHeight, SWP_NOZORDER);
     
-    // Resize Offline videos group box (moved down to accommodate larger download group)
-    int offlineGroupY = 130;
-    SetWindowPos(GetDlgItem(hDlg, IDC_OFFLINE_GROUP), NULL, 10, offlineGroupY, width - 20, height - offlineGroupY - 10, SWP_NOZORDER);
+    // Calculate button positions (right-aligned within group)
+    int buttonX = downloadGroupX + downloadGroupWidth - buttonWidth - margin;
+    int availableTextWidth = buttonX - downloadGroupX - (3 * margin); // Space for text controls
     
-    // Position the status labels at the top of the offline group (inside the group box)
-    int labelY = offlineGroupY + 18;  // 18 pixels below group box top (accounting for group box border/title)
-    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL2), NULL, 20, labelY, 150, 16, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL3), NULL, 200, labelY, 100, 16, SWP_NOZORDER);
+    // Position controls within Download video group
+    int currentY = downloadGroupY + groupTitleHeight + margin;
     
-    // Position listbox below the labels with more spacing
-    int listY = labelY + 37;  // 37 pixels below labels (15 more pixels for label space)
-    int listHeight = height - listY - 20;  // 20 pixels from bottom
-    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 20, listY, sideButtonX - 20 - 10, listHeight, SWP_NOZORDER);
+    // URL row
+    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL1), NULL, 
+                downloadGroupX + margin, currentY + 2, (int)(30 * scaleX), labelHeight, SWP_NOZORDER);
     
-    // Position side buttons aligned with the listbox
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, sideButtonX, listY, BUTTON_WIDTH, 32, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, sideButtonX, listY + 37, BUTTON_WIDTH, 32, SWP_NOZORDER);
+    int urlFieldX = downloadGroupX + margin + (int)(35 * scaleX);
+    int urlFieldWidth = availableTextWidth - (int)(35 * scaleX);
+    SetWindowPos(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, 
+                urlFieldX, currentY, urlFieldWidth, textHeight, SWP_NOZORDER);
+    
+    SetWindowPos(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), NULL, 
+                buttonX, currentY - 1, buttonWidth, buttonHeight, SWP_NOZORDER);
+    
+    currentY += textHeight + (margin * 3/4);
+    
+    // Video title row
+    SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_TITLE_LABEL), NULL, 
+                downloadGroupX + margin, currentY, (int)(35 * scaleX), labelHeight, SWP_NOZORDER);
+    
+    SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_TITLE), NULL, 
+                urlFieldX, currentY, urlFieldWidth, labelHeight, SWP_NOZORDER);
+    
+    SetWindowPos(GetDlgItem(hDlg, IDC_GETINFO_BTN), NULL, 
+                buttonX, currentY - 1, buttonWidth, buttonHeight, SWP_NOZORDER);
+    
+    currentY += labelHeight + (margin / 2);
+    
+    // Duration row (left side only, no button)
+    SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_DURATION_LABEL), NULL, 
+                downloadGroupX + margin, currentY, (int)(50 * scaleX), labelHeight, SWP_NOZORDER);
+    
+    SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_DURATION), NULL, 
+                downloadGroupX + margin + (int)(55 * scaleX), currentY, (int)(100 * scaleX), labelHeight, SWP_NOZORDER);
+    
+    currentY += labelHeight + (margin * 3/4);
+    
+    // Progress bar row
+    SetWindowPos(GetDlgItem(hDlg, IDC_PROGRESS_BAR), NULL, 
+                urlFieldX, currentY, urlFieldWidth, progressHeight, SWP_NOZORDER);
+    
+    currentY += progressHeight + (margin / 2);
+    
+    // Progress text row
+    SetWindowPos(GetDlgItem(hDlg, IDC_PROGRESS_TEXT), NULL, 
+                urlFieldX, currentY, urlFieldWidth, labelHeight, SWP_NOZORDER);
+    
+    // Position color indicator buttons (hidden by default, positioned for future use)
+    int colorButtonY = currentY;
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_GREEN), NULL, 
+                urlFieldX, colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_TEAL), NULL, 
+                urlFieldX + (int)(25 * scaleX), colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_BLUE), NULL, 
+                urlFieldX + (int)(50 * scaleX), colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_WHITE), NULL, 
+                urlFieldX + (int)(75 * scaleX), colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
+    
+    // Calculate Offline videos group position and size
+    int offlineGroupY = downloadGroupY + downloadGroupHeight + margin;
+    int offlineGroupHeight = clientHeight - offlineGroupY - windowMargin;
+    
+    // Ensure minimum height for offline group
+    if (offlineGroupHeight < (int)(100 * scaleY)) {
+        offlineGroupHeight = (int)(100 * scaleY);
+    }
+    
+    SetWindowPos(GetDlgItem(hDlg, IDC_OFFLINE_GROUP), NULL, 
+                downloadGroupX, offlineGroupY, downloadGroupWidth, offlineGroupHeight, SWP_NOZORDER);
+    
+    // Position controls within Offline videos group
+    int offlineContentY = offlineGroupY + groupTitleHeight + (margin / 2);
+    
+    // Status labels
+    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL2), NULL, 
+                downloadGroupX + margin, offlineContentY, (int)(150 * scaleX), labelHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_LABEL3), NULL, 
+                downloadGroupX + margin + (int)(160 * scaleX), offlineContentY, (int)(100 * scaleX), labelHeight, SWP_NOZORDER);
+    
+    // Calculate listbox and side buttons
+    int listY = offlineContentY + labelHeight + margin;
+    int listHeight = offlineGroupY + offlineGroupHeight - listY - margin;
+    int sideButtonX = downloadGroupX + downloadGroupWidth - buttonWidth - margin;
+    int listWidth = sideButtonX - downloadGroupX - (2 * margin);
+    
+    // Ensure minimum dimensions
+    if (listWidth < (int)(200 * scaleX)) {
+        listWidth = (int)(200 * scaleX);
+    }
+    if (listHeight < (int)(50 * scaleY)) {
+        listHeight = (int)(50 * scaleY);
+    }
+    
+    SetWindowPos(GetDlgItem(hDlg, IDC_LIST), NULL, 
+                downloadGroupX + margin, listY, listWidth, listHeight, SWP_NOZORDER);
+    
+    // Side buttons (Play and Delete)
+    int sideButtonHeight = (int)(32 * scaleY);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON2), NULL, 
+                sideButtonX, listY, buttonWidth, sideButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON3), NULL, 
+                sideButtonX, listY + sideButtonHeight + (margin / 2), buttonWidth, sideButtonHeight, SWP_NOZORDER);
 }
 
 // Settings dialog procedure
@@ -1553,8 +1816,20 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
             OriginalTextFieldProc = (WNDPROC)SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)TextFieldSubclassProc);
             
-            // Set minimum window size
-            SetWindowPos(hDlg, NULL, 0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT, SWP_NOMOVE | SWP_NOZORDER);
+            // Calculate and set optimal default window size based on DPI
+            HDC hdc = GetDC(hDlg);
+            int dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+            int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+            ReleaseDC(hDlg, hdc);
+            
+            double scaleX = (double)dpiX / 96.0;
+            double scaleY = (double)dpiY / 96.0;
+            
+            int defaultWidth, defaultHeight;
+            CalculateDefaultWindowSize(&defaultWidth, &defaultHeight, scaleX, scaleY);
+            
+            // Set the calculated default window size
+            SetWindowPos(hDlg, NULL, 0, 0, defaultWidth, defaultHeight, SWP_NOMOVE | SWP_NOZORDER);
             
             return FALSE; // Return FALSE since we set focus manually
         }
@@ -1565,8 +1840,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
         case WM_GETMINMAXINFO: {
             MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-            mmi->ptMinTrackSize.x = MIN_WINDOW_WIDTH;
-            mmi->ptMinTrackSize.y = MIN_WINDOW_HEIGHT;
+            
+            // Get DPI for dynamic minimum size calculation
+            HDC hdc = GetDC(hDlg);
+            int dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+            int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+            ReleaseDC(hDlg, hdc);
+            
+            // Calculate DPI scaling factors (96 DPI = 100% scaling)
+            double scaleX = (double)dpiX / 96.0;
+            double scaleY = (double)dpiY / 96.0;
+            
+            // Calculate minimum window size based on content requirements
+            int minWidth, minHeight;
+            CalculateMinimumWindowSize(&minWidth, &minHeight, scaleX, scaleY);
+            
+            mmi->ptMinTrackSize.x = minWidth;
+            mmi->ptMinTrackSize.y = minHeight;
             return 0;
         }
         

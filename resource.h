@@ -54,6 +54,13 @@
 #define IDC_CUSTOM_ARGS_LABEL  1030
 #define IDC_CUSTOM_ARGS_FIELD  1031
 
+// Video Information Controls
+#define IDC_VIDEO_TITLE_LABEL  1041
+#define IDC_VIDEO_TITLE        1042
+#define IDC_VIDEO_DURATION_LABEL 1043
+#define IDC_VIDEO_DURATION     1044
+#define IDC_PROGRESS_TEXT      1045
+
 // Enhanced Error Dialog
 #define IDD_ERROR_DIALOG       105
 #define IDC_ERROR_ICON         1032
