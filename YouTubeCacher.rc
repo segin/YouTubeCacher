@@ -1,8 +1,12 @@
 #include <windows.h>
 #include "resource.h"
 
-// Application manifest for HiDPI support
+// Application manifest for visual styles and HiDPI support
+// Using resource ID 1 which is the standard for application manifests
 1 RT_MANIFEST "YouTubeCacher.manifest"
+
+// Also try alternative resource ID as backup
+2 RT_MANIFEST "YouTubeCacher.manifest"
 
 // Menu resource
 IDR_MAIN_MENU MENU
@@ -23,7 +27,7 @@ BEGIN
 END
 
 IDD_MAIN_DIALOG DIALOGEX 0, 0, 550, 450
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
+STYLE DS_SHELLFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
 CAPTION "YouTube Cacher"
 FONT 9, "Segoe UI"
 MENU IDR_MAIN_MENU
@@ -57,7 +61,7 @@ END
 
 // Settings Dialog - Optimized with proper Win32 metrics
 IDD_SETTINGS DIALOGEX 0, 0, 280, 155
-STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Settings"
 FONT 9, "Segoe UI"
 BEGIN
@@ -82,7 +86,7 @@ END
 
 // Progress Dialog - Optimized with proper Win32 metrics
 IDD_PROGRESS DIALOGEX 0, 0, 260, 80
-STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Operation in Progress"
 FONT 9, "Segoe UI"
 BEGIN
@@ -93,7 +97,7 @@ END
 
 // Enhanced Error Dialog
 IDD_ERROR_DIALOG DIALOGEX 0, 0, 320, 92
-STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Error"
 FONT 9, "Segoe UI"
 BEGIN

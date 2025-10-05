@@ -2020,6 +2020,62 @@ void ApplyDelayedTheming(HWND hDlg) {
     SetTimer(hDlg, 9999, 100, NULL); // 100ms delay
 }
 
+// Force visual styles activation using multiple methods
+void ForceVisualStylesActivation(void) {
+    // Method 1: Try to activate visual styles through UxTheme
+    HMODULE hUxTheme = LoadLibraryW(L"uxtheme.dll");
+    if (hUxTheme) {
+        typedef BOOL (WINAPI *SetThemeAppPropertiesFunc)(DWORD);
+        typedef HRESULT (WINAPI *EnableThemingFunc)(BOOL);
+        
+        SetThemeAppPropertiesFunc SetThemeAppProperties = 
+            (SetThemeAppPropertiesFunc)GetProcAddress(hUxTheme, "SetThemeAppProperties");
+        EnableThemingFunc EnableTheming = 
+            (EnableThemingFunc)GetProcAddress(hUxTheme, "EnableTheming");
+        
+        if (SetThemeAppProperties) {
+            // Enable all theming properties
+            SetThemeAppProperties(0x7); // STAP_ALLOW_NONCLIENT | STAP_ALLOW_CONTROLS | STAP_ALLOW_WEBCONTENT
+        }
+        
+        if (EnableTheming) {
+            EnableTheming(TRUE);
+        }
+        
+        FreeLibrary(hUxTheme);
+    }
+    
+    // Method 2: Re-initialize Common Controls with explicit visual styles
+    INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icex.dwICC = ICC_WIN95_CLASSES | ICC_STANDARD_CLASSES | ICC_PROGRESS_CLASS | 
+                 ICC_LISTVIEW_CLASSES | ICC_TAB_CLASSES | ICC_BAR_CLASSES;
+    InitCommonControlsEx(&icex);
+}
+
+// Create a dialog with explicit theming support
+HWND CreateThemedDialog(HINSTANCE hInstance, LPCWSTR lpTemplate, HWND hWndParent, DLGPROC lpDialogFunc) {
+    // Ensure visual styles are active before creating dialog
+    ForceVisualStylesActivation();
+    
+    // Create the dialog
+    HWND hDlg = CreateDialogW(hInstance, lpTemplate, hWndParent, lpDialogFunc);
+    
+    if (hDlg) {
+        // Apply theming immediately after creation
+        ApplyModernThemeToDialog(hDlg);
+        
+        // Show the dialog
+        ShowWindow(hDlg, SW_SHOW);
+        UpdateWindow(hDlg);
+        
+        // Apply theming again after showing (sometimes needed)
+        ApplyDelayedTheming(hDlg);
+    }
+    
+    return hDlg;
+}
+
 void ResizeControls(HWND hDlg) {
     RECT rect;
     GetClientRect(hDlg, &rect);
@@ -2935,6 +2991,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     // Initialize error logging
     InitializeErrorLogging();
     
+    // Force visual styles activation before anything else
+    ForceVisualStylesActivation();
+    
     // Initialize Common Controls v6 for modern Windows theming
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
@@ -3007,8 +3066,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     // Load accelerator table
     HACCEL hAccel = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDR_MAIN_MENU));
     
-    // Create the dialog as modeless to handle accelerators
-    HWND hDlg = CreateDialog(hInstance, MAKEINTRESOURCE(IDD_MAIN_DIALOG), NULL, DialogProc);
+    // Create the dialog as modeless with explicit theming support
+    HWND hDlg = CreateThemedDialog(hInstance, MAKEINTRESOURCE(IDD_MAIN_DIALOG), NULL, DialogProc);
     if (hDlg == NULL) {
         return 0;
     }
