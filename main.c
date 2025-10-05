@@ -471,6 +471,61 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     return FALSE;
 }
 
+// Progress dialog procedure
+INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    static ProgressDialog* pProgress = NULL;
+    
+    switch (message) {
+        case WM_INITDIALOG: {
+            // Store the ProgressDialog pointer passed via lParam
+            pProgress = (ProgressDialog*)lParam;
+            if (pProgress) {
+                pProgress->hDialog = hDlg;
+                pProgress->hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_PROGRESS);
+                pProgress->hStatusText = GetDlgItem(hDlg, IDC_PROGRESS_STATUS);
+                pProgress->hCancelButton = GetDlgItem(hDlg, IDC_PROGRESS_CANCEL);
+                pProgress->cancelled = FALSE;
+                
+                // Initialize progress bar
+                SendMessageW(pProgress->hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+                SendMessageW(pProgress->hProgressBar, PBM_SETPOS, 0, 0);
+                
+                // Center the dialog
+                RECT rcParent, rcDialog;
+                HWND hParent = GetParent(hDlg);
+                if (hParent) {
+                    GetWindowRect(hParent, &rcParent);
+                } else {
+                    SystemParametersInfoW(SPI_GETWORKAREA, 0, &rcParent, 0);
+                }
+                GetWindowRect(hDlg, &rcDialog);
+                
+                int x = rcParent.left + (rcParent.right - rcParent.left - (rcDialog.right - rcDialog.left)) / 2;
+                int y = rcParent.top + (rcParent.bottom - rcParent.top - (rcDialog.bottom - rcDialog.top)) / 2;
+                SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+            }
+            return TRUE;
+        }
+        
+        case WM_COMMAND:
+            switch (LOWORD(wParam)) {
+                case IDC_PROGRESS_CANCEL:
+                    if (pProgress) {
+                        pProgress->cancelled = TRUE;
+                    }
+                    return TRUE;
+            }
+            break;
+            
+        case WM_CLOSE:
+            if (pProgress) {
+                pProgress->cancelled = TRUE;
+            }
+            return TRUE;
+    }
+    return FALSE;
+}
+
 // Dialog procedure function
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
@@ -643,6 +698,195 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     break;
                     
+                // Helper function to execute yt-dlp with progress dialog
+                BOOL ExecuteYtDlpWithProgress(HWND hParent, const wchar_t* ytDlpPath, const wchar_t* arguments, 
+                                            const wchar_t* operationTitle, wchar_t** output) {
+                    // Create progress dialog
+                    ProgressDialog* progress = CreateProgressDialog(hParent, operationTitle);
+                    if (!progress) {
+                        MessageBoxW(hParent, L"Failed to create progress dialog", L"Error", MB_OK | MB_ICONERROR);
+                        return FALSE;
+                    }
+                    
+                    // Update initial status
+                    UpdateProgressDialog(progress, 0, L"Initializing yt-dlp...");
+                    
+                    // Set up process creation
+                    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+                    HANDLE hRead = NULL, hWrite = NULL;
+                    
+                    // Create pipes for stdout/stderr
+                    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
+                        UpdateProgressDialog(progress, 0, L"Failed to create output pipe");
+                        Sleep(1000);
+                        DestroyProgressDialog(progress);
+                        MessageBoxW(hParent, L"Failed to create pipe for yt-dlp output capture.", L"System Error", MB_OK | MB_ICONERROR);
+                        return FALSE;
+                    }
+                    
+                    // Prevent the read handle from being inherited
+                    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+                    
+                    // Set up STARTUPINFO to redirect standard handles
+                    STARTUPINFOW si = {0};
+                    si.cb = sizeof(si);
+                    si.dwFlags = STARTF_USESTDHANDLES;
+                    si.hStdOutput = hWrite;
+                    si.hStdError = hWrite;
+                    si.hStdInput = NULL;
+                    
+                    PROCESS_INFORMATION pi = {0};
+                    
+                    // Build command line
+                    size_t cmdLineLen = wcslen(ytDlpPath) + wcslen(arguments) + 10;
+                    wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
+                    if (!cmdLine) {
+                        CloseHandle(hRead);
+                        CloseHandle(hWrite);
+                        DestroyProgressDialog(progress);
+                        MessageBoxW(hParent, L"Memory allocation failed for command line.", L"System Error", MB_OK | MB_ICONERROR);
+                        return FALSE;
+                    }
+                    
+                    swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", ytDlpPath, arguments);
+                    
+                    UpdateProgressDialog(progress, 10, L"Starting yt-dlp process...");
+                    
+                    // Create process
+                    BOOL processCreated = CreateProcessW(
+                        NULL,               // application name
+                        cmdLine,            // command line string
+                        NULL, NULL,         // process and thread security attributes
+                        TRUE,               // inherit handles
+                        CREATE_NO_WINDOW,   // hide console window
+                        NULL,               // environment
+                        NULL,               // current directory
+                        &si, &pi            // startup and process info
+                    );
+                    
+                    if (!processCreated) {
+                        DWORD errorCode = GetLastError();
+                        wchar_t errorMsg[512];
+                        swprintf(errorMsg, 512, L"Failed to start yt-dlp process.\nError code: %lu", errorCode);
+                        UpdateProgressDialog(progress, 0, errorMsg);
+                        Sleep(2000);
+                        
+                        free(cmdLine);
+                        CloseHandle(hRead);
+                        CloseHandle(hWrite);
+                        DestroyProgressDialog(progress);
+                        return FALSE;
+                    }
+                    
+                    // Close the write handle in the parent
+                    CloseHandle(hWrite);
+                    
+                    UpdateProgressDialog(progress, 20, L"Reading yt-dlp output...");
+                    
+                    // Allocate output buffer
+                    size_t outputSize = 16384;
+                    wchar_t* outputBuffer = (wchar_t*)malloc(outputSize * sizeof(wchar_t));
+                    if (!outputBuffer) {
+                        free(cmdLine);
+                        CloseHandle(hRead);
+                        TerminateProcess(pi.hProcess, 1);
+                        CloseHandle(pi.hProcess);
+                        CloseHandle(pi.hThread);
+                        DestroyProgressDialog(progress);
+                        return FALSE;
+                    }
+                    outputBuffer[0] = L'\0';
+                    
+                    // Read output with progress updates
+                    char buffer[4096];
+                    DWORD bytesRead;
+                    wchar_t tempOutput[2048];
+                    int progressValue = 20;
+                    
+                    while (TRUE) {
+                        // Check for cancellation
+                        if (IsProgressDialogCancelled(progress)) {
+                            UpdateProgressDialog(progress, progressValue, L"Cancelling operation...");
+                            TerminateProcess(pi.hProcess, 1);
+                            break;
+                        }
+                        
+                        // Try to read output
+                        BOOL readResult = ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL);
+                        if (!readResult || bytesRead == 0) {
+                            // Check if process is still running
+                            DWORD exitCode;
+                            if (GetExitCodeProcess(pi.hProcess, &exitCode) && exitCode != STILL_ACTIVE) {
+                                break; // Process finished
+                            }
+                            
+                            // Update progress and continue
+                            progressValue = min(progressValue + 5, 90);
+                            UpdateProgressDialog(progress, progressValue, L"Processing...");
+                            Sleep(100);
+                            continue;
+                        }
+                        
+                        // Convert and append output
+                        buffer[bytesRead] = '\0';
+                        int converted = MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, tempOutput, 2047);
+                        if (converted > 0) {
+                            tempOutput[converted] = L'\0';
+                            
+                            // Expand buffer if needed
+                            size_t currentLen = wcslen(outputBuffer);
+                            size_t newLen = currentLen + converted + 1;
+                            if (newLen >= outputSize) {
+                                outputSize = newLen * 2;
+                                wchar_t* newBuffer = (wchar_t*)realloc(outputBuffer, outputSize * sizeof(wchar_t));
+                                if (newBuffer) {
+                                    outputBuffer = newBuffer;
+                                } else {
+                                    break; // Out of memory
+                                }
+                            }
+                            
+                            wcscat(outputBuffer, tempOutput);
+                            
+                            // Update progress based on output content
+                            if (wcsstr(tempOutput, L"Downloading") || wcsstr(tempOutput, L"download")) {
+                                progressValue = min(progressValue + 2, 80);
+                                UpdateProgressDialog(progress, progressValue, L"Downloading...");
+                            } else if (wcsstr(tempOutput, L"Extracting") || wcsstr(tempOutput, L"extract")) {
+                                progressValue = min(progressValue + 1, 85);
+                                UpdateProgressDialog(progress, progressValue, L"Extracting information...");
+                            }
+                        }
+                    }
+                    
+                    // Wait for process completion
+                    UpdateProgressDialog(progress, 95, L"Finalizing...");
+                    WaitForSingleObject(pi.hProcess, 5000); // 5 second timeout
+                    
+                    // Get exit code
+                    DWORD exitCode;
+                    GetExitCodeProcess(pi.hProcess, &exitCode);
+                    
+                    UpdateProgressDialog(progress, 100, L"Complete");
+                    Sleep(500);
+                    
+                    // Cleanup
+                    free(cmdLine);
+                    CloseHandle(hRead);
+                    CloseHandle(pi.hProcess);
+                    CloseHandle(pi.hThread);
+                    DestroyProgressDialog(progress);
+                    
+                    // Set output
+                    if (output) {
+                        *output = outputBuffer;
+                    } else {
+                        free(outputBuffer);
+                    }
+                    
+                    return (exitCode == 0 && !IsProgressDialogCancelled(progress));
+                }
+
                 case IDC_DOWNLOAD_BTN: {
                     // First, validate that yt-dlp is configured and exists
                     wchar_t ytDlpPath[MAX_EXTENDED_PATH];
@@ -678,17 +922,37 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // TODO: Implement actual download functionality
-                    // Use a larger buffer for the message to accommodate long paths
-                    wchar_t* message = (wchar_t*)malloc((MAX_EXTENDED_PATH * 2 + 300) * sizeof(wchar_t));
-                    if (message) {
-                        swprintf(message, MAX_EXTENDED_PATH * 2 + 300, 
-                            L"Ready to download!\n\nyt-dlp:\n%ls\n\nDownload folder:\n%ls\n\nDownload functionality not implemented yet", 
-                            ytDlpPath, downloadPath);
-                        MessageBoxW(hDlg, message, L"Download", MB_OK);
-                        free(message);
+                    // Get URL from text field
+                    wchar_t url[MAX_URL_LENGTH];
+                    GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
+                    
+                    if (wcslen(url) == 0) {
+                        MessageBoxW(hDlg, L"Please enter a URL to download.", L"No URL", MB_OK | MB_ICONWARNING);
+                        break;
+                    }
+                    
+                    // Build yt-dlp arguments for download
+                    wchar_t arguments[2048];
+                    swprintf(arguments, 2048, L"-o \"%ls\\%%(title)s.%%(ext)s\" \"%ls\"", downloadPath, url);
+                    
+                    // Execute yt-dlp with progress dialog
+                    wchar_t* output = NULL;
+                    BOOL success = ExecuteYtDlpWithProgress(hDlg, ytDlpPath, arguments, L"Downloading Video", &output);
+                    
+                    if (success) {
+                        MessageBoxW(hDlg, L"Download completed successfully!", L"Download Complete", MB_OK | MB_ICONINFORMATION);
                     } else {
-                        MessageBoxW(hDlg, L"Ready to download!\n\nDownload functionality not implemented yet", L"Download", MB_OK);
+                        wchar_t errorMsg[1024];
+                        if (output && wcslen(output) > 0) {
+                            swprintf(errorMsg, 1024, L"Download failed. yt-dlp output:\n\n%ls", output);
+                        } else {
+                            wcscpy(errorMsg, L"Download failed or was cancelled.");
+                        }
+                        MessageBoxW(hDlg, errorMsg, L"Download Failed", MB_OK | MB_ICONERROR);
+                    }
+                    
+                    if (output) {
+                        free(output);
                     }
                     break;
                 }
@@ -715,174 +979,41 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Execute yt-dlp --verbose to get version information using proper CreateProcess
-                    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
-                    HANDLE hRead = NULL, hWrite = NULL;
+                    // Get URL from text field
+                    wchar_t url[MAX_URL_LENGTH];
+                    GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
                     
-                    // Create pipes for stdout/stderr
-                    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
-                        MessageBoxW(hDlg, L"Failed to create pipe for yt-dlp output capture.", L"System Error", MB_OK | MB_ICONERROR);
-                        break;
-                    }
-                    
-                    // Prevent the read handle from being inherited
-                    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
-                    
-                    // Set up STARTUPINFO to redirect standard handles
-                    STARTUPINFOW si = {0};
-                    si.cb = sizeof(si);
-                    si.dwFlags = STARTF_USESTDHANDLES;
-                    si.hStdOutput = hWrite;
-                    si.hStdError = hWrite;
-                    si.hStdInput = NULL;
-                    
-                    PROCESS_INFORMATION pi = {0};
-                    
-                    // Build command line: "path\to\yt-dlp.exe" --verbose
-                    // CreateProcessW requires a mutable command line buffer
-                    size_t cmdLineLen = wcslen(ytDlpPath) + 50;
-                    wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
-                    if (!cmdLine) {
-                        CloseHandle(hRead);
-                        CloseHandle(hWrite);
-                        MessageBoxW(hDlg, L"Memory allocation failed for command line.", L"System Error", MB_OK | MB_ICONERROR);
-                        break;
-                    }
-                    // Build command line safely using wcscpy and wcscat
-                    wcscpy(cmdLine, L"\"");
-                    wcscat(cmdLine, ytDlpPath);
-                    wcscat(cmdLine, L"\" --verbose");
-                    
-                    // Create process hidden
-                    BOOL processCreated = CreateProcessW(
-                        NULL,               // application name
-                        cmdLine,            // command line string (mutable)
-                        NULL, NULL,         // process and thread security attributes
-                        TRUE,               // inherit handles
-                        CREATE_NO_WINDOW,   // hide console window
-                        NULL,               // environment
-                        NULL,               // current directory
-                        &si, &pi            // startup and process info
-                    );
-                    
-                    if (!processCreated) {
-                        // Get detailed error information
-                        DWORD errorCode = GetLastError();
-                        wchar_t* errorBuffer = NULL;
-                        
-                        // Format the Windows error message
-                        FormatMessageW(
-                            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                            NULL,
-                            errorCode,
-                            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                            (LPWSTR)&errorBuffer,
-                            0,
-                            NULL
-                        );
-                        
-                        // Create comprehensive error message using safe string operations
-                        size_t totalLen = wcslen(cmdLine) + wcslen(ytDlpPath) + 
-                                         (errorBuffer ? wcslen(errorBuffer) : 20) + 2000;
-                        wchar_t* detailedError = (wchar_t*)malloc(totalLen * sizeof(wchar_t));
-                        if (detailedError) {
-                            // Build the message safely using wcscpy and wcscat
-                            wcscpy(detailedError, L"Failed to execute yt-dlp process.\n\nCommand Line:\n");
-                            wcscat(detailedError, cmdLine);
-                            wcscat(detailedError, L"\n\nyt-dlp Path:\n");
-                            wcscat(detailedError, ytDlpPath);
-                            
-                            // Add error code using safer approach
-                            wchar_t errorCodeStr[200];
-                            swprintf(errorCodeStr, sizeof(errorCodeStr)/sizeof(wchar_t), L"\n\nWindows Error Code: %lu (0x%08X)\nError Description: ", errorCode, errorCode);
-                            wcscat(detailedError, errorCodeStr);
-                            wcscat(detailedError, errorBuffer ? errorBuffer : L"Unknown error");
-                            
-                            wcscat(detailedError, L"\n\nPossible causes:\n"
-                                L"• File does not exist at the specified path\n"
-                                L"• File is not executable or corrupted\n"
-                                L"• Missing dependencies (Python, Visual C++ Runtime)\n"
-                                L"• Insufficient permissions\n"
-                                L"• Path contains invalid characters\n"
-                                L"• Antivirus software blocking execution\n\n"
-                                L"Troubleshooting:\n"
-                                L"1. Verify the file exists and is executable\n"
-                                L"2. Try running the command manually in Command Prompt\n"
-                                L"3. Check Windows Event Viewer for additional details\n"
-                                L"4. Ensure all dependencies are installed");
-                            
-                            MessageBoxW(hDlg, detailedError, L"yt-dlp Execution Error - Detailed Diagnostics", MB_OK | MB_ICONERROR);
-                            free(detailedError);
-                        } else {
-                            MessageBoxW(hDlg, L"Failed to execute yt-dlp and unable to allocate memory for error details.", L"yt-dlp Execution Error", MB_OK | MB_ICONERROR);
-                        }
-                        
-                        // Clean up error message buffer
-                        if (errorBuffer) {
-                            LocalFree(errorBuffer);
-                        }
-                        
-                        free(cmdLine);
-                        CloseHandle(hRead);
-                        CloseHandle(hWrite);
-                        break;
-                    }
-                    
-                    // Close the write handle in the parent
-                    CloseHandle(hWrite);
-                    
-                    // Read output from hRead until EOF
-                    char buffer[4096];
-                    DWORD bytesRead;
-                    wchar_t* output = (wchar_t*)malloc(8192 * sizeof(wchar_t));
-                    if (!output) {
-                        free(cmdLine);
-                        CloseHandle(hRead);
-                        WaitForSingleObject(pi.hProcess, INFINITE);
-                        CloseHandle(pi.hProcess);
-                        CloseHandle(pi.hThread);
-                        MessageBoxW(hDlg, L"Memory allocation failed.", L"System Error", MB_OK | MB_ICONERROR);
-                        break;
-                    }
-                    
-                    output[0] = L'\0';
-                    wchar_t tempOutput[2048];
-                    
-                    // Read all output
-                    while (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-                        buffer[bytesRead] = '\0';
-                        // Convert from OEM codepage to UTF-16
-                        int converted = MultiByteToWideChar(CP_OEMCP, 0, buffer, bytesRead, tempOutput, 2047);
-                        if (converted > 0) {
-                            tempOutput[converted] = L'\0';
-                            wcscat(output, tempOutput);
-                        }
-                    }
-                    
-                    // Wait for process to complete
-                    WaitForSingleObject(pi.hProcess, INFINITE);
-                    
-                    // Display results
-                    if (wcslen(output) > 0) {
-                        // Extract version info (look for version number in output)
-                        wchar_t* versionStart = wcsstr(output, L"yt-dlp ");
-                        if (versionStart) {
-                            wchar_t* versionEnd = wcschr(versionStart, L'\n');
-                            if (versionEnd) *versionEnd = L'\0';
-                            MessageBoxW(hDlg, versionStart, L"yt-dlp Version Info", MB_OK | MB_ICONINFORMATION);
-                        } else {
-                            MessageBoxW(hDlg, output, L"yt-dlp Output", MB_OK | MB_ICONINFORMATION);
-                        }
+                    wchar_t arguments[1024];
+                    if (wcslen(url) > 0) {
+                        // Get info for specific URL
+                        swprintf(arguments, 1024, L"--print title,duration,uploader \"%ls\"", url);
                     } else {
-                        MessageBoxW(hDlg, L"yt-dlp executed but no output was captured.", L"yt-dlp Info", MB_OK | MB_ICONINFORMATION);
+                        // Just get version info
+                        wcscpy(arguments, L"--version");
                     }
                     
-                    // Cleanup
-                    free(output);
-                    free(cmdLine);
-                    CloseHandle(hRead);
-                    CloseHandle(pi.hProcess);
-                    CloseHandle(pi.hThread);
+                    // Execute yt-dlp with progress dialog
+                    wchar_t* output = NULL;
+                    BOOL success = ExecuteYtDlpWithProgress(hDlg, ytDlpPath, arguments, L"Getting Video Information", &output);
+                    
+                    if (success && output && wcslen(output) > 0) {
+                        // Display the output in a message box
+                        MessageBoxW(hDlg, output, L"Video Information", MB_OK | MB_ICONINFORMATION);
+                    } else if (!success) {
+                        wchar_t errorMsg[1024];
+                        if (output && wcslen(output) > 0) {
+                            swprintf(errorMsg, 1024, L"Failed to get video information. yt-dlp output:\n\n%ls", output);
+                        } else {
+                            wcscpy(errorMsg, L"Failed to get video information or operation was cancelled.");
+                        }
+                        MessageBoxW(hDlg, errorMsg, L"Get Info Failed", MB_OK | MB_ICONERROR);
+                    } else {
+                        MessageBoxW(hDlg, L"yt-dlp executed successfully but no output was captured.", L"No Output", MB_OK | MB_ICONWARNING);
+                    }
+                    
+                    if (output) {
+                        free(output);
+                    }
                     break;
                 }
                     
@@ -941,6 +1072,74 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             return TRUE;
     }
     return FALSE;
+}
+
+// Progress dialog management functions
+ProgressDialog* CreateProgressDialog(HWND parent, const wchar_t* title) {
+    ProgressDialog* dialog = (ProgressDialog*)malloc(sizeof(ProgressDialog));
+    if (!dialog) return NULL;
+    
+    memset(dialog, 0, sizeof(ProgressDialog));
+    
+    // Create the dialog
+    dialog->hDialog = CreateDialogParamW(GetModuleHandleW(NULL), 
+                                        MAKEINTRESOURCEW(IDD_PROGRESS), 
+                                        parent, 
+                                        ProgressDialogProc, 
+                                        (LPARAM)dialog);
+    
+    if (!dialog->hDialog) {
+        free(dialog);
+        return NULL;
+    }
+    
+    // Set the title if provided
+    if (title) {
+        SetWindowTextW(dialog->hDialog, title);
+    }
+    
+    // Show the dialog
+    ShowWindow(dialog->hDialog, SW_SHOW);
+    UpdateWindow(dialog->hDialog);
+    
+    return dialog;
+}
+
+void UpdateProgressDialog(ProgressDialog* dialog, int progress, const wchar_t* status) {
+    if (!dialog || !dialog->hDialog) return;
+    
+    // Update progress bar
+    if (dialog->hProgressBar && progress >= 0 && progress <= 100) {
+        SendMessageW(dialog->hProgressBar, PBM_SETPOS, progress, 0);
+    }
+    
+    // Update status text
+    if (dialog->hStatusText && status) {
+        SetWindowTextW(dialog->hStatusText, status);
+    }
+    
+    // Process messages to keep dialog responsive
+    MSG msg;
+    while (PeekMessageW(&msg, dialog->hDialog, 0, 0, PM_REMOVE)) {
+        if (!IsDialogMessageW(dialog->hDialog, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
+BOOL IsProgressDialogCancelled(const ProgressDialog* dialog) {
+    return dialog ? dialog->cancelled : FALSE;
+}
+
+void DestroyProgressDialog(ProgressDialog* dialog) {
+    if (!dialog) return;
+    
+    if (dialog->hDialog) {
+        DestroyWindow(dialog->hDialog);
+    }
+    
+    free(dialog);
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {

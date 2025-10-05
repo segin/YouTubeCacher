@@ -174,6 +174,7 @@ void LoadSettings(HWND hDlg);
 void SaveSettings(HWND hDlg);
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 // YtDlp management function prototypes
 BOOL InitializeYtDlpConfig(YtDlpConfig* config);

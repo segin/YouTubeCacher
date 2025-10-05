@@ -20,6 +20,7 @@
 // Dialog and Menu Resource IDs
 #define IDD_MAIN_DIALOG   101
 #define IDR_MAIN_MENU     102
+#define IDD_PROGRESS      104
 
 // Menu Command IDs
 #define ID_FILE_SETTINGS  2000
@@ -43,5 +44,10 @@
 #define IDC_COLOR_TEAL    1024
 #define IDC_COLOR_BLUE    1025
 #define IDC_COLOR_WHITE   1026
+
+// Progress Dialog
+#define IDC_PROGRESS_STATUS    1027
+#define IDC_PROGRESS_PROGRESS  1028
+#define IDC_PROGRESS_CANCEL    1029
 
 #endif // RESOURCE_H
