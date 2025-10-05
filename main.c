@@ -10,6 +10,34 @@
 #include <commctrl.h>
 #include <knownfolders.h>
 
+// Function declarations for missing functions
+wchar_t* _wcsdup(const wchar_t* str);
+int _wcsicmp(const wchar_t* str1, const wchar_t* str2);
+
+// Implementation of missing functions
+wchar_t* _wcsdup(const wchar_t* str) {
+    if (!str) return NULL;
+    size_t len = wcslen(str) + 1;
+    wchar_t* copy = (wchar_t*)malloc(len * sizeof(wchar_t));
+    if (copy) {
+        wcscpy(copy, str);
+    }
+    return copy;
+}
+
+int _wcsicmp(const wchar_t* str1, const wchar_t* str2) {
+    if (!str1 || !str2) return (str1 == str2) ? 0 : (str1 ? 1 : -1);
+    
+    while (*str1 && *str2) {
+        wchar_t c1 = towlower(*str1);
+        wchar_t c2 = towlower(*str2);
+        if (c1 != c2) return (c1 < c2) ? -1 : 1;
+        str1++;
+        str2++;
+    }
+    return (*str1 == *str2) ? 0 : (*str1 ? 1 : -1);
+}
+
 // Global variable for command line URL
 wchar_t cmdLineURL[MAX_URL_LENGTH] = {0};
 
@@ -987,4 +1015,767 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
     
     return result;
+}
+// E
+// Enhanced validation functions implementation
+
+// Function to detect Python runtime on the system
+BOOL DetectPythonRuntime(wchar_t* pythonPath, size_t pathSize) {
+    if (!pythonPath || pathSize == 0) {
+        return FALSE;
+    }
+    
+    // Initialize output
+    pythonPath[0] = L'\0';
+    
+    // Common Python executable names to check
+    const wchar_t* pythonNames[] = {
+        L"python.exe",
+        L"python3.exe", 
+        L"py.exe"
+    };
+    
+    // Check each Python executable in PATH
+    for (int i = 0; i < 3; i++) {
+        wchar_t fullPath[MAX_EXTENDED_PATH];
+        DWORD result = SearchPathW(NULL, pythonNames[i], NULL, MAX_EXTENDED_PATH, fullPath, NULL);
+        
+        if (result > 0 && result < MAX_EXTENDED_PATH) {
+            // Found Python executable, verify it works
+            wchar_t cmdLine[MAX_EXTENDED_PATH + 50];
+            swprintf(cmdLine, MAX_EXTENDED_PATH + 50, L"\"%ls\" --version", fullPath);
+            
+            STARTUPINFOW si;
+            ZeroMemory(&si, sizeof(si));
+            si.cb = sizeof(si);
+            PROCESS_INFORMATION pi = { 0 };
+            si.dwFlags = STARTF_USESHOWWINDOW;
+            si.wShowWindow = SW_HIDE;
+            
+            if (CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                DWORD exitCode;
+                if (WaitForSingleObject(pi.hProcess, 5000) == WAIT_OBJECT_0) {
+                    GetExitCodeProcess(pi.hProcess, &exitCode);
+                    if (exitCode == 0) {
+                        // Python works, copy path and return success
+                        wcsncpy(pythonPath, fullPath, pathSize - 1);
+                        pythonPath[pathSize - 1] = L'\0';
+                        CloseHandle(pi.hProcess);
+                        CloseHandle(pi.hThread);
+                        return TRUE;
+                    }
+                }
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+            }
+        }
+    }
+    
+    return FALSE;
+}
+
+// Function to get yt-dlp version
+BOOL GetYtDlpVersion(const wchar_t* path, wchar_t* version, size_t versionSize) {
+    if (!path || !version || versionSize == 0) {
+        return FALSE;
+    }
+    
+    // Initialize output
+    version[0] = L'\0';
+    
+    // Create command line for version check
+    wchar_t cmdLine[MAX_EXTENDED_PATH + 50];
+    swprintf(cmdLine, MAX_EXTENDED_PATH + 50, L"\"%ls\" --version", path);
+    
+    // Create pipes for output capture
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+    HANDLE hRead = NULL, hWrite = NULL;
+    
+    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
+        return FALSE;
+    }
+    
+    // Ensure read handle is not inherited
+    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+    
+    STARTUPINFOW si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = { 0 };
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.hStdOutput = hWrite;
+    si.hStdError = hWrite;
+    si.wShowWindow = SW_HIDE;
+    
+    BOOL success = FALSE;
+    if (CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(hWrite);
+        hWrite = NULL;
+        
+        // Wait for process to complete (with timeout)
+        if (WaitForSingleObject(pi.hProcess, 10000) == WAIT_OBJECT_0) {
+            DWORD exitCode;
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            
+            if (exitCode == 0) {
+                // Read output
+                char buffer[512];
+                DWORD bytesRead;
+                if (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+                    buffer[bytesRead] = '\0';
+                    
+                    // Convert to wide string
+                    MultiByteToWideChar(CP_UTF8, 0, buffer, -1, version, (int)versionSize);
+                    
+                    // Clean up version string (remove newlines)
+                    for (size_t i = 0; i < versionSize && version[i]; i++) {
+                        if (version[i] == L'\r' || version[i] == L'\n') {
+                            version[i] = L'\0';
+                            break;
+                        }
+                    }
+                    
+                    success = TRUE;
+                }
+            }
+        }
+        
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+    
+    if (hWrite) CloseHandle(hWrite);
+    CloseHandle(hRead);
+    
+    return success;
+}
+
+// Function to check yt-dlp version compatibility
+BOOL CheckYtDlpCompatibility(const wchar_t* version) {
+    if (!version || wcslen(version) == 0) {
+        return FALSE;
+    }
+    
+    // For now, accept any version that we can detect
+    // In the future, this could check for minimum version requirements
+    // or known incompatible versions
+    
+    // Basic check: version should contain numbers
+    BOOL hasNumbers = FALSE;
+    for (size_t i = 0; version[i]; i++) {
+        if (iswdigit(version[i])) {
+            hasNumbers = TRUE;
+            break;
+        }
+    }
+    
+    return hasNumbers;
+}
+
+// Function to parse validation errors and provide detailed information
+BOOL ParseValidationError(DWORD errorCode, const wchar_t* output, ValidationInfo* info) {
+    if (!info) {
+        return FALSE;
+    }
+    
+    // Parse Windows error codes
+    switch (errorCode) {
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+            info->result = VALIDATION_NOT_FOUND;
+            info->errorDetails = _wcsdup(L"yt-dlp executable not found at specified path");
+            info->suggestions = _wcsdup(L"Verify the path is correct and yt-dlp is installed");
+            return TRUE;
+            
+        case ERROR_ACCESS_DENIED:
+            info->result = VALIDATION_PERMISSION_DENIED;
+            info->errorDetails = _wcsdup(L"Access denied when trying to execute yt-dlp");
+            info->suggestions = _wcsdup(L"Check file permissions or run as administrator");
+            return TRUE;
+            
+        case ERROR_BAD_EXE_FORMAT:
+            info->result = VALIDATION_NOT_EXECUTABLE;
+            info->errorDetails = _wcsdup(L"Invalid executable format - file may be corrupted");
+            info->suggestions = _wcsdup(L"Download a fresh copy of yt-dlp for your system architecture");
+            return TRUE;
+    }
+    
+    // Parse yt-dlp specific error messages from output
+    if (output && wcslen(output) > 0) {
+        // Convert to lowercase for case-insensitive matching
+        wchar_t* lowerOutput = _wcsdup(output);
+        if (lowerOutput) {
+            for (size_t i = 0; lowerOutput[i]; i++) {
+                lowerOutput[i] = towlower(lowerOutput[i]);
+            }
+            
+            // Check for common error patterns
+            if (wcsstr(lowerOutput, L"python") && wcsstr(lowerOutput, L"not found")) {
+                info->result = VALIDATION_MISSING_DEPENDENCIES;
+                info->errorDetails = _wcsdup(L"Python runtime not found - required for yt-dlp.py");
+                info->suggestions = _wcsdup(L"Install Python or use yt-dlp.exe instead");
+            }
+            else if (wcsstr(lowerOutput, L"module") && wcsstr(lowerOutput, L"not found")) {
+                info->result = VALIDATION_MISSING_DEPENDENCIES;
+                info->errorDetails = _wcsdup(L"Missing Python modules required by yt-dlp");
+                info->suggestions = _wcsdup(L"Reinstall yt-dlp or update Python modules");
+            }
+            else if (wcsstr(lowerOutput, L"permission") || wcsstr(lowerOutput, L"access")) {
+                info->result = VALIDATION_PERMISSION_DENIED;
+                info->errorDetails = _wcsdup(L"Permission error when running yt-dlp");
+                info->suggestions = _wcsdup(L"Check file permissions or run as administrator");
+            }
+            else if (wcsstr(lowerOutput, L"syntax error") || wcsstr(lowerOutput, L"invalid syntax")) {
+                info->result = VALIDATION_VERSION_INCOMPATIBLE;
+                info->errorDetails = _wcsdup(L"Python syntax error - possible version incompatibility");
+                info->suggestions = _wcsdup(L"Update Python or use a compatible yt-dlp version");
+            }
+            else {
+                // Generic error
+                info->result = VALIDATION_NOT_EXECUTABLE;
+                size_t detailsLen = wcslen(output) + 50;
+                wchar_t* details = (wchar_t*)malloc(detailsLen * sizeof(wchar_t));
+                if (details) {
+                    swprintf(details, detailsLen, L"yt-dlp execution failed: %ls", output);
+                    info->errorDetails = details;
+                }
+                info->suggestions = _wcsdup(L"Check yt-dlp installation and try downloading a fresh copy");
+            }
+            
+            free(lowerOutput);
+            return TRUE;
+        }
+    }
+    
+    return FALSE;
+}
+
+// Function to test yt-dlp with a real URL (more comprehensive test)
+BOOL TestYtDlpWithUrl(const wchar_t* path, ValidationInfo* info) {
+    if (!path || wcslen(path) == 0) {
+        return FALSE;
+    }
+    
+    // Test with a simple YouTube URL info extraction (no download)
+    // Using a known stable test URL
+    wchar_t cmdLine[MAX_EXTENDED_PATH + 200];
+    swprintf(cmdLine, MAX_EXTENDED_PATH + 200, 
+        L"\"%ls\" --no-download --quiet --print title \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"", path);
+    
+    // Create pipes for output capture
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+    HANDLE hRead = NULL, hWrite = NULL;
+    
+    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
+        return FALSE;
+    }
+    
+    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+    
+    STARTUPINFOW si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = { 0 };
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.hStdOutput = hWrite;
+    si.hStdError = hWrite;
+    si.wShowWindow = SW_HIDE;
+    
+    BOOL success = FALSE;
+    wchar_t output[1024] = {0};
+    
+    if (CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(hWrite);
+        hWrite = NULL;
+        
+        // Wait for process to complete (with timeout)
+        DWORD waitResult = WaitForSingleObject(pi.hProcess, 30000); // 30 second timeout
+        
+        if (waitResult == WAIT_OBJECT_0) {
+            DWORD exitCode;
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            
+            // Read output
+            char buffer[1024];
+            DWORD bytesRead;
+            if (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+                buffer[bytesRead] = '\0';
+                MultiByteToWideChar(CP_UTF8, 0, buffer, -1, output, 1024);
+            }
+            
+            if (exitCode == 0) {
+                success = TRUE;
+                if (info) {
+                    info->result = VALIDATION_OK;
+                    info->errorDetails = _wcsdup(L"yt-dlp successfully extracted video information");
+                    info->suggestions = _wcsdup(L"yt-dlp is working correctly");
+                }
+            } else {
+                // Parse the error
+                if (info) {
+                    ParseValidationError(exitCode, output, info);
+                }
+            }
+        } else if (waitResult == WAIT_TIMEOUT) {
+            // Process timed out
+            TerminateProcess(pi.hProcess, 1);
+            if (info) {
+                info->result = VALIDATION_NOT_EXECUTABLE;
+                info->errorDetails = _wcsdup(L"yt-dlp operation timed out - may indicate network or performance issues");
+                info->suggestions = _wcsdup(L"Check internet connection and yt-dlp installation");
+            }
+        } else {
+            // Wait failed
+            if (info) {
+                info->result = VALIDATION_NOT_EXECUTABLE;
+                info->errorDetails = _wcsdup(L"Failed to monitor yt-dlp process execution");
+                info->suggestions = _wcsdup(L"System error - try restarting the application");
+            }
+        }
+        
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    } else {
+        // Process creation failed
+        DWORD error = GetLastError();
+        if (info) {
+            ParseValidationError(error, NULL, info);
+        }
+    }
+    
+    if (hWrite) CloseHandle(hWrite);
+    CloseHandle(hRead);
+    
+    return success;
+}
+
+// Function to test basic yt-dlp functionality
+BOOL TestYtDlpFunctionality(const wchar_t* path) {
+    if (!path || wcslen(path) == 0) {
+        return FALSE;
+    }
+    
+    // Test with a simple help command that should always work
+    wchar_t cmdLine[MAX_EXTENDED_PATH + 50];
+    swprintf(cmdLine, MAX_EXTENDED_PATH + 50, L"\"%ls\" --help", path);
+    
+    STARTUPINFOW si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = { 0 };
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    
+    BOOL success = FALSE;
+    if (CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        // Wait for process to complete (with timeout)
+        if (WaitForSingleObject(pi.hProcess, 15000) == WAIT_OBJECT_0) {
+            DWORD exitCode;
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            success = (exitCode == 0);
+        } else {
+            // Process timed out, terminate it
+            TerminateProcess(pi.hProcess, 1);
+        }
+        
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+    
+    return success;
+}
+
+// Comprehensive yt-dlp validation function
+BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info) {
+    if (!path || !info) {
+        return FALSE;
+    }
+    
+    // Initialize validation info
+    info->result = VALIDATION_NOT_FOUND;
+    info->version = NULL;
+    info->errorDetails = NULL;
+    info->suggestions = NULL;
+    
+    // Check if path is empty
+    if (wcslen(path) == 0) {
+        info->result = VALIDATION_NOT_FOUND;
+        info->errorDetails = _wcsdup(L"No yt-dlp path specified");
+        info->suggestions = _wcsdup(L"Please configure the yt-dlp executable path in Settings");
+        return FALSE;
+    }
+    
+    // Check if file exists
+    DWORD attributes = GetFileAttributesW(path);
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        info->result = VALIDATION_NOT_FOUND;
+        
+        wchar_t* details = (wchar_t*)malloc((wcslen(path) + 100) * sizeof(wchar_t));
+        if (details) {
+            swprintf(details, wcslen(path) + 100, L"File not found: %ls", path);
+            info->errorDetails = details;
+        }
+        
+        info->suggestions = _wcsdup(L"Check the file path and ensure yt-dlp is installed. You can download it from https://github.com/yt-dlp/yt-dlp");
+        return FALSE;
+    }
+    
+    // Check if it's a directory (not a file)
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
+        info->result = VALIDATION_NOT_EXECUTABLE;
+        info->errorDetails = _wcsdup(L"Path points to a directory, not an executable file");
+        info->suggestions = _wcsdup(L"Please select the yt-dlp.exe file, not a folder");
+        return FALSE;
+    }
+    
+    // Check file permissions (try to open for reading)
+    HANDLE hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        if (error == ERROR_ACCESS_DENIED) {
+            info->result = VALIDATION_PERMISSION_DENIED;
+            info->errorDetails = _wcsdup(L"Access denied - insufficient permissions to access the file");
+            info->suggestions = _wcsdup(L"Check file permissions or try running as administrator");
+        } else {
+            info->result = VALIDATION_NOT_EXECUTABLE;
+            info->errorDetails = _wcsdup(L"Cannot access the file");
+            info->suggestions = _wcsdup(L"Ensure the file is not corrupted and is accessible");
+        }
+        return FALSE;
+    }
+    CloseHandle(hFile);
+    
+    // Check if it's an executable file type
+    const wchar_t* ext = wcsrchr(path, L'.');
+    BOOL isExecutable = FALSE;
+    if (ext != NULL) {
+        wchar_t lowerExt[10];
+        wcscpy(lowerExt, ext);
+        for (int i = 0; lowerExt[i]; i++) {
+            lowerExt[i] = towlower(lowerExt[i]);
+        }
+        
+        if (wcscmp(lowerExt, L".exe") == 0 ||
+            wcscmp(lowerExt, L".cmd") == 0 ||
+            wcscmp(lowerExt, L".bat") == 0 ||
+            wcscmp(lowerExt, L".py") == 0 ||
+            wcscmp(lowerExt, L".ps1") == 0) {
+            isExecutable = TRUE;
+        }
+    }
+    
+    if (!isExecutable) {
+        info->result = VALIDATION_NOT_EXECUTABLE;
+        info->errorDetails = _wcsdup(L"File does not appear to be an executable (.exe, .cmd, .bat, .py, .ps1)");
+        info->suggestions = _wcsdup(L"Please select a valid yt-dlp executable file");
+        return FALSE;
+    }
+    
+    // For Python files, check if Python runtime is available
+    if (ext && _wcsicmp(ext, L".py") == 0) {
+        wchar_t pythonPath[MAX_EXTENDED_PATH];
+        if (!DetectPythonRuntime(pythonPath, MAX_EXTENDED_PATH)) {
+            info->result = VALIDATION_MISSING_DEPENDENCIES;
+            info->errorDetails = _wcsdup(L"Python runtime not found - required to run yt-dlp.py");
+            info->suggestions = _wcsdup(L"Install Python from https://python.org or use the yt-dlp.exe version instead");
+            return FALSE;
+        }
+    }
+    
+    // Test basic functionality
+    if (!TestYtDlpFunctionality(path)) {
+        // Try more detailed testing to get better error information
+        ValidationInfo tempInfo = {0};
+        if (TestYtDlpWithUrl(path, &tempInfo)) {
+            // URL test passed but basic test failed - unusual but possible
+            FreeValidationInfo(&tempInfo);
+        } else {
+            // Both tests failed, use the detailed error from URL test
+            if (tempInfo.errorDetails) {
+                info->errorDetails = tempInfo.errorDetails;
+                tempInfo.errorDetails = NULL; // Prevent double-free
+            } else {
+                info->errorDetails = _wcsdup(L"yt-dlp executable failed to run or timed out");
+            }
+            
+            if (tempInfo.suggestions) {
+                info->suggestions = tempInfo.suggestions;
+                tempInfo.suggestions = NULL; // Prevent double-free
+            } else {
+                info->suggestions = _wcsdup(L"The file may be corrupted, incompatible, or missing dependencies. Try downloading a fresh copy of yt-dlp");
+            }
+            
+            info->result = tempInfo.result != VALIDATION_OK ? tempInfo.result : VALIDATION_NOT_EXECUTABLE;
+            FreeValidationInfo(&tempInfo);
+            return FALSE;
+        }
+    }
+    
+    // Get version information
+    wchar_t version[256];
+    if (GetYtDlpVersion(path, version, sizeof(version) / sizeof(wchar_t))) {
+        info->version = _wcsdup(version);
+        
+        // Check version compatibility
+        if (!CheckYtDlpCompatibility(version)) {
+            info->result = VALIDATION_VERSION_INCOMPATIBLE;
+            info->errorDetails = _wcsdup(L"yt-dlp version may be incompatible or unrecognized");
+            info->suggestions = _wcsdup(L"Consider updating to the latest version of yt-dlp");
+            return FALSE;
+        }
+    } else {
+        // Could not get version, but functionality test passed
+        info->version = _wcsdup(L"Unknown");
+    }
+    
+    // All checks passed
+    info->result = VALIDATION_OK;
+    info->errorDetails = _wcsdup(L"yt-dlp validation successful");
+    info->suggestions = _wcsdup(L"yt-dlp is properly configured and ready to use");
+    
+    return TRUE;
+}
+
+// Function to free ValidationInfo structure
+void FreeValidationInfo(ValidationInfo* info) {
+    if (!info) {
+        return;
+    }
+    
+    if (info->version) {
+        free(info->version);
+        info->version = NULL;
+    }
+    
+    if (info->errorDetails) {
+        free(info->errorDetails);
+        info->errorDetails = NULL;
+    }
+    
+    if (info->suggestions) {
+        free(info->suggestions);
+        info->suggestions = NULL;
+    }
+}
+
+// Temporary Directory Management Functions
+
+// Function to create a temporary directory using the specified strategy
+BOOL CreateYtDlpTempDir(wchar_t* tempPath, size_t pathSize, TempDirStrategy strategy) {
+    if (!tempPath || pathSize == 0) {
+        return FALSE;
+    }
+    
+    wchar_t basePath[MAX_EXTENDED_PATH];
+    BOOL success = FALSE;
+    
+    switch (strategy) {
+        case TEMP_DIR_SYSTEM: {
+            // Try system temporary directory
+            DWORD result = GetTempPathW(MAX_EXTENDED_PATH, basePath);
+            if (result > 0 && result < MAX_EXTENDED_PATH) {
+                success = TRUE;
+            }
+            break;
+        }
+        
+        case TEMP_DIR_DOWNLOAD: {
+            // Try download directory from registry settings
+            if (LoadSettingFromRegistry(REG_DOWNLOAD_PATH, basePath, MAX_EXTENDED_PATH)) {
+                success = TRUE;
+            } else {
+                // Fall back to default download path
+                GetDefaultDownloadPath(basePath, MAX_EXTENDED_PATH);
+                success = TRUE;
+            }
+            break;
+        }
+        
+        case TEMP_DIR_APPDATA: {
+            // Try user's AppData\Local directory
+            PWSTR localAppDataW = NULL;
+            HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
+            if (SUCCEEDED(hr) && localAppDataW != NULL) {
+                wcsncpy(basePath, localAppDataW, MAX_EXTENDED_PATH - 1);
+                basePath[MAX_EXTENDED_PATH - 1] = L'\0';
+                CoTaskMemFree(localAppDataW);
+                success = TRUE;
+            }
+            break;
+        }
+        
+        case TEMP_DIR_CUSTOM: {
+            // For custom strategy, use the current working directory as fallback
+            DWORD result = GetCurrentDirectoryW(MAX_EXTENDED_PATH, basePath);
+            if (result > 0 && result < MAX_EXTENDED_PATH) {
+                success = TRUE;
+            }
+            break;
+        }
+        
+        default:
+            return FALSE;
+    }
+    
+    if (!success) {
+        return FALSE;
+    }
+    
+    // Create unique temporary directory name
+    wchar_t tempDirName[64];
+    SYSTEMTIME st;
+    GetSystemTime(&st);
+    swprintf(tempDirName, 64, L"ytdlp_temp_%04d%02d%02d_%02d%02d%02d_%03d", 
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    
+    // Construct full temporary directory path
+    size_t baseLen = wcslen(basePath);
+    size_t nameLen = wcslen(tempDirName);
+    
+    // Ensure base path ends with backslash
+    if (baseLen > 0 && basePath[baseLen - 1] != L'\\') {
+        if (baseLen + 1 + nameLen + 1 < pathSize) {
+            swprintf(tempPath, pathSize, L"%ls\\%ls", basePath, tempDirName);
+        } else {
+            return FALSE; // Path too long
+        }
+    } else {
+        if (baseLen + nameLen + 1 < pathSize) {
+            swprintf(tempPath, pathSize, L"%ls%ls", basePath, tempDirName);
+        } else {
+            return FALSE; // Path too long
+        }
+    }
+    
+    // Create the directory
+    if (!CreateDirectoryW(tempPath, NULL)) {
+        DWORD error = GetLastError();
+        if (error != ERROR_ALREADY_EXISTS) {
+            return FALSE;
+        }
+    }
+    
+    // Validate the created directory
+    return ValidateTempDirAccess(tempPath);
+}
+
+// Function to validate temporary directory access and disk space
+BOOL ValidateTempDirAccess(const wchar_t* tempPath) {
+    if (!tempPath || wcslen(tempPath) == 0) {
+        return FALSE;
+    }
+    
+    // Check if directory exists
+    DWORD attributes = GetFileAttributesW(tempPath);
+    if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        return FALSE;
+    }
+    
+    // Test write permissions by creating a temporary test file
+    wchar_t testFilePath[MAX_EXTENDED_PATH];
+    swprintf(testFilePath, MAX_EXTENDED_PATH, L"%ls\\ytdlp_test_%lu.tmp", tempPath, GetTickCount());
+    
+    HANDLE hTestFile = CreateFileW(testFilePath, GENERIC_WRITE, 0, NULL, CREATE_NEW, 
+                                   FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+    
+    if (hTestFile == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    
+    // Write a small test to verify write access
+    DWORD bytesWritten;
+    const wchar_t* testData = L"test";
+    BOOL writeSuccess = WriteFile(hTestFile, testData, (DWORD)(wcslen(testData) * sizeof(wchar_t)), 
+                                  &bytesWritten, NULL);
+    
+    CloseHandle(hTestFile); // File will be deleted automatically due to FILE_FLAG_DELETE_ON_CLOSE
+    
+    if (!writeSuccess) {
+        return FALSE;
+    }
+    
+    // Check available disk space (require at least 100MB free)
+    ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
+    if (GetDiskFreeSpaceExW(tempPath, &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
+        const ULONGLONG minRequiredSpace = 100ULL * 1024 * 1024; // 100MB
+        if (freeBytesAvailable.QuadPart < minRequiredSpace) {
+            return FALSE;
+        }
+    }
+    
+    return TRUE;
+}
+
+// Function to cleanup temporary directory and its contents
+BOOL CleanupYtDlpTempDir(const wchar_t* tempPath) {
+    if (!tempPath || wcslen(tempPath) == 0) {
+        return FALSE;
+    }
+    
+    // Verify this looks like our temporary directory to avoid accidental deletion
+    if (!wcsstr(tempPath, L"ytdlp_temp_")) {
+        return FALSE; // Safety check - only delete directories with our naming pattern
+    }
+    
+    // Check if directory exists
+    DWORD attributes = GetFileAttributesW(tempPath);
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        return TRUE; // Directory doesn't exist, consider it cleaned up
+    }
+    
+    if (!(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        return FALSE; // Not a directory
+    }
+    
+    // Recursively delete directory contents
+    wchar_t searchPath[MAX_EXTENDED_PATH];
+    swprintf(searchPath, MAX_EXTENDED_PATH, L"%ls\\*", tempPath);
+    
+    WIN32_FIND_DATAW findData;
+    HANDLE hFind = FindFirstFileW(searchPath, &findData);
+    
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            // Skip . and .. entries
+            if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0) {
+                continue;
+            }
+            
+            wchar_t fullPath[MAX_EXTENDED_PATH];
+            swprintf(fullPath, MAX_EXTENDED_PATH, L"%ls\\%ls", tempPath, findData.cFileName);
+            
+            if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                // Recursively delete subdirectory
+                CleanupYtDlpTempDir(fullPath);
+            } else {
+                // Delete file
+                SetFileAttributesW(fullPath, FILE_ATTRIBUTE_NORMAL); // Remove read-only if set
+                DeleteFileW(fullPath);
+            }
+        } while (FindNextFileW(hFind, &findData));
+        
+        FindClose(hFind);
+    }
+    
+    // Remove the directory itself
+    return RemoveDirectoryW(tempPath);
+}
+
+// Function to create temporary directory with fallback strategies
+BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
+    // Try strategies in order of preference
+    TempDirStrategy strategies[] = {
+        TEMP_DIR_SYSTEM,
+        TEMP_DIR_DOWNLOAD,
+        TEMP_DIR_APPDATA,
+        TEMP_DIR_CUSTOM
+    };
+    
+    for (int i = 0; i < 4; i++) {
+        if (CreateYtDlpTempDir(tempPath, pathSize, strategies[i])) {
+            return TRUE;
+        }
+    }
+    
+    return FALSE;
 }

@@ -181,6 +181,15 @@ void CleanupYtDlpConfig(YtDlpConfig* config);
 ValidationInfo* ValidateYtDlpInstallation(const YtDlpConfig* config);
 void FreeValidationInfo(ValidationInfo* info);
 
+// Enhanced validation functions
+BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info);
+BOOL TestYtDlpFunctionality(const wchar_t* path);
+BOOL DetectPythonRuntime(wchar_t* pythonPath, size_t pathSize);
+BOOL GetYtDlpVersion(const wchar_t* path, wchar_t* version, size_t versionSize);
+BOOL CheckYtDlpCompatibility(const wchar_t* version);
+BOOL ParseValidationError(DWORD errorCode, const wchar_t* output, ValidationInfo* info);
+BOOL TestYtDlpWithUrl(const wchar_t* path, ValidationInfo* info);
+
 // YtDlp request/result management
 YtDlpRequest* CreateYtDlpRequest(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath);
 void FreeYtDlpRequest(YtDlpRequest* request);
@@ -188,7 +197,7 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
 void FreeYtDlpResult(YtDlpResult* result);
 
 // Process management functions
-ProcessHandle* CreateProcess(const wchar_t* commandLine, const ProcessOptions* options);
+ProcessHandle* CreateYtDlpProcess(const wchar_t* commandLine, const ProcessOptions* options);
 BOOL WaitForProcessCompletion(ProcessHandle* handle, DWORD timeoutMs);
 BOOL TerminateProcessSafely(ProcessHandle* handle);
 void CleanupProcessHandle(ProcessHandle* handle);
@@ -199,6 +208,10 @@ ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result);
 void FreeErrorAnalysis(ErrorAnalysis* analysis);
 
 // Temporary directory management
+BOOL CreateYtDlpTempDir(wchar_t* tempPath, size_t pathSize, TempDirStrategy strategy);
+BOOL ValidateTempDirAccess(const wchar_t* tempPath);
+BOOL CleanupYtDlpTempDir(const wchar_t* tempPath);
+BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize);
 BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize);
 BOOL CleanupTempDirectory(const wchar_t* tempDir);
 
