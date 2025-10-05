@@ -203,6 +203,12 @@ BOOL TerminateProcessSafely(ProcessHandle* handle);
 void CleanupProcessHandle(ProcessHandle* handle);
 wchar_t* ReadProcessOutput(ProcessHandle* handle);
 
+// Process timeout and cancellation support functions
+BOOL ExecuteYtDlpWithTimeout(const wchar_t* commandLine, const ProcessOptions* options, 
+                            DWORD timeoutMs, BOOL* cancelFlag, wchar_t** output, DWORD* exitCode);
+BOOL IsProcessHung(ProcessHandle* handle, DWORD responseTimeoutMs);
+BOOL KillAllYtDlpProcesses(void);
+
 // Error analysis functions
 ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result);
 void FreeErrorAnalysis(ErrorAnalysis* analysis);

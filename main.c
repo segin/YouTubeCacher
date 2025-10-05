@@ -9,6 +9,7 @@
 #include <shlobj.h>
 #include <commctrl.h>
 #include <knownfolders.h>
+#include <tlhelp32.h>
 
 // Function declarations for missing functions
 wchar_t* _wcsdup(const wchar_t* str);
@@ -2052,6 +2053,180 @@ wchar_t* ReadProcessOutput(ProcessHandle* handle) {
     }
     
     return output;
+}
+
+// Process timeout and cancellation support functions
+
+// Monitor process for timeout and cancellation with callback support
+typedef struct {
+    ProcessHandle* handle;
+    DWORD timeoutMs;
+    BOOL* cancelFlag;
+    BOOL timedOut;
+    BOOL cancelled;
+} ProcessMonitor;
+
+// Thread function for monitoring process timeout and cancellation
+DWORD WINAPI ProcessMonitorThread(LPVOID lpParam) {
+    ProcessMonitor* monitor = (ProcessMonitor*)lpParam;
+    if (!monitor || !monitor->handle) {
+        return 1;
+    }
+    
+    DWORD startTime = GetTickCount();
+    const DWORD CHECK_INTERVAL = 100; // Check every 100ms
+    
+    while (monitor->handle->isRunning) {
+        // Check for cancellation request
+        if (monitor->cancelFlag && *monitor->cancelFlag) {
+            monitor->cancelled = TRUE;
+            TerminateProcessSafely(monitor->handle);
+            return 0;
+        }
+        
+        // Check for timeout
+        if (monitor->timeoutMs != INFINITE) {
+            DWORD elapsed = GetTickCount() - startTime;
+            if (elapsed >= monitor->timeoutMs) {
+                monitor->timedOut = TRUE;
+                TerminateProcessSafely(monitor->handle);
+                return 0;
+            }
+        }
+        
+        // Wait briefly before next check
+        Sleep(CHECK_INTERVAL);
+    }
+    
+    return 0;
+}
+
+// Execute process with timeout and cancellation support
+BOOL ExecuteYtDlpWithTimeout(const wchar_t* commandLine, const ProcessOptions* options, 
+                            DWORD timeoutMs, BOOL* cancelFlag, wchar_t** output, DWORD* exitCode) {
+    if (!commandLine || !options) {
+        return FALSE;
+    }
+    
+    ProcessHandle* handle = CreateYtDlpProcess(commandLine, options);
+    if (!handle) {
+        return FALSE;
+    }
+    
+    ProcessMonitor monitor = {0};
+    monitor.handle = handle;
+    monitor.timeoutMs = timeoutMs;
+    monitor.cancelFlag = cancelFlag;
+    monitor.timedOut = FALSE;
+    monitor.cancelled = FALSE;
+    
+    // Start monitoring thread
+    HANDLE hMonitorThread = CreateThread(NULL, 0, ProcessMonitorThread, &monitor, 0, NULL);
+    if (!hMonitorThread) {
+        CleanupProcessHandle(handle);
+        return FALSE;
+    }
+    
+    // Wait for process completion
+    BOOL success = WaitForProcessCompletion(handle, INFINITE);
+    
+    // Stop monitoring thread
+    WaitForSingleObject(hMonitorThread, 1000);
+    CloseHandle(hMonitorThread);
+    
+    // Get exit code if process completed successfully
+    if (success && !monitor.timedOut && !monitor.cancelled) {
+        if (exitCode) {
+            GetExitCodeProcess(handle->hProcess, exitCode);
+        }
+        
+        // Read output if requested
+        if (output && options->captureOutput) {
+            *output = ReadProcessOutput(handle);
+        }
+    }
+    
+    CleanupProcessHandle(handle);
+    
+    // Return success only if process completed without timeout or cancellation
+    return success && !monitor.timedOut && !monitor.cancelled;
+}
+
+// Check if a process is hung or unresponsive
+BOOL IsProcessHung(ProcessHandle* handle, DWORD responseTimeoutMs) {
+    if (!handle || !handle->isRunning) {
+        return FALSE;
+    }
+    
+    // Try to get process times to check if it's responsive
+    FILETIME createTime, exitTime, kernelTime, userTime;
+    FILETIME lastKernelTime, lastUserTime;
+    
+    // Get initial times
+    if (!GetProcessTimes(handle->hProcess, &createTime, &exitTime, &lastKernelTime, &lastUserTime)) {
+        return TRUE; // Assume hung if we can't get times
+    }
+    
+    // Wait for the specified timeout
+    Sleep(responseTimeoutMs);
+    
+    // Get times again
+    if (!GetProcessTimes(handle->hProcess, &createTime, &exitTime, &kernelTime, &userTime)) {
+        return TRUE; // Assume hung if we can't get times
+    }
+    
+    // Compare times to see if process is making progress
+    ULARGE_INTEGER lastKernel, lastUser, currentKernel, currentUser;
+    
+    lastKernel.LowPart = lastKernelTime.dwLowDateTime;
+    lastKernel.HighPart = lastKernelTime.dwHighDateTime;
+    lastUser.LowPart = lastUserTime.dwLowDateTime;
+    lastUser.HighPart = lastUserTime.dwHighDateTime;
+    
+    currentKernel.LowPart = kernelTime.dwLowDateTime;
+    currentKernel.HighPart = kernelTime.dwHighDateTime;
+    currentUser.LowPart = userTime.dwLowDateTime;
+    currentUser.HighPart = userTime.dwHighDateTime;
+    
+    // If CPU time hasn't changed, process might be hung
+    return (lastKernel.QuadPart == currentKernel.QuadPart && 
+            lastUser.QuadPart == currentUser.QuadPart);
+}
+
+// Kill all yt-dlp processes (emergency cleanup)
+BOOL KillAllYtDlpProcesses(void) {
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    
+    PROCESSENTRY32W pe32 = {0};
+    pe32.dwSize = sizeof(PROCESSENTRY32W);
+    
+    BOOL success = TRUE;
+    
+    if (Process32FirstW(hSnapshot, &pe32)) {
+        do {
+            // Check if this is a yt-dlp process
+            if (_wcsicmp(pe32.szExeFile, L"yt-dlp.exe") == 0 ||
+                _wcsicmp(pe32.szExeFile, L"python.exe") == 0) {
+                
+                // For python.exe, we need to check command line to confirm it's yt-dlp
+                HANDLE hProcess = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION, 
+                                           FALSE, pe32.th32ProcessID);
+                if (hProcess) {
+                    // Try to terminate the process
+                    if (!TerminateProcess(hProcess, 1)) {
+                        success = FALSE;
+                    }
+                    CloseHandle(hProcess);
+                }
+            }
+        } while (Process32NextW(hSnapshot, &pe32));
+    }
+    
+    CloseHandle(hSnapshot);
+    return success;
 }
 
 // YtDlp Command Line Integration Functions
