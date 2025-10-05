@@ -629,7 +629,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                 L"yt-dlp executable is not configured.\n\nPlease go to File > Settings and specify the path to yt-dlp.exe");
                         } else {
                             swprintf(errorMsg, MAX_EXTENDED_PATH + 200, 
-                                L"yt-dlp executable not found or invalid:\n%s\n\nPlease check the path in File > Settings", ytDlpPath);
+                                L"yt-dlp executable not found or invalid:\n%ls\n\nPlease check the path in File > Settings", ytDlpPath);
                         }
                         MessageBoxW(hDlg, errorMsg, L"yt-dlp Not Found", MB_OK | MB_ICONWARNING);
                         break;
@@ -653,7 +653,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     wchar_t* message = (wchar_t*)malloc((MAX_EXTENDED_PATH * 2 + 300) * sizeof(wchar_t));
                     if (message) {
                         swprintf(message, MAX_EXTENDED_PATH * 2 + 300, 
-                            L"Ready to download!\n\nyt-dlp:\n%s\n\nDownload folder:\n%s\n\nDownload functionality not implemented yet", 
+                            L"Ready to download!\n\nyt-dlp:\n%ls\n\nDownload folder:\n%ls\n\nDownload functionality not implemented yet", 
                             ytDlpPath, downloadPath);
                         MessageBoxW(hDlg, message, L"Download", MB_OK);
                         free(message);
@@ -679,7 +679,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                 L"yt-dlp executable is not configured.\n\nPlease go to File > Settings and specify the path to yt-dlp.exe");
                         } else {
                             swprintf(errorMsg, MAX_EXTENDED_PATH + 200, 
-                                L"yt-dlp executable not found or invalid:\n%s\n\nPlease check the path in File > Settings", ytDlpPath);
+                                L"yt-dlp executable not found or invalid:\n%ls\n\nPlease check the path in File > Settings", ytDlpPath);
                         }
                         MessageBoxW(hDlg, errorMsg, L"yt-dlp Not Found", MB_OK | MB_ICONWARNING);
                         break;
@@ -718,7 +718,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         MessageBoxW(hDlg, L"Memory allocation failed for command line.", L"System Error", MB_OK | MB_ICONERROR);
                         break;
                     }
-                    swprintf(cmdLine, cmdLineLen, L"\"%s\" --verbose", ytDlpPath);
+                    // Build command line safely using wcscpy and wcscat
+                    wcscpy(cmdLine, L"\"");
+                    wcscat(cmdLine, ytDlpPath);
+                    wcscat(cmdLine, L"\" --verbose");
                     
                     // Create process hidden
                     BOOL processCreated = CreateProcessW(
@@ -748,16 +751,24 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             NULL
                         );
                         
-                        // Create comprehensive error message
-                        wchar_t* detailedError = (wchar_t*)malloc(4096 * sizeof(wchar_t));
+                        // Create comprehensive error message using safe string operations
+                        size_t totalLen = wcslen(cmdLine) + wcslen(ytDlpPath) + 
+                                         (errorBuffer ? wcslen(errorBuffer) : 20) + 2000;
+                        wchar_t* detailedError = (wchar_t*)malloc(totalLen * sizeof(wchar_t));
                         if (detailedError) {
-                            swprintf(detailedError, 4096,
-                                L"Failed to execute yt-dlp process.\n\n"
-                                L"Command Line:\n%s\n\n"
-                                L"yt-dlp Path:\n%s\n\n"
-                                L"Windows Error Code: %lu (0x%08X)\n"
-                                L"Error Description: %s\n\n"
-                                L"Possible causes:\n"
+                            // Build the message safely using wcscpy and wcscat
+                            wcscpy(detailedError, L"Failed to execute yt-dlp process.\n\nCommand Line:\n");
+                            wcscat(detailedError, cmdLine);
+                            wcscat(detailedError, L"\n\nyt-dlp Path:\n");
+                            wcscat(detailedError, ytDlpPath);
+                            
+                            // Add error code using safer approach
+                            wchar_t errorCodeStr[200];
+                            swprintf(errorCodeStr, sizeof(errorCodeStr)/sizeof(wchar_t), L"\n\nWindows Error Code: %lu (0x%08X)\nError Description: ", errorCode, errorCode);
+                            wcscat(detailedError, errorCodeStr);
+                            wcscat(detailedError, errorBuffer ? errorBuffer : L"Unknown error");
+                            
+                            wcscat(detailedError, L"\n\nPossible causes:\n"
                                 L"• File does not exist at the specified path\n"
                                 L"• File is not executable or corrupted\n"
                                 L"• Missing dependencies (Python, Visual C++ Runtime)\n"
@@ -768,13 +779,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                 L"1. Verify the file exists and is executable\n"
                                 L"2. Try running the command manually in Command Prompt\n"
                                 L"3. Check Windows Event Viewer for additional details\n"
-                                L"4. Ensure all dependencies are installed",
-                                cmdLine,
-                                ytDlpPath,
-                                errorCode,
-                                errorCode,
-                                errorBuffer ? errorBuffer : L"Unknown error"
-                            );
+                                L"4. Ensure all dependencies are installed");
                             
                             MessageBoxW(hDlg, detailedError, L"yt-dlp Execution Error - Detailed Diagnostics", MB_OK | MB_ICONERROR);
                             free(detailedError);
