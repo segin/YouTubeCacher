@@ -692,10 +692,76 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     if (outputBuffer) {
         outputBuffer[0] = L'\0';
         
+        // Safe line-based processing for synchronous execution
+        static char syncLineAccumulator[8192] = {0};
+        static size_t syncFillCounter = 0;
+        
         while (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
             buffer[bytesRead] = '\0';
+            
+            // Safely add new bytes with bounds checking
+            size_t spaceAvailable = sizeof(syncLineAccumulator) - syncFillCounter - 1;
+            size_t bytesToCopy = (bytesRead < spaceAvailable) ? bytesRead : spaceAvailable;
+            
+            if (bytesToCopy > 0) {
+                memcpy(syncLineAccumulator + syncFillCounter, buffer, bytesToCopy);
+                syncFillCounter += bytesToCopy;
+                syncLineAccumulator[syncFillCounter] = '\0';
+            }
+            
+            // Process complete lines
+            char* start = syncLineAccumulator;
+            char* newline;
+            while ((newline = strchr(start, '\n')) != NULL) {
+                *newline = '\0';
+                
+                // Remove \r if present
+                size_t lineLen = newline - start;
+                if (lineLen > 0 && start[lineLen - 1] == '\r') {
+                    start[lineLen - 1] = '\0';
+                    lineLen--;
+                }
+                
+                // Convert complete UTF-8 line to wide chars
+                if (lineLen > 0) {
+                    wchar_t tempOutput[2048];
+                    int converted = MultiByteToWideChar(CP_UTF8, 0, start, (int)lineLen, tempOutput, 2047);
+                    if (converted > 0) {
+                        tempOutput[converted] = L'\0';
+                        
+                        size_t currentLen = wcslen(outputBuffer);
+                        size_t newLen = currentLen + converted + 2; // +2 for \n and null
+                        if (newLen >= outputSize) {
+                            outputSize = newLen * 2;
+                            wchar_t* newBuffer = (wchar_t*)realloc(outputBuffer, outputSize * sizeof(wchar_t));
+                            if (newBuffer) {
+                                outputBuffer = newBuffer;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        wcscat(outputBuffer, tempOutput);
+                        wcscat(outputBuffer, L"\n");
+                    }
+                }
+                
+                start = newline + 1;
+            }
+            
+            // Move remaining incomplete data to start
+            size_t remaining = syncFillCounter - (start - syncLineAccumulator);
+            if (remaining > 0 && start != syncLineAccumulator) {
+                memmove(syncLineAccumulator, start, remaining);
+            }
+            syncFillCounter = remaining;
+            syncLineAccumulator[syncFillCounter] = '\0';
+        }
+        
+        // Process any remaining data at end
+        if (syncFillCounter > 0) {
             wchar_t tempOutput[2048];
-            int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buffer, bytesRead, tempOutput, 2047);
+            int converted = MultiByteToWideChar(CP_UTF8, 0, syncLineAccumulator, (int)syncFillCounter, tempOutput, 2047);
             if (converted > 0) {
                 tempOutput[converted] = L'\0';
                 
@@ -706,13 +772,14 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
                     wchar_t* newBuffer = (wchar_t*)realloc(outputBuffer, outputSize * sizeof(wchar_t));
                     if (newBuffer) {
                         outputBuffer = newBuffer;
-                    } else {
-                        break;
                     }
                 }
                 
-                wcscat(outputBuffer, tempOutput);
+                if (outputBuffer) {
+                    wcscat(outputBuffer, tempOutput);
+                }
             }
+            syncFillCounter = 0;
         }
     }
     
@@ -1035,15 +1102,22 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                 swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Read %lu bytes from process\n", bytesRead);
                 OutputDebugStringW(debugMsg);
                 
-                // Line-based UTF-8 processing to avoid character splitting
-                static char lineAccumulator[4096] = {0};
-                static size_t accumLen = 0;
+                // Line-based UTF-8 processing with 8K buffer and safe bounds checking
+                static char lineAccumulator[8192] = {0};
+                static size_t fillCounter = 0;
                 
-                // Add new bytes to accumulator
-                if (accumLen + bytesRead < sizeof(lineAccumulator) - 1) {
-                    memcpy(lineAccumulator + accumLen, buffer, bytesRead);
-                    accumLen += bytesRead;
-                    lineAccumulator[accumLen] = '\0';
+                // Safely add new bytes to accumulator with bounds checking
+                size_t spaceAvailable = sizeof(lineAccumulator) - fillCounter - 1; // -1 for null terminator
+                size_t bytesToCopy = (bytesRead < spaceAvailable) ? bytesRead : spaceAvailable;
+                
+                if (bytesToCopy > 0) {
+                    memcpy(lineAccumulator + fillCounter, buffer, bytesToCopy);
+                    fillCounter += bytesToCopy;
+                    lineAccumulator[fillCounter] = '\0';
+                    
+                    if (bytesToCopy < bytesRead) {
+                        OutputDebugStringW(L"YouTubeCacher: Warning - Line accumulator buffer full, some data truncated\n");
+                    }
                 }
                 
                 // Process complete lines
@@ -1094,12 +1168,12 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                 }
                 
                 // Move remaining incomplete data to start of buffer
-                size_t remaining = accumLen - (start - lineAccumulator);
+                size_t remaining = fillCounter - (start - lineAccumulator);
                 if (remaining > 0 && start != lineAccumulator) {
                     memmove(lineAccumulator, start, remaining);
                 }
-                accumLen = remaining;
-                lineAccumulator[accumLen] = '\0';
+                fillCounter = remaining;
+                lineAccumulator[fillCounter] = '\0';
                 
                 // Continue with existing progress parsing logic using accumulated output
                 if (context->accumulatedOutput && wcslen(context->accumulatedOutput) > 0) {
