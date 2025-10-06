@@ -831,10 +831,15 @@ BOOL IsCancellationRequested(const ThreadContext* threadContext) {
 
 // Worker thread function that executes yt-dlp subprocess
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
+    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread started\n");
+    
     SubprocessContext* context = (SubprocessContext*)lpParam;
     if (!context || !context->config || !context->request) {
+        OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - invalid context\n");
         return 1;
     }
+    
+    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - context valid\n");
     
     // Mark thread as running
     EnterCriticalSection(&context->threadContext.criticalSection);
@@ -915,6 +920,7 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
         context->progressCallback(10, L"Starting yt-dlp process...", context->callbackUserData);
     }
     
+
     // Create the yt-dlp process
     BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
     
@@ -962,6 +968,12 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
             if (ReadFile(context->hOutputRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
                 buffer[bytesRead] = '\0';
                 
+
+                // Debug: Output to DebugView
+                wchar_t debugMsg[256];
+                swprintf(debugMsg, 256, L"YouTubeCacher: Read %lu bytes from yt-dlp\n", bytesRead);
+                OutputDebugStringW(debugMsg);
+                
                 // Convert to wide char and append to output buffer
                 wchar_t tempOutput[2048];
                 int converted = MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, tempOutput, 2047);
@@ -992,10 +1004,26 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                                 lineBuffer[lineBufferPos] = L'\0';
                                 
                                 // Parse progress from this line
+                                wchar_t debugLine[512];
+                                swprintf(debugLine, 512, L"YouTubeCacher: Line: %ls\n", lineBuffer);
+                                OutputDebugStringW(debugLine);
+                                
+                                // Debug: Check for pipe lines
+                                if (wcsstr(lineBuffer, L"|")) {
+                                    OutputDebugStringW(L"YouTubeCacher: Found pipe line!\n");
+                                }
+                                
+                                // Parse progress from this line
                                 ProgressInfo progressInfo;
+                                
+
                                 if (ParseProgressOutput(lineBuffer, &progressInfo)) {
-                                    if (progressInfo.percentage > lastProgressPercentage) {
-                                        lastProgressPercentage = progressInfo.percentage;
+                                    // Send progress update if percentage increased OR if we have indeterminate progress (-1)
+                                    if (progressInfo.percentage > lastProgressPercentage || progressInfo.percentage == -1) {
+                                        // Only update lastProgressPercentage for real percentages, not indeterminate (-1)
+                                        if (progressInfo.percentage >= 0) {
+                                            lastProgressPercentage = progressInfo.percentage;
+                                        }
                                         
                                         // Create heap-allocated progress data for PostMessage
                                         HeapProgressData* heapProgress = (HeapProgressData*)malloc(sizeof(HeapProgressData));
@@ -1026,6 +1054,11 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                                             } else {
                                                 heapProgress->eta[0] = L'\0';
                                             }
+                                            
+                                            // Debug: Sending progress update
+                                            wchar_t debugSend[256];
+                                            swprintf(debugSend, 256, L"YouTubeCacher: Sending PostMessage WM_USER+104, percentage=%d\n", heapProgress->percentage);
+                                            OutputDebugStringW(debugSend);
                                             
                                             // Send progress update to main thread
                                             PostMessageW(context->parentWindow, WM_USER + 104, 0, (LPARAM)heapProgress);
@@ -1362,11 +1395,17 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
 
 // Thread function for non-blocking download
 DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
-    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lpParam;
-    if (!downloadContext) return 1;
+    OutputDebugStringW(L"YouTubeCacher: NonBlockingDownloadThread started\n");
     
-    // Execute the download synchronously in this thread
-    YtDlpResult* result = ExecuteYtDlpRequest(&downloadContext->config, downloadContext->request);
+    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lpParam;
+    if (!downloadContext) {
+        OutputDebugStringW(L"YouTubeCacher: Invalid downloadContext\n");
+        return 1;
+    }
+    
+    // Execute the download using multithreaded approach with progress
+    YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&downloadContext->config, downloadContext->request, 
+                                                          downloadContext->parentWindow, L"Downloading Video");
     
     // Post completion message to main window with result
     PostMessageW(downloadContext->parentWindow, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
@@ -1995,7 +2034,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             if (url && outputPath) {
                 // Enhanced download arguments with progress reporting
                 swprintf(operationArgs, 1024, 
-                    L"--newline --no-colors --progress-template \"%%{progress.downloaded_bytes}s|%%{progress.total_bytes_estimate}s|%%{progress.speed}s|%%{progress.eta}s|%%{progress.status}s\" "
+                    L"--newline --no-colors "
                     L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);
             } else {
@@ -2360,137 +2399,86 @@ void FreeProgressInfo(ProgressInfo* progress) {
     }
 }
 
-// Parse yt-dlp progress output (pipe-separated format)
-// Expected format: downloaded_bytes|total_bytes|speed|eta|status
+// Parse yt-dlp progress output (standard format)
+// Expected format: [download] 50.0% of 100.00MiB at 1.23MiB/s ETA 01:17
 BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
     if (!line || !progress) return FALSE;
     
     // Initialize progress info
     memset(progress, 0, sizeof(ProgressInfo));
     
-    // Skip lines that start with '[' (yt-dlp status messages)
-    if (line[0] == L'[') {
+    // Look for [download] lines
+    if (wcsstr(line, L"[download]") == NULL) {
         return FALSE;
     }
     
-    // Skip lines that don't start with a digit (0-9) - only process actual progress lines
-    if (line[0] < L'0' || line[0] > L'9') {
-        return FALSE;
-    }
-    
-    // Skip lines that don't contain progress data (look for pipe separators)
-    if (!wcsstr(line, L"|")) {
-        return FALSE;
-    }
-    
-    // Only process lines that start with a digit (actual progress data)
-    if (line[0] < L'0' || line[0] > L'9') {
-        return FALSE;
-    }
-    
-    // Make a copy of the line for tokenization
-    size_t lineLen = wcslen(line);
-    wchar_t* lineCopy = (wchar_t*)malloc((lineLen + 1) * sizeof(wchar_t));
-    if (!lineCopy) return FALSE;
-    
-    wcscpy(lineCopy, line);
-    
-    // Parse pipe-separated values: downloaded_bytes|total_bytes|speed|eta|status
-    wchar_t* context = NULL;
-    wchar_t* token;
-    int fieldIndex = 0;
-    
-    double downloadedBytes = 0;
-    double totalBytes = 0;
-    
-    token = wcstok(lineCopy, L"|", &context);
-    while (token && fieldIndex < 5) {
-        // Trim whitespace
-        while (*token == L' ' || *token == L'\t') token++;
+    // Look for percentage in format like "50.0%"
+    const wchar_t* percentPos = wcsstr(line, L"%");
+    if (percentPos) {
+        // Go backwards to find the start of the number
+        const wchar_t* start = percentPos - 1;
+        while (start > line && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
+            start--;
+        }
+        start++; // Move to first digit
         
-        switch (fieldIndex) {
-            case 0: // downloaded_bytes
-                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0) {
-                    downloadedBytes = wcstod(token, NULL);
-                }
-                break;
-                
-            case 1: // total_bytes_estimate
-                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0 && wcscmp(token, L"N/A") != 0) {
-                    totalBytes = wcstod(token, NULL);
-                }
-                break;
-                
-            case 2: // speed
-                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0) {
-                    // Convert speed to human readable format
-                    double speedBytes = wcstod(token, NULL);
-                    if (speedBytes > 0) {
-                        wchar_t speedStr[32];
-                        if (speedBytes >= 1024 * 1024) {
-                            swprintf(speedStr, 32, L"%.1fMB/s", speedBytes / (1024.0 * 1024.0));
-                        } else if (speedBytes >= 1024) {
-                            swprintf(speedStr, 32, L"%.1fKB/s", speedBytes / 1024.0);
-                        } else {
-                            swprintf(speedStr, 32, L"%.0fB/s", speedBytes);
-                        }
-                        progress->speed = _wcsdup(speedStr);
-                    }
-                }
-                break;
-                
-            case 3: // eta
-                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0) {
-                    int etaSeconds = _wtoi(token);
-                    if (etaSeconds > 0) {
-                        wchar_t etaStr[16];
-                        int minutes = etaSeconds / 60;
-                        int seconds = etaSeconds % 60;
-                        if (minutes > 0) {
-                            swprintf(etaStr, 16, L"%d:%02d", minutes, seconds);
-                        } else {
-                            swprintf(etaStr, 16, L"0:%02d", seconds);
-                        }
-                        progress->eta = _wcsdup(etaStr);
-                    }
-                }
-                break;
-                
-            case 4: // status
-                if (wcslen(token) > 0) {
-                    progress->status = _wcsdup(token);
-                }
-                break;
+        if (start < percentPos) {
+            double percent = wcstod(start, NULL);
+            progress->percentage = (int)percent;
+        }
+    }
+    
+    // Look for speed (pattern like "at 1.23MiB/s")
+    const wchar_t* atPos = wcsstr(line, L" at ");
+    if (atPos) {
+        const wchar_t* speedStart = atPos + 4; // Skip " at "
+        const wchar_t* speedEnd = wcsstr(speedStart, L" ETA");
+        if (!speedEnd) speedEnd = speedStart + wcslen(speedStart);
+        
+        if (speedEnd > speedStart) {
+            size_t speedLen = speedEnd - speedStart;
+            progress->speed = (wchar_t*)malloc((speedLen + 1) * sizeof(wchar_t));
+            if (progress->speed) {
+                wcsncpy(progress->speed, speedStart, speedLen);
+                progress->speed[speedLen] = L'\0';
+            }
+        }
+    }
+    
+    // Look for ETA (pattern like "ETA 01:17")
+    const wchar_t* etaPos = wcsstr(line, L" ETA ");
+    if (etaPos) {
+        const wchar_t* etaStart = etaPos + 5; // Skip " ETA "
+        const wchar_t* etaEnd = etaStart;
+        while (*etaEnd && *etaEnd != L' ' && *etaEnd != L'\n' && *etaEnd != L'\r') {
+            etaEnd++;
         }
         
-        token = wcstok(NULL, L"|", &context);
-        fieldIndex++;
+        if (etaEnd > etaStart) {
+            size_t etaLen = etaEnd - etaStart;
+            progress->eta = (wchar_t*)malloc((etaLen + 1) * sizeof(wchar_t));
+            if (progress->eta) {
+                wcsncpy(progress->eta, etaStart, etaLen);
+                progress->eta[etaLen] = L'\0';
+            }
+        }
     }
     
-    // Calculate percentage if we have both downloaded and total bytes
-    if (totalBytes > 0 && downloadedBytes >= 0) {
-        progress->percentage = (int)((downloadedBytes / totalBytes) * 100.0);
-        progress->percentage = min(100, max(0, progress->percentage));
-    } else if (downloadedBytes > 0) {
-        // If we have downloaded bytes but no total, show indeterminate progress (-1)
-        progress->percentage = -1;
-    }
+    // Set status
+    progress->status = _wcsdup(L"Downloading");
     
-    // Set default status if not provided
-    if (!progress->status) {
-        progress->status = _wcsdup(L"Downloading");
-    }
-    
-    // Check if complete
-    progress->isComplete = (progress->percentage >= 100) || 
-                          (progress->status && wcscmp(progress->status, L"finished") == 0);
-    
-    // If finished, ensure we show 100% progress
-    if (progress->status && wcscmp(progress->status, L"finished") == 0) {
+    // Check for completion
+    if (wcsstr(line, L"100%") || wcsstr(line, L"has already been downloaded")) {
         progress->percentage = 100;
+        progress->isComplete = TRUE;
+        if (progress->status) {
+            free(progress->status);
+            progress->status = _wcsdup(L"Download complete");
+        }
+    } else {
+        progress->isComplete = (progress->percentage >= 100);
     }
     
-    free(lineCopy);
     return TRUE;
 }
 
