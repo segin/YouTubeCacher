@@ -935,11 +935,13 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
         context->accumulatedOutput[0] = L'\0';
     }
     
-    // Read output and monitor process with cancellation support
+    // Read output and monitor process with enhanced progress parsing
     char buffer[4096];
     DWORD bytesRead;
     BOOL processRunning = TRUE;
-    int progressPercentage = 20;
+    int lastProgressPercentage = 20;
+    wchar_t lineBuffer[2048] = L"";
+    size_t lineBufferPos = 0;
     
     while (processRunning && !IsCancellationRequested(&context->threadContext)) {
         // Check if process is still running
@@ -974,12 +976,60 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                     if (context->accumulatedOutput) {
                         wcscat(context->accumulatedOutput, tempOutput);
                     }
+                    
+                    // Process output line by line for progress parsing
+                    for (int i = 0; i < converted; i++) {
+                        wchar_t ch = tempOutput[i];
+                        
+                        if (ch == L'\n' || ch == L'\r') {
+                            if (lineBufferPos > 0) {
+                                lineBuffer[lineBufferPos] = L'\0';
+                                
+                                // Parse progress from this line
+                                ProgressInfo progressInfo;
+                                if (ParseProgressOutput(lineBuffer, &progressInfo)) {
+                                    if (progressInfo.percentage > lastProgressPercentage) {
+                                        lastProgressPercentage = progressInfo.percentage;
+                                        
+                                        // Update progress with parsed information
+                                        if (context->progressCallback) {
+                                            wchar_t statusMessage[256];
+                                            if (progressInfo.status) {
+                                                if (progressInfo.speed && progressInfo.eta) {
+                                                    swprintf(statusMessage, 256, L"%ls - %ls (ETA: %ls)", 
+                                                            progressInfo.status, progressInfo.speed, progressInfo.eta);
+                                                } else if (progressInfo.speed) {
+                                                    swprintf(statusMessage, 256, L"%ls - %ls", 
+                                                            progressInfo.status, progressInfo.speed);
+                                                } else {
+                                                    swprintf(statusMessage, 256, L"%ls (%d%%)", 
+                                                            progressInfo.status, progressInfo.percentage);
+                                                }
+                                            } else {
+                                                swprintf(statusMessage, 256, L"Processing... (%d%%)", 
+                                                        progressInfo.percentage);
+                                            }
+                                            context->progressCallback(progressInfo.percentage, statusMessage, 
+                                                                    context->callbackUserData);
+                                        }
+                                    }
+                                    FreeProgressInfo(&progressInfo);
+                                }
+                                
+                                lineBufferPos = 0;
+                            }
+                        } else if (lineBufferPos < sizeof(lineBuffer)/sizeof(wchar_t) - 1) {
+                            lineBuffer[lineBufferPos++] = ch;
+                        }
+                    }
                 }
                 
-                // Update progress (simple increment for now)
-                progressPercentage = min(90, progressPercentage + 5);
-                if (context->progressCallback) {
-                    context->progressCallback(progressPercentage, L"Processing...", context->callbackUserData);
+                // Fallback progress update if no progress was parsed
+                if (lastProgressPercentage == 20) {
+                    lastProgressPercentage = min(90, lastProgressPercentage + 5);
+                    if (context->progressCallback) {
+                        context->progressCallback(lastProgressPercentage, L"Processing...", context->callbackUserData);
+                    }
                 }
             }
         }
@@ -1863,7 +1913,8 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     switch (operation) {
         case YTDLP_OP_GET_INFO:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--dump-json --no-download \"%ls\"", url);
+                // Use JSON output for structured data extraction
+                swprintf(operationArgs, 1024, L"--dump-json --no-download --no-warnings \"%ls\"", url);
             } else {
                 wcscpy(operationArgs, L"--version");
             }
@@ -1871,7 +1922,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_TITLE:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-title --no-download \"%ls\"", url);
+                swprintf(operationArgs, 1024, L"--get-title --no-download --no-warnings \"%ls\"", url);
             } else {
                 return FALSE;
             }
@@ -1879,7 +1930,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_DURATION:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-duration --no-download \"%ls\"", url);
+                swprintf(operationArgs, 1024, L"--get-duration --no-download --no-warnings \"%ls\"", url);
             } else {
                 return FALSE;
             }
@@ -1887,7 +1938,11 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_DOWNLOAD:
             if (url && outputPath) {
-                swprintf(operationArgs, 1024, L"-o \"%ls\\%%(title)s.%%(ext)s\" \"%ls\"", outputPath, url);
+                // Enhanced download arguments with progress reporting
+                swprintf(operationArgs, 1024, 
+                    L"--progress --newline --no-colors --progress-template \"download:%%{_percent_str} %%{_speed_str} %%{_eta_str}\" "
+                    L"-o \"%ls\\%%(title)s [%%(id)s].%%(ext)s\" \"%ls\"", 
+                    outputPath, url);
             } else {
                 return FALSE;
             }
@@ -1910,6 +1965,278 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     wcscat(args, operationArgs);
     
     return TRUE;
+}
+
+// Video metadata extraction functions
+
+// Free video metadata structure
+void FreeVideoMetadata(VideoMetadata* metadata) {
+    if (!metadata) return;
+    
+    if (metadata->title) {
+        free(metadata->title);
+        metadata->title = NULL;
+    }
+    if (metadata->duration) {
+        free(metadata->duration);
+        metadata->duration = NULL;
+    }
+    if (metadata->id) {
+        free(metadata->id);
+        metadata->id = NULL;
+    }
+    metadata->success = FALSE;
+}
+
+// Parse JSON output from yt-dlp to extract metadata
+BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata) {
+    if (!jsonOutput || !metadata) return FALSE;
+    
+    // Initialize metadata
+    memset(metadata, 0, sizeof(VideoMetadata));
+    
+    // Simple JSON parsing for title
+    const wchar_t* titleStart = wcsstr(jsonOutput, L"\"title\":");
+    if (titleStart) {
+        titleStart = wcschr(titleStart, L'"');
+        if (titleStart) {
+            titleStart++; // Skip opening quote
+            titleStart = wcschr(titleStart, L'"');
+            if (titleStart) {
+                titleStart++; // Skip second quote
+                const wchar_t* titleEnd = wcschr(titleStart, L'"');
+                if (titleEnd) {
+                    size_t titleLen = titleEnd - titleStart;
+                    metadata->title = (wchar_t*)malloc((titleLen + 1) * sizeof(wchar_t));
+                    if (metadata->title) {
+                        wcsncpy(metadata->title, titleStart, titleLen);
+                        metadata->title[titleLen] = L'\0';
+                    }
+                }
+            }
+        }
+    }
+    
+    // Simple JSON parsing for duration
+    const wchar_t* durationStart = wcsstr(jsonOutput, L"\"duration\":");
+    if (durationStart) {
+        durationStart += 11; // Skip "duration":
+        while (*durationStart == L' ') durationStart++; // Skip spaces
+        
+        if (*durationStart >= L'0' && *durationStart <= L'9') {
+            int seconds = _wtoi(durationStart);
+            if (seconds > 0) {
+                int minutes = seconds / 60;
+                int remainingSeconds = seconds % 60;
+                int hours = minutes / 60;
+                minutes = minutes % 60;
+                
+                metadata->duration = (wchar_t*)malloc(32 * sizeof(wchar_t));
+                if (metadata->duration) {
+                    if (hours > 0) {
+                        swprintf(metadata->duration, 32, L"%d:%02d:%02d", hours, minutes, remainingSeconds);
+                    } else {
+                        swprintf(metadata->duration, 32, L"%d:%02d", minutes, remainingSeconds);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Simple JSON parsing for video ID
+    const wchar_t* idStart = wcsstr(jsonOutput, L"\"id\":");
+    if (idStart) {
+        idStart = wcschr(idStart, L'"');
+        if (idStart) {
+            idStart++; // Skip opening quote
+            idStart = wcschr(idStart, L'"');
+            if (idStart) {
+                idStart++; // Skip second quote
+                const wchar_t* idEnd = wcschr(idStart, L'"');
+                if (idEnd) {
+                    size_t idLen = idEnd - idStart;
+                    metadata->id = (wchar_t*)malloc((idLen + 1) * sizeof(wchar_t));
+                    if (metadata->id) {
+                        wcsncpy(metadata->id, idStart, idLen);
+                        metadata->id[idLen] = L'\0';
+                    }
+                }
+            }
+        }
+    }
+    
+    metadata->success = (metadata->title != NULL);
+    return metadata->success;
+}
+
+// Extract video metadata using yt-dlp
+BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
+    if (!url || !metadata) return FALSE;
+    
+    // Initialize config
+    YtDlpConfig config;
+    if (!InitializeYtDlpConfig(&config)) {
+        return FALSE;
+    }
+    
+    // Create request for getting video info
+    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_INFO, url, NULL);
+    if (!request) {
+        return FALSE;
+    }
+    
+    // Execute the request
+    YtDlpResult* result = ExecuteYtDlpRequest(&config, request);
+    
+    BOOL success = FALSE;
+    if (result && result->success && result->output) {
+        success = ParseVideoMetadataFromJson(result->output, metadata);
+    }
+    
+    // Cleanup
+    if (result) {
+        if (result->output) free(result->output);
+        if (result->errorMessage) free(result->errorMessage);
+        if (result->diagnostics) free(result->diagnostics);
+        free(result);
+    }
+    FreeYtDlpRequest(request);
+    
+    return success;
+}
+
+// Progress parsing functions
+
+// Free progress info structure
+void FreeProgressInfo(ProgressInfo* progress) {
+    if (!progress) return;
+    
+    if (progress->status) {
+        free(progress->status);
+        progress->status = NULL;
+    }
+    if (progress->speed) {
+        free(progress->speed);
+        progress->speed = NULL;
+    }
+    if (progress->eta) {
+        free(progress->eta);
+        progress->eta = NULL;
+    }
+}
+
+// Parse yt-dlp progress output
+BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
+    if (!line || !progress) return FALSE;
+    
+    // Initialize progress info
+    memset(progress, 0, sizeof(ProgressInfo));
+    
+    // Look for progress template format: "download:50.0% 1.2MiB/s 00:30"
+    const wchar_t* downloadPrefix = wcsstr(line, L"download:");
+    if (downloadPrefix) {
+        downloadPrefix += 9; // Skip "download:"
+        
+        // Parse percentage
+        const wchar_t* percentPos = wcsstr(downloadPrefix, L"%");
+        if (percentPos) {
+            // Go backwards to find the start of the number
+            const wchar_t* start = percentPos - 1;
+            while (start > downloadPrefix && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
+                start--;
+            }
+            start++; // Move to first digit
+            
+            if (start < percentPos) {
+                double percent = wcstod(start, NULL);
+                progress->percentage = (int)percent;
+            }
+        }
+        
+        // Parse speed (look for pattern like "1.2MiB/s")
+        const wchar_t* speedPos = wcsstr(downloadPrefix, L"/s");
+        if (speedPos) {
+            // Go backwards to find the start of the speed
+            const wchar_t* start = speedPos - 1;
+            while (start > downloadPrefix && *start != L' ') {
+                start--;
+            }
+            start++; // Move past space
+            
+            if (start < speedPos + 2) {
+                size_t speedLen = (speedPos + 2) - start;
+                progress->speed = (wchar_t*)malloc((speedLen + 1) * sizeof(wchar_t));
+                if (progress->speed) {
+                    wcsncpy(progress->speed, start, speedLen);
+                    progress->speed[speedLen] = L'\0';
+                }
+            }
+        }
+        
+        // Parse ETA (look for time pattern like "00:30")
+        const wchar_t* etaPos = wcsstr(downloadPrefix, L":");
+        if (etaPos && etaPos != percentPos) { // Make sure it's not part of percentage
+            // Go backwards to find the start of the time
+            const wchar_t* start = etaPos - 1;
+            while (start > downloadPrefix && iswdigit(*start)) {
+                start--;
+            }
+            start++; // Move to first digit
+            
+            // Go forwards to find the end of the time
+            const wchar_t* end = etaPos + 1;
+            while (*end && iswdigit(*end)) {
+                end++;
+            }
+            
+            if (start < end) {
+                size_t etaLen = end - start;
+                progress->eta = (wchar_t*)malloc((etaLen + 1) * sizeof(wchar_t));
+                if (progress->eta) {
+                    wcsncpy(progress->eta, start, etaLen);
+                    progress->eta[etaLen] = L'\0';
+                }
+            }
+        }
+        
+        progress->status = _wcsdup(L"Downloading");
+        progress->isComplete = (progress->percentage >= 100);
+        return TRUE;
+    }
+    
+    // Fallback: Look for traditional [download] format
+    if (wcsstr(line, L"[download]")) {
+        // Look for percentage in format like "50.0%"
+        const wchar_t* percentPos = wcsstr(line, L"%");
+        if (percentPos) {
+            // Go backwards to find the start of the number
+            const wchar_t* start = percentPos - 1;
+            while (start > line && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
+                start--;
+            }
+            start++; // Move to first digit
+            
+            if (start < percentPos) {
+                double percent = wcstod(start, NULL);
+                progress->percentage = (int)percent;
+                
+                // Create a simple status message
+                progress->status = _wcsdup(L"Downloading");
+                progress->isComplete = (progress->percentage >= 100);
+                return TRUE;
+            }
+        }
+        
+        // Check for completion messages
+        if (wcsstr(line, L"100%") || wcsstr(line, L"has already been downloaded")) {
+            progress->percentage = 100;
+            progress->status = _wcsdup(L"Download complete");
+            progress->isComplete = TRUE;
+            return TRUE;
+        }
+    }
+    
+    return FALSE;
 }
 
 // Startup validation and configuration management functions
@@ -3351,26 +3678,67 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     request->tempDir = _wcsdup(tempDir);
                     
-                    // Show progress in main window and start non-blocking download
+                    // Show progress in main window and start metadata extraction
                     ShowMainProgressBar(hDlg, TRUE);
-                    UpdateMainProgressBar(hDlg, 5, L"Initializing download...");
+                    UpdateMainProgressBar(hDlg, 5, L"Getting video information...");
                     
-                    // Execute the download operation using non-blocking approach
-                    BOOL downloadStarted = StartNonBlockingDownload(&config, request, hDlg);
-                    
-                    if (!downloadStarted) {
-                        UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
-                        Sleep(500);
-                        ShowMainProgressBar(hDlg, FALSE);
+                    // First, extract video metadata (title and duration)
+                    VideoMetadata metadata;
+                    if (GetVideoMetadata(url, &metadata)) {
+                        // Update UI with video information
+                        if (metadata.title) {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
+                        }
+                        if (metadata.duration) {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata.duration);
+                        }
                         
-                        ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
+                        UpdateMainProgressBar(hDlg, 15, L"Starting download...");
                         
-                        // Cleanup resources
-                        CleanupTempDirectory(tempDir);
-                        FreeYtDlpRequest(request);
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
-                        break;
+                        // Execute the download operation using non-blocking approach
+                        BOOL downloadStarted = StartNonBlockingDownload(&config, request, hDlg);
+                        
+                        // Cleanup metadata
+                        FreeVideoMetadata(&metadata);
+                        
+                        if (!downloadStarted) {
+                            UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
+                            Sleep(500);
+                            ShowMainProgressBar(hDlg, FALSE);
+                            
+                            ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
+                            
+                            // Cleanup resources
+                            CleanupTempDirectory(tempDir);
+                            FreeYtDlpRequest(request);
+                            FreeValidationInfo(&validationInfo);
+                            CleanupYtDlpConfig(&config);
+                            break;
+                        }
+                    } else {
+                        // Failed to get metadata, but continue with download
+                        SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
+                        SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
+                        
+                        UpdateMainProgressBar(hDlg, 15, L"Starting download...");
+                        
+                        // Execute the download operation using non-blocking approach
+                        BOOL downloadStarted = StartNonBlockingDownload(&config, request, hDlg);
+                        
+                        if (!downloadStarted) {
+                            UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
+                            Sleep(500);
+                            ShowMainProgressBar(hDlg, FALSE);
+                            
+                            ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
+                            
+                            // Cleanup resources
+                            CleanupTempDirectory(tempDir);
+                            FreeYtDlpRequest(request);
+                            FreeValidationInfo(&validationInfo);
+                            CleanupYtDlpConfig(&config);
+                            break;
+                        }
                     }
                     
                     // Resources will be cleaned up in the completion handler
@@ -3390,22 +3758,56 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Show progress in main window and start threaded operation
+                    // Show progress in main window and extract metadata
                     ShowMainProgressBar(hDlg, TRUE);
-                    UpdateMainProgressBar(hDlg, 10, L"Starting video information retrieval...");
+                    UpdateMainProgressBar(hDlg, 10, L"Getting video information...");
                     
-                    // Start threaded video info retrieval (non-blocking)
-                    wchar_t title[512] = {0};
-                    wchar_t duration[64] = {0};
-                    
-                    BOOL threadStarted = GetVideoTitleAndDuration(hDlg, url, title, sizeof(title)/sizeof(wchar_t), 
-                                                                 duration, sizeof(duration)/sizeof(wchar_t));
-                    
-                    if (!threadStarted) {
+                    // Extract video metadata
+                    VideoMetadata metadata;
+                    if (GetVideoMetadata(url, &metadata)) {
+                        // Update UI with video information
+                        if (metadata.title) {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
+                        } else {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
+                        }
+                        
+                        if (metadata.duration) {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata.duration);
+                        } else {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
+                        }
+                        
+                        UpdateMainProgressBar(hDlg, 100, L"Video information retrieved successfully");
+                        Sleep(1000);
                         ShowMainProgressBar(hDlg, FALSE);
-                        ShowWarningMessage(hDlg, L"Operation Failed", L"Could not start video information retrieval. Please try again.");
+                        
+                        // Show success message with video details
+                        wchar_t successMessage[1024];
+                        swprintf(successMessage, 1024, 
+                            L"Video information retrieved successfully:\n\n"
+                            L"Title: %ls\n"
+                            L"Duration: %ls\n"
+                            L"Video ID: %ls",
+                            metadata.title ? metadata.title : L"Unknown",
+                            metadata.duration ? metadata.duration : L"Unknown",
+                            metadata.id ? metadata.id : L"Unknown");
+                        
+                        ShowSuccessMessage(hDlg, L"Video Information", successMessage);
+                        
+                        // Cleanup metadata
+                        FreeVideoMetadata(&metadata);
+                    } else {
+                        UpdateMainProgressBar(hDlg, 0, L"Failed to get video information");
+                        Sleep(1000);
+                        ShowMainProgressBar(hDlg, FALSE);
+                        
+                        SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Failed to retrieve");
+                        SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
+                        
+                        ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
+                                         L"Could not retrieve video information. Please check the URL and try again.");
                     }
-                    // Note: Success/failure handling is now done in WM_USER + 101 message handler
                     
                     break;
                 }

@@ -389,11 +389,37 @@ INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* mes
 INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 
+// Video metadata structure
+typedef struct {
+    wchar_t* title;
+    wchar_t* duration;
+    wchar_t* id;
+    BOOL success;
+} VideoMetadata;
+
+// Progress information structure
+typedef struct {
+    int percentage;
+    wchar_t* status;
+    wchar_t* speed;
+    wchar_t* eta;
+    BOOL isComplete;
+} ProgressInfo;
+
 // Video information retrieval functions
 BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
 void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration);
+
+// Video metadata functions
+BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata);
+BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata);
+void FreeVideoMetadata(VideoMetadata* metadata);
+
+// Progress parsing functions
+BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress);
+void FreeProgressInfo(ProgressInfo* progress);
 
 // Main window progress bar functions
 void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status);
