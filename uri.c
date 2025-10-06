@@ -6,8 +6,13 @@ BOOL IsYouTubeURL(const wchar_t* url) {
         return FALSE;
     }
     
-    return (wcsstr(url, L"https://www.youtube.com/watch") != NULL ||
-            wcsstr(url, L"https://youtu.be/") != NULL ||
-            wcsstr(url, L"https://m.youtube.com/watch") != NULL ||
-            wcsstr(url, L"https://youtube.com/watch") != NULL);
+    // Check if URL begins with any of the YouTube URL prefixes
+    return (wcsncmp(url, L"https://www.youtube.com/watch", 29) == 0 ||
+            wcsncmp(url, L"https://youtu.be/", 17) == 0 ||
+            wcsncmp(url, L"https://m.youtube.com/watch", 27) == 0 ||
+            wcsncmp(url, L"https://youtube.com/watch", 25) == 0 ||
+            wcsncmp(url, L"http://www.youtube.com/watch", 28) == 0 ||
+            wcsncmp(url, L"http://youtu.be/", 16) == 0 ||
+            wcsncmp(url, L"http://m.youtube.com/watch", 26) == 0 ||
+            wcsncmp(url, L"http://youtube.com/watch", 24) == 0);
 }

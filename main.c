@@ -33,6 +33,9 @@ BOOL bManualPaste = FALSE;
 // Global cache manager
 CacheManager g_cacheManager;
 
+// Global cached video metadata
+CachedVideoMetadata g_cachedVideoMetadata;
+
 // Original text field window procedure
 WNDPROC OriginalTextFieldProc = NULL;
 
@@ -1949,7 +1952,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
                 // Enhanced download arguments with progress reporting
                 swprintf(operationArgs, 1024, 
                     L"--progress --newline --no-colors --progress-template \"download:%%{_percent_str} %%{_speed_str} %%{_eta_str}\" "
-                    L"-o \"%ls\\%%(title)s [%%(id)s].%%(ext)s\" \"%ls\"", 
+                    L"-o \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);
             } else {
                 return FALSE;
@@ -2169,6 +2172,128 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     FreeYtDlpRequest(request);
     
     return success;
+}
+
+// Cached metadata functions
+
+// Initialize cached metadata structure
+void InitializeCachedMetadata(CachedVideoMetadata* cached) {
+    if (!cached) return;
+    
+    memset(cached, 0, sizeof(CachedVideoMetadata));
+    cached->isValid = FALSE;
+}
+
+// Free cached metadata structure
+void FreeCachedMetadata(CachedVideoMetadata* cached) {
+    if (!cached) return;
+    
+    if (cached->url) {
+        free(cached->url);
+        cached->url = NULL;
+    }
+    
+    FreeVideoMetadata(&cached->metadata);
+    cached->isValid = FALSE;
+}
+
+// Check if cached metadata is valid for the given URL
+BOOL IsCachedMetadataValid(const CachedVideoMetadata* cached, const wchar_t* url) {
+    if (!cached || !url || !cached->isValid || !cached->url) {
+        return FALSE;
+    }
+    
+    return (wcscmp(cached->url, url) == 0);
+}
+
+// Store metadata in cache
+void StoreCachedMetadata(CachedVideoMetadata* cached, const wchar_t* url, const VideoMetadata* metadata) {
+    if (!cached || !url || !metadata) return;
+    
+    // Free existing data
+    FreeCachedMetadata(cached);
+    
+    // Store new data
+    cached->url = _wcsdup(url);
+    
+    // Copy metadata
+    if (metadata->title) {
+        cached->metadata.title = _wcsdup(metadata->title);
+    }
+    if (metadata->duration) {
+        cached->metadata.duration = _wcsdup(metadata->duration);
+    }
+    if (metadata->id) {
+        cached->metadata.id = _wcsdup(metadata->id);
+    }
+    cached->metadata.success = metadata->success;
+    
+    cached->isValid = TRUE;
+}
+
+// Get cached metadata
+BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadata) {
+    if (!cached || !metadata || !cached->isValid) {
+        return FALSE;
+    }
+    
+    // Initialize output metadata
+    memset(metadata, 0, sizeof(VideoMetadata));
+    
+    // Copy cached data
+    if (cached->metadata.title) {
+        metadata->title = _wcsdup(cached->metadata.title);
+    }
+    if (cached->metadata.duration) {
+        metadata->duration = _wcsdup(cached->metadata.duration);
+    }
+    if (cached->metadata.id) {
+        metadata->id = _wcsdup(cached->metadata.id);
+    }
+    metadata->success = cached->metadata.success;
+    
+    return TRUE;
+}
+
+// Non-blocking Get Info worker thread
+DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam) {
+    GetInfoContext* context = (GetInfoContext*)lpParam;
+    if (!context) return 1;
+    
+    VideoMetadata* metadata = (VideoMetadata*)malloc(sizeof(VideoMetadata));
+    if (!metadata) {
+        free(context);
+        return 1;
+    }
+    
+    BOOL success = GetVideoMetadata(context->url, metadata);
+    
+    // Send result back to main thread (metadata will be freed by the main thread)
+    PostMessageW(context->hDialog, WM_USER + 103, (WPARAM)success, (LPARAM)metadata);
+    
+    free(context);
+    return 0;
+}
+
+// Start non-blocking Get Info operation
+BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata) {
+    if (!hDlg || !url || !cachedMetadata) return FALSE;
+    
+    GetInfoContext* context = (GetInfoContext*)malloc(sizeof(GetInfoContext));
+    if (!context) return FALSE;
+    
+    context->hDialog = hDlg;
+    wcscpy(context->url, url);
+    context->cachedMetadata = cachedMetadata;
+    
+    HANDLE hThread = CreateThread(NULL, 0, GetInfoWorkerThread, context, 0, NULL);
+    if (!hThread) {
+        free(context);
+        return FALSE;
+    }
+    
+    CloseHandle(hThread);
+    return TRUE;
 }
 
 // Progress parsing functions
@@ -3458,6 +3583,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 SetDlgItemTextW(hDlg, IDC_LABEL3, L"Items: 0");
             }
             
+            // Initialize cached video metadata
+            InitializeCachedMetadata(&g_cachedVideoMetadata);
+            
             // Check command line first, then clipboard
             if (wcslen(cmdLineURL) > 0) {
                 bProgrammaticChange = TRUE;
@@ -3611,6 +3739,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             break;
                         }
                         
+                        // Clear cached metadata when URL changes
+                        FreeCachedMetadata(&g_cachedVideoMetadata);
+                        
                         // Get current text
                         wchar_t buffer[MAX_BUFFER_SIZE];
                         GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, buffer, MAX_BUFFER_SIZE);
@@ -3744,19 +3875,41 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     request->tempDir = _wcsdup(tempDir);
                     
-                    // Show progress in main window and start metadata extraction
+                    // Show progress in main window and get/use metadata
                     ShowMainProgressBar(hDlg, TRUE);
-                    UpdateMainProgressBar(hDlg, 5, L"Getting video information...");
                     
-                    // First, extract video metadata (title and duration)
                     VideoMetadata metadata;
-                    if (GetVideoMetadata(url, &metadata)) {
-                        // Update UI with video information
+                    BOOL hasMetadata = FALSE;
+                    
+                    // Check if we have cached metadata for this URL
+                    if (IsCachedMetadataValid(&g_cachedVideoMetadata, url)) {
+                        UpdateMainProgressBar(hDlg, 5, L"Using cached video information...");
+                        if (GetCachedMetadata(&g_cachedVideoMetadata, &metadata)) {
+                            hasMetadata = TRUE;
+                        }
+                    }
+                    
+                    // If no cached metadata, fetch it now
+                    if (!hasMetadata) {
+                        UpdateMainProgressBar(hDlg, 5, L"Getting video information...");
+                        if (GetVideoMetadata(url, &metadata)) {
+                            // Store in cache for future use
+                            StoreCachedMetadata(&g_cachedVideoMetadata, url, &metadata);
+                            hasMetadata = TRUE;
+                        }
+                    }
+                    
+                    // Update UI with video information
+                    if (hasMetadata) {
                         if (metadata.title) {
                             SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
+                        } else {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
                         }
                         if (metadata.duration) {
                             SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata.duration);
+                        } else {
+                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
                         }
                         
                         UpdateMainProgressBar(hDlg, 15, L"Starting download...");
@@ -3813,7 +3966,6 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                     
                 case IDC_GETINFO_BTN: {
-
                     // Get URL from text field
                     wchar_t url[MAX_URL_LENGTH];
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
@@ -3824,55 +3976,53 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Show progress in main window and extract metadata
-                    ShowMainProgressBar(hDlg, TRUE);
-                    UpdateMainProgressBar(hDlg, 10, L"Getting video information...");
+                    // Check if we already have cached data for this URL
+                    if (IsCachedMetadataValid(&g_cachedVideoMetadata, url)) {
+                        VideoMetadata metadata;
+                        if (GetCachedMetadata(&g_cachedVideoMetadata, &metadata)) {
+                            // Update UI with cached information
+                            if (metadata.title) {
+                                SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
+                            } else {
+                                SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
+                            }
+                            
+                            if (metadata.duration) {
+                                SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata.duration);
+                            } else {
+                                SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
+                            }
+                            
+                            // Show progress briefly to indicate completion
+                            ShowMainProgressBar(hDlg, TRUE);
+                            UpdateMainProgressBar(hDlg, 100, L"Video information (cached)");
+                            
+                            FreeVideoMetadata(&metadata);
+                            break;
+                        }
+                    }
                     
-                    // Extract video metadata
-                    VideoMetadata metadata;
-                    if (GetVideoMetadata(url, &metadata)) {
-                        // Update UI with video information
-                        if (metadata.title) {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
-                        } else {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
+                    // Show progress bar with indeterminate animation
+                    ShowMainProgressBar(hDlg, TRUE);
+                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+                    if (hProgressBar) {
+                        // Set progress bar to marquee (indeterminate) style
+                        SetWindowLongW(hProgressBar, GWL_STYLE, 
+                            GetWindowLongW(hProgressBar, GWL_STYLE) | PBS_MARQUEE);
+                        SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50); // 50ms animation speed
+                    }
+                    UpdateMainProgressBar(hDlg, 0, L"Getting video information...");
+                    
+                    // Start non-blocking Get Info operation
+                    if (!StartNonBlockingGetInfo(hDlg, url, &g_cachedVideoMetadata)) {
+                        // Failed to start operation
+                        if (hProgressBar) {
+                            SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                            SetWindowLongW(hProgressBar, GWL_STYLE, 
+                                GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
                         }
-                        
-                        if (metadata.duration) {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata.duration);
-                        } else {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
-                        }
-                        
-                        UpdateMainProgressBar(hDlg, 100, L"Video information retrieved successfully");
-                        Sleep(1000);
-                        ShowMainProgressBar(hDlg, FALSE);
-                        
-                        // Show success message with video details
-                        wchar_t successMessage[1024];
-                        swprintf(successMessage, 1024, 
-                            L"Video information retrieved successfully:\n\n"
-                            L"Title: %ls\n"
-                            L"Duration: %ls\n"
-                            L"Video ID: %ls",
-                            metadata.title ? metadata.title : L"Unknown",
-                            metadata.duration ? metadata.duration : L"Unknown",
-                            metadata.id ? metadata.id : L"Unknown");
-                        
-                        ShowSuccessMessage(hDlg, L"Video Information", successMessage);
-                        
-                        // Cleanup metadata
-                        FreeVideoMetadata(&metadata);
-                    } else {
-                        UpdateMainProgressBar(hDlg, 0, L"Failed to get video information");
-                        Sleep(1000);
-                        ShowMainProgressBar(hDlg, FALSE);
-                        
-                        SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Failed to retrieve");
-                        SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
-                        
-                        ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
-                                         L"Could not retrieve video information. Please check the URL and try again.");
+                        UpdateMainProgressBar(hDlg, 0, L"Failed to start operation");
+                        ShowWarningMessage(hDlg, L"Operation Failed", L"Could not start video information retrieval. Please try again.");
                     }
                     
                     break;
@@ -4190,6 +4340,59 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 free(data);
             }
+            return TRUE;
+        }
+        
+        case WM_USER + 103: {
+            // Handle non-blocking Get Info completion
+            BOOL success = (BOOL)wParam;
+            VideoMetadata* metadata = (VideoMetadata*)lParam;
+            
+            if (success && metadata) {
+                // Store in cache
+                wchar_t url[MAX_URL_LENGTH];
+                GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
+                StoreCachedMetadata(&g_cachedVideoMetadata, url, metadata);
+                
+                // Update UI
+                if (metadata->title) {
+                    SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata->title);
+                } else {
+                    SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
+                }
+                
+                if (metadata->duration) {
+                    SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata->duration);
+                } else {
+                    SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
+                }
+                
+                // Stop marquee animation and set progress to complete but keep visible
+                HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+                if (hProgressBar) {
+                    SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                    SetWindowLongW(hProgressBar, GWL_STYLE, 
+                        GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
+                }
+                UpdateMainProgressBar(hDlg, 100, L"Video information retrieved");
+                
+                // Free the metadata (it's now cached)
+                FreeVideoMetadata(metadata);
+            } else {
+                // Failed to get info - stop marquee animation
+                HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+                if (hProgressBar) {
+                    SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                    SetWindowLongW(hProgressBar, GWL_STYLE, 
+                        GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
+                }
+                
+                SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Failed to retrieve");
+                SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
+                
+                UpdateMainProgressBar(hDlg, 0, L"Failed to get video information");
+            }
+            
             return TRUE;
         }
         

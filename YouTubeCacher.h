@@ -413,10 +413,34 @@ BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t tit
 DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
 void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration);
 
+// Cached video metadata structure
+typedef struct {
+    wchar_t* url;
+    VideoMetadata metadata;
+    BOOL isValid;
+} CachedVideoMetadata;
+
 // Video metadata functions
 BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata);
 BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata);
 void FreeVideoMetadata(VideoMetadata* metadata);
+
+// Cached metadata functions
+void InitializeCachedMetadata(CachedVideoMetadata* cached);
+void FreeCachedMetadata(CachedVideoMetadata* cached);
+BOOL IsCachedMetadataValid(const CachedVideoMetadata* cached, const wchar_t* url);
+void StoreCachedMetadata(CachedVideoMetadata* cached, const wchar_t* url, const VideoMetadata* metadata);
+BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadata);
+
+// Non-blocking Get Info functions
+typedef struct {
+    HWND hDialog;
+    wchar_t url[MAX_URL_LENGTH];
+    CachedVideoMetadata* cachedMetadata;
+} GetInfoContext;
+
+DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam);
+BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata);
 
 // Progress parsing functions
 BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress);

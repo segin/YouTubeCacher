@@ -333,8 +333,8 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int margin = ScaleForDpi(11, dpi);           // 7 DLU = ~11px dialog margin standard
     int iconSize = ScaleForDpi(32, dpi);         // Standard system icon size
     int buttonWidth = ScaleForDpi(75, dpi);      // Min 50 DLU = ~75px for "Details >>" button
-    int buttonHeight = ScaleForDpi(23, dpi);     // Standard 23 DLU = ~23px button height
-    int smallButtonWidth = ScaleForDpi(50, dpi); // Min 50 DLU = ~75px, but 50px acceptable for "OK"/"Copy"
+    int buttonHeight = ScaleForDpi(23, dpi);     // Standard 14 DLU = ~23px button height
+    int smallButtonWidth = ScaleForDpi(75, dpi); // Microsoft standard: all buttons minimum 75px wide
     int buttonGap = ScaleForDpi(6, dpi);         // 4 DLU = ~6px spacing between buttons
     int controlSpacing = ScaleForDpi(6, dpi);    // 4 DLU = ~6px between related controls
     int groupSpacing = ScaleForDpi(10, dpi);     // 7 DLU = ~10px between control groups
@@ -351,8 +351,12 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int lineHeight = tm.tmHeight;
     
     // === STEP 3: Calculate dialog width with proper margins ===
-    int minWidth = ScaleForDpi(320, dpi);
-    int maxWidth = ScaleForDpi(480, dpi);
+    // Get dialog type to determine appropriate dimensions
+    EnhancedErrorDialog* errorDialog = (EnhancedErrorDialog*)GetWindowLongPtrW(hDlg, GWLP_USERDATA);
+    BOOL isSuccessDialog = (errorDialog && errorDialog->dialogType == DIALOG_TYPE_SUCCESS);
+    
+    int minWidth = ScaleForDpi(isSuccessDialog ? 520 : 320, dpi);
+    int maxWidth = ScaleForDpi(isSuccessDialog ? 680 : 480, dpi);
     
     // Width calculation: left margin + icon + control spacing + text area + right margin
     int iconGap = controlSpacing; // 4 DLU = ~6px gap between icon and text per Win32 standards
@@ -392,23 +396,30 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int contentBottom = max(iconY + iconSize, messageY + messageHeight);
     int buttonY = contentBottom + groupSpacing;
     
-    // Details button on left with dialog margin
+    // For success dialogs, Details button is hidden, so position Copy and OK buttons differently
     int detailsX = margin;
+    int okX, copyX;
     
-    // Copy and OK buttons on right with proper spacing
-    int okX = dialogWidth - margin - smallButtonWidth;
-    int copyX = okX - buttonGap - smallButtonWidth;
+    if (isSuccessDialog) {
+        // Success dialog: only Copy and OK buttons visible, positioned on the right
+        okX = dialogWidth - margin - smallButtonWidth;
+        copyX = okX - buttonGap - smallButtonWidth;
+    } else {
+        // Error dialog: Details on left, Copy and OK on right
+        okX = dialogWidth - margin - smallButtonWidth;
+        copyX = okX - buttonGap - smallButtonWidth;
+    }
     
     // === STEP 7: Calculate collapsed dialog height with Win32 standards ===
     // Height = content + group spacing + button height + dialog margin
     int collapsedHeight = buttonY + buttonHeight + margin;
     
     // Win32 minimum dialog height should accommodate all elements
-    int minCollapsedHeight = ScaleForDpi(120, dpi); // Increased minimum
+    int minCollapsedHeight = ScaleForDpi(isSuccessDialog ? 150 : 120, dpi); // Larger minimum for success dialogs
     collapsedHeight = max(collapsedHeight, minCollapsedHeight);
     
     // === STEP 8: Calculate expanded height with proper margins ===
-    int tabHeight = ScaleForDpi(140, dpi);
+    int tabHeight = ScaleForDpi(isSuccessDialog ? 290 : 140, dpi);
     // Expanded = collapsed + margin between buttons and tabs + tab height + bottom margin
     int expandedHeight = collapsedHeight + groupSpacing + tabHeight + margin;
     
@@ -570,19 +581,34 @@ BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog) {
     wchar_t* clipboardText = (wchar_t*)malloc(totalSize * sizeof(wchar_t));
     if (!clipboardText) return FALSE;
     
-    // Format the complete error information
-    swprintf(clipboardText, totalSize,
-        L"=== ERROR REPORT ===\r\n"
-        L"Title: %ls\r\n"
-        L"Message: %ls\r\n\r\n"
-        L"=== ERROR DETAILS ===\r\n%ls\r\n\r\n"
-        L"=== DIAGNOSTICS ===\r\n%ls\r\n\r\n"
-        L"=== SOLUTIONS ===\r\n%ls\r\n",
-        errorDialog->title ? errorDialog->title : L"Unknown Error",
-        errorDialog->message ? errorDialog->message : L"No message available",
-        errorDialog->details ? errorDialog->details : L"No details available",
-        errorDialog->diagnostics ? errorDialog->diagnostics : L"No diagnostics available",
-        errorDialog->solutions ? errorDialog->solutions : L"No solutions available");
+    // Format the information based on dialog type
+    if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
+        swprintf(clipboardText, totalSize,
+            L"=== SUCCESS REPORT ===\r\n"
+            L"Title: %ls\r\n"
+            L"Message: %ls\r\n\r\n"
+            L"=== DETAILS ===\r\n%ls\r\n\r\n"
+            L"=== INFORMATION ===\r\n%ls\r\n\r\n"
+            L"=== SUMMARY ===\r\n%ls\r\n",
+            errorDialog->title ? errorDialog->title : L"Success",
+            errorDialog->message ? errorDialog->message : L"Operation completed successfully",
+            errorDialog->details ? errorDialog->details : L"No additional details available",
+            errorDialog->diagnostics ? errorDialog->diagnostics : L"No additional information available",
+            errorDialog->solutions ? errorDialog->solutions : L"No additional summary available");
+    } else {
+        swprintf(clipboardText, totalSize,
+            L"=== ERROR REPORT ===\r\n"
+            L"Title: %ls\r\n"
+            L"Message: %ls\r\n\r\n"
+            L"=== ERROR DETAILS ===\r\n%ls\r\n\r\n"
+            L"=== DIAGNOSTICS ===\r\n%ls\r\n\r\n"
+            L"=== SOLUTIONS ===\r\n%ls\r\n",
+            errorDialog->title ? errorDialog->title : L"Unknown Error",
+            errorDialog->message ? errorDialog->message : L"No message available",
+            errorDialog->details ? errorDialog->details : L"No details available",
+            errorDialog->diagnostics ? errorDialog->diagnostics : L"No diagnostics available",
+            errorDialog->solutions ? errorDialog->solutions : L"No solutions available");
+    }
     
     BOOL success = FALSE;
     if (OpenClipboard(NULL)) {
@@ -621,6 +647,9 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 EndDialog(hDlg, IDCANCEL);
                 return TRUE;
             }
+            
+            // Store dialog data for access by other functions
+            SetWindowLongPtrW(hDlg, GWLP_USERDATA, (LONG_PTR)errorDialog);
             
             // Apply modern Windows theming to dialog and controls
             ApplyModernThemeToDialog(hDlg);
@@ -750,6 +779,15 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
             
+            // Hide Details button and related controls for success dialogs
+            if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
+                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_DETAILS_BTN), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_TAB_CONTROL), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_DETAILS_TEXT), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_INFO_TEXT), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_SUMMARY_TEXT), SW_HIDE);
+            }
+            
             // Start in collapsed state (this will trigger ResizeErrorDialog)
             ResizeErrorDialog(hDlg, FALSE);
             
@@ -769,18 +807,30 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     return TRUE;
                     
                 case IDC_ERROR_COPY_BTN:
+                case IDC_SUCCESS_COPY_BTN:
                     if (errorDialog) {
                         if (CopyErrorInfoToClipboard(errorDialog)) {
-                            MessageBoxW(hDlg, L"Error information copied to clipboard.", 
+                            MessageBoxW(hDlg, L"Information copied to clipboard.", 
                                        L"Information", MB_OK | MB_ICONINFORMATION);
                         } else {
-                            MessageBoxW(hDlg, L"Failed to copy error information to clipboard.", 
+                            MessageBoxW(hDlg, L"Failed to copy information to clipboard.", 
                                        L"Error", MB_OK | MB_ICONERROR);
                         }
                     }
                     return TRUE;
                     
+                case IDC_SUCCESS_DETAILS_BTN:
+                    if (errorDialog) {
+                        errorDialog->isExpanded = !errorDialog->isExpanded;
+                        ResizeErrorDialog(hDlg, errorDialog->isExpanded);
+                        if (errorDialog->isExpanded) {
+                            ShowErrorDialogTab(hDlg, TabCtrl_GetCurSel(errorDialog->hTabControl));
+                        }
+                    }
+                    return TRUE;
+                    
                 case IDC_ERROR_OK_BTN:
+                case IDC_SUCCESS_OK_BTN:
                 case IDOK:
                 case IDCANCEL:
                     EndDialog(hDlg, LOWORD(wParam));
