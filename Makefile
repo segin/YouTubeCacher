@@ -25,7 +25,7 @@ RC_OBJECT = $(RC_SOURCE:.rc=.o)
 all: $(TARGET)
 
 # Optimized release build
-release: CFLAGS += -O2 -DNDEBUG -s
+release: CFLAGS += -Os -DNDEBUG -s
 release: LDFLAGS += -s
 release: $(TARGET)
 
