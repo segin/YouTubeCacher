@@ -132,6 +132,14 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         token = wcstok(NULL, L"|", &context);
         if (token && wcslen(token) > 0) {
             entry->title = Base64DecodeWide(token);
+            if (entry->title) {
+                wchar_t debugMsg[1024];
+                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Decoded title: %ls (length: %zu)\n", 
+                        entry->title, wcslen(entry->title));
+                OutputDebugStringW(debugMsg);
+            } else {
+                OutputDebugStringW(L"YouTubeCacher: LoadCacheFromFile - ERROR: Base64DecodeWide returned NULL\n");
+            }
         }
         
         // Parse duration
@@ -172,7 +180,9 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             entry->next = manager->entries;
             manager->entries = entry;
             manager->totalEntries++;
+            OutputDebugStringW(L"YouTubeCacher: LoadCacheFromFile - Entry validated and added\n");
         } else {
+            OutputDebugStringW(L"YouTubeCacher: LoadCacheFromFile - Entry validation FAILED, freeing entry\n");
             FreeCacheEntry(entry);
         }
     }
@@ -235,6 +245,14 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
                    wchar_t** subtitleFiles, int subtitleCount) {
     if (!manager || !videoId || !mainVideoFile) return FALSE;
     
+    // Debug logging
+    OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - Starting\n");
+    if (title) {
+        wchar_t debugMsg[1024];
+        swprintf(debugMsg, 1024, L"YouTubeCacher: AddCacheEntry - Title: %ls (length: %zu)\n", title, wcslen(title));
+        OutputDebugStringW(debugMsg);
+    }
+    
     EnterCriticalSection(&manager->lock);
     
     // Check if entry already exists
@@ -279,8 +297,16 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     
     LeaveCriticalSection(&manager->lock);
     
+    OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - Entry added to memory, saving to file\n");
+    
     // Save to file
-    SaveCacheToFile(manager);
+    BOOL saveResult = SaveCacheToFile(manager);
+    
+    if (saveResult) {
+        OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - Successfully saved to file\n");
+    } else {
+        OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - ERROR: Failed to save to file\n");
+    }
     
     return TRUE;
 }
@@ -716,12 +742,21 @@ wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
 // Validate a cache entry
 BOOL ValidateCacheEntry(const CacheEntry* entry) {
     if (!entry || !entry->videoId || !entry->mainVideoFile) {
+        OutputDebugStringW(L"YouTubeCacher: ValidateCacheEntry - NULL entry or missing required fields\n");
         return FALSE;
     }
     
     // Check if main video file exists
     DWORD attributes = GetFileAttributesW(entry->mainVideoFile);
-    return (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY));
+    BOOL fileExists = (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY));
+    
+    if (!fileExists) {
+        wchar_t debugMsg[1024];
+        swprintf(debugMsg, 1024, L"YouTubeCacher: ValidateCacheEntry - File does not exist: %ls\n", entry->mainVideoFile);
+        OutputDebugStringW(debugMsg);
+    }
+    
+    return fileExists;
 }
 
 // Get video file information
