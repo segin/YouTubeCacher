@@ -1936,6 +1936,14 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             }
             break;
             
+        case YTDLP_OP_GET_TITLE_DURATION:
+            if (url && wcslen(url) > 0) {
+                swprintf(operationArgs, 1024, L"--get-title --get-duration --no-download --no-warnings \"%ls\"", url);
+            } else {
+                return FALSE;
+            }
+            break;
+            
         case YTDLP_OP_DOWNLOAD:
             if (url && outputPath) {
                 // Enhanced download arguments with progress reporting
@@ -2069,9 +2077,14 @@ BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metada
     return metadata->success;
 }
 
-// Extract video metadata using yt-dlp
+// Extract video metadata using yt-dlp (optimized version)
+// Uses --get-title --get-duration together for faster, simpler parsing
+// Output format: First line = title, Second line = duration
 BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     if (!url || !metadata) return FALSE;
+    
+    // Initialize metadata
+    memset(metadata, 0, sizeof(VideoMetadata));
     
     // Initialize config
     YtDlpConfig config;
@@ -2079,8 +2092,8 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
         return FALSE;
     }
     
-    // Create request for getting video info
-    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_INFO, url, NULL);
+    // Create request for getting title and duration together
+    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_TITLE_DURATION, url, NULL);
     if (!request) {
         return FALSE;
     }
@@ -2090,8 +2103,61 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     
     BOOL success = FALSE;
     if (result && result->success && result->output) {
-        success = ParseVideoMetadataFromJson(result->output, metadata);
+        // Parse the simple output format: first line is title, second line is duration
+        wchar_t* output = result->output;
+        wchar_t* firstNewline = wcschr(output, L'\n');
+        
+        if (firstNewline) {
+            // Extract title (first line)
+            size_t titleLen = firstNewline - output;
+            if (titleLen > 0) {
+                metadata->title = (wchar_t*)malloc((titleLen + 1) * sizeof(wchar_t));
+                if (metadata->title) {
+                    wcsncpy(metadata->title, output, titleLen);
+                    metadata->title[titleLen] = L'\0';
+                    
+                    // Remove any trailing carriage return
+                    if (titleLen > 0 && metadata->title[titleLen - 1] == L'\r') {
+                        metadata->title[titleLen - 1] = L'\0';
+                    }
+                }
+            }
+            
+            // Extract duration (second line)
+            wchar_t* durationStart = firstNewline + 1;
+            wchar_t* secondNewline = wcschr(durationStart, L'\n');
+            
+            size_t durationLen;
+            if (secondNewline) {
+                durationLen = secondNewline - durationStart;
+            } else {
+                durationLen = wcslen(durationStart);
+            }
+            
+            if (durationLen > 0) {
+                metadata->duration = (wchar_t*)malloc((durationLen + 1) * sizeof(wchar_t));
+                if (metadata->duration) {
+                    wcsncpy(metadata->duration, durationStart, durationLen);
+                    metadata->duration[durationLen] = L'\0';
+                    
+                    // Remove any trailing carriage return
+                    if (durationLen > 0 && metadata->duration[durationLen - 1] == L'\r') {
+                        metadata->duration[durationLen - 1] = L'\0';
+                    }
+                }
+            }
+            
+            // Extract video ID from URL (simple extraction for YouTube URLs)
+            wchar_t* videoId = ExtractVideoIdFromUrl(url);
+            if (videoId) {
+                metadata->id = videoId;
+            }
+            
+            success = (metadata->title != NULL && metadata->duration != NULL);
+        }
     }
+    
+    metadata->success = success;
     
     // Cleanup
     if (result) {
