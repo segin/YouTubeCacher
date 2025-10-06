@@ -280,6 +280,15 @@ void LoadSettings(HWND hDlg) {
         // Use empty default
         SetDlgItemTextW(hDlg, IDC_CUSTOM_ARGS_FIELD, L"");
     }
+    
+    // Load debug setting
+    if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
+        BOOL enableDebug = (wcscmp(buffer, L"1") == 0);
+        CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
+    } else {
+        // Default to unchecked
+        CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, BST_UNCHECKED);
+    }
 }
 
 // Function to save settings from dialog controls to registry
@@ -315,6 +324,10 @@ void SaveSettings(HWND hDlg) {
         // Empty arguments - save empty string
         SaveSettingToRegistry(REG_CUSTOM_ARGS, L"");
     }
+    
+    // Save debug setting
+    BOOL enableDebug = (IsDlgButtonChecked(hDlg, IDC_ENABLE_DEBUG) == BST_CHECKED);
+    SaveSettingToRegistry(REG_ENABLE_DEBUG, enableDebug ? L"1" : L"0");
 }
 
 // Stub implementations for YtDlp Manager system functions
@@ -4470,6 +4483,14 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case ID_FILE_EXIT:
                     DestroyWindow(hDlg);
+                    return TRUE;
+                    
+                case ID_HELP_INSTALL_YTDLP:
+                    // TODO: Implement yt-dlp installation help
+                    return TRUE;
+                    
+                case ID_HELP_ABOUT:
+                    // TODO: Implement about dialog
                     return TRUE;
                     
                 case IDC_TEXT_FIELD:

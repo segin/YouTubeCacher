@@ -26,6 +26,8 @@
 #define ID_FILE_SETTINGS  2000
 #define ID_FILE_EXIT      2001
 #define ID_EDIT_SELECTALL 2002
+#define ID_HELP_INSTALL_YTDLP 2003
+#define ID_HELP_ABOUT     2004
 
 // Settings Dialog
 #define IDD_SETTINGS      103
@@ -53,6 +55,7 @@
 // Custom Arguments
 #define IDC_CUSTOM_ARGS_LABEL  1030
 #define IDC_CUSTOM_ARGS_FIELD  1031
+#define IDC_ENABLE_DEBUG       1055
 
 // Video Information Controls
 #define IDC_VIDEO_TITLE_LABEL  1041

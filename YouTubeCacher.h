@@ -363,6 +363,7 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
 
 // Registry constants for custom arguments
 #define REG_CUSTOM_ARGS     L"CustomYtDlpArgs"
+#define REG_ENABLE_DEBUG    L"EnableDebug"
 
 // Enhanced error dialog functions
 EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message, 
