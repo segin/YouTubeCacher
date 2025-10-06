@@ -29,6 +29,24 @@ release: CFLAGS += -Os -DNDEBUG -s
 release: LDFLAGS += -s
 release: $(TARGET)
 
+# MinGW64 build targets
+mingw64: export MSYSTEM := MINGW64
+mingw64: export PATH := /mingw64/bin:$(PATH)
+mingw64: CC = /mingw64/bin/gcc.exe
+mingw64: RC = /mingw64/bin/windres.exe
+mingw64: TARGET = YouTubeCacher-x64.exe
+mingw64: clean-mingw64 $(TARGET)
+
+# MinGW64 release build
+mingw64-release: export MSYSTEM := MINGW64
+mingw64-release: export PATH := /mingw64/bin:$(PATH)
+mingw64-release: CC = /mingw64/bin/gcc.exe
+mingw64-release: RC = /mingw64/bin/windres.exe
+mingw64-release: TARGET = YouTubeCacher-x64.exe
+mingw64-release: CFLAGS += -Os -DNDEBUG -s
+mingw64-release: LDFLAGS += -s
+mingw64-release: clean-mingw64 $(TARGET)
+
 # Build the executable
 $(TARGET): $(OBJECTS) $(RC_OBJECT)
 	$(CC) $(OBJECTS) $(RC_OBJECT) -o $(TARGET) $(LDFLAGS)
@@ -45,9 +63,13 @@ $(TARGET): $(OBJECTS) $(RC_OBJECT)
 clean:
 	rm -f $(OBJECTS) $(RC_OBJECT) $(TARGET) *.o
 
+# Clean MinGW64 build artifacts
+clean-mingw64:
+	rm -f $(OBJECTS) $(RC_OBJECT) YouTubeCacher-x64.exe *.o
+
 # Run the program
 run: $(TARGET)
 	./$(TARGET)
 
 # Phony targets
-.PHONY: all clean run release
+.PHONY: all clean run release mingw64 mingw64-release clean-mingw64

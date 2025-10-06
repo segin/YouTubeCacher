@@ -3751,13 +3751,13 @@ void ApplyModernThemeToDialog(HWND hDlg) {
     typedef BOOL (WINAPI *IsAppThemedFunc)(void);
     
     EnableThemeDialogTextureFunc EnableThemeDialogTexture = 
-        (EnableThemeDialogTextureFunc)GetProcAddress(hUxTheme, "EnableThemeDialogTexture");
+        (EnableThemeDialogTextureFunc)(void*)GetProcAddress(hUxTheme, "EnableThemeDialogTexture");
     SetWindowThemeFunc SetWindowTheme = 
-        (SetWindowThemeFunc)GetProcAddress(hUxTheme, "SetWindowTheme");
+        (SetWindowThemeFunc)(void*)GetProcAddress(hUxTheme, "SetWindowTheme");
     IsThemeActiveFunc IsThemeActive = 
-        (IsThemeActiveFunc)GetProcAddress(hUxTheme, "IsThemeActive");
+        (IsThemeActiveFunc)(void*)GetProcAddress(hUxTheme, "IsThemeActive");
     IsAppThemedFunc IsAppThemed = 
-        (IsAppThemedFunc)GetProcAddress(hUxTheme, "IsAppThemed");
+        (IsAppThemedFunc)(void*)GetProcAddress(hUxTheme, "IsAppThemed");
     
     // Only apply theming if themes are active and app is themed
     if (IsThemeActive && IsThemeActive() && IsAppThemed && IsAppThemed()) {
@@ -3854,9 +3854,9 @@ void ForceVisualStylesActivation(void) {
         typedef HRESULT (WINAPI *EnableThemingFunc)(BOOL);
         
         SetThemeAppPropertiesFunc SetThemeAppProperties = 
-            (SetThemeAppPropertiesFunc)GetProcAddress(hUxTheme, "SetThemeAppProperties");
+            (SetThemeAppPropertiesFunc)(void*)GetProcAddress(hUxTheme, "SetThemeAppProperties");
         EnableThemingFunc EnableTheming = 
-            (EnableThemingFunc)GetProcAddress(hUxTheme, "EnableTheming");
+            (EnableThemingFunc)(void*)GetProcAddress(hUxTheme, "EnableTheming");
         
         if (SetThemeAppProperties) {
             // Enable all theming properties
@@ -5084,7 +5084,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         // Try to enable theming programmatically as backup
         typedef BOOL (WINAPI *SetThemeAppPropertiesFunc)(DWORD);
         SetThemeAppPropertiesFunc SetThemeAppProperties = 
-            (SetThemeAppPropertiesFunc)GetProcAddress(hUxTheme, "SetThemeAppProperties");
+            (SetThemeAppPropertiesFunc)(void*)GetProcAddress(hUxTheme, "SetThemeAppProperties");
         
         if (SetThemeAppProperties) {
             // Enable all theming properties
@@ -5099,7 +5099,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     HMODULE hComCtl32 = LoadLibraryW(L"comctl32.dll");
     if (hComCtl32) {
         InitCommonControlsExFunc InitCommonControlsExPtr = 
-            (InitCommonControlsExFunc)GetProcAddress(hComCtl32, "InitCommonControlsEx");
+            (InitCommonControlsExFunc)(void*)GetProcAddress(hComCtl32, "InitCommonControlsEx");
         
         if (InitCommonControlsExPtr) {
             // Re-initialize with visual styles

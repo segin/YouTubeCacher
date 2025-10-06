@@ -21,7 +21,7 @@ static int GetDpiForWindowSafe(HWND hwnd) {
     if (!checked) {
         HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
         if (hUser32) {
-            pGetDpiForWindow = (GetDpiForWindowFunc)GetProcAddress(hUser32, "GetDpiForWindow");
+            pGetDpiForWindow = (GetDpiForWindowFunc)(void*)GetProcAddress(hUser32, "GetDpiForWindow");
         }
         checked = TRUE;
     }
