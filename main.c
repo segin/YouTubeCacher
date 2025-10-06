@@ -3907,7 +3907,7 @@ void ResizeControls(HWND hDlg) {
     const int BASE_WINDOW_MARGIN = 10;    // Margin from window edges
     const int BASE_BUTTON_WIDTH = 78;     // Standard button width
     const int BASE_BUTTON_HEIGHT = 26;    // Standard button height
-    const int BASE_SMALL_BUTTON_HEIGHT = 16; // Small button height (color indicators)
+
     const int BASE_TEXT_HEIGHT = 22;      // Text field height
     const int BASE_LABEL_HEIGHT = 16;     // Label height
     const int BASE_PROGRESS_HEIGHT = 16;  // Progress bar height
@@ -3918,7 +3918,7 @@ void ResizeControls(HWND hDlg) {
     int windowMargin = (int)(BASE_WINDOW_MARGIN * scaleX);
     int buttonWidth = (int)(BASE_BUTTON_WIDTH * scaleX);
     int buttonHeight = (int)(BASE_BUTTON_HEIGHT * scaleY);
-    int smallButtonHeight = (int)(BASE_SMALL_BUTTON_HEIGHT * scaleY);
+
     int textHeight = (int)(BASE_TEXT_HEIGHT * scaleY);
     int labelHeight = (int)(BASE_LABEL_HEIGHT * scaleY);
     int progressHeight = (int)(BASE_PROGRESS_HEIGHT * scaleY);
@@ -4008,15 +4008,7 @@ void ResizeControls(HWND hDlg) {
                 statusX, currentY, statusWidth, labelHeight, SWP_NOZORDER);
     
     // Position color indicator buttons (hidden by default, positioned for future use)
-    int colorButtonY = currentY;
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_GREEN), NULL, 
-                urlFieldX, colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_TEAL), NULL, 
-                urlFieldX + (int)(25 * scaleX), colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_BLUE), NULL, 
-                urlFieldX + (int)(50 * scaleX), colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
-    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_WHITE), NULL, 
-                urlFieldX + (int)(75 * scaleX), colorButtonY, (int)(20 * scaleX), smallButtonHeight, SWP_NOZORDER);
+    // These will be positioned relative to the Add button later in the layout code
     
     // Calculate Offline videos group position and size
     int offlineGroupY = downloadGroupY + downloadGroupHeight + margin;
@@ -4067,6 +4059,26 @@ void ResizeControls(HWND hDlg) {
                 sideButtonX, listY + sideButtonHeight + (margin / 2), buttonWidth, sideButtonHeight, SWP_NOZORDER);
     SetWindowPos(GetDlgItem(hDlg, IDC_BUTTON1), NULL, 
                 sideButtonX, listY + (sideButtonHeight + (margin / 2)) * 2, buttonWidth, sideButtonHeight, SWP_NOZORDER);
+    
+    // Position colored buttons in 2x2 grid below Add button
+    int addButtonY = listY + (sideButtonHeight + (margin / 2)) * 2;
+    int colorButtonStartY = addButtonY + sideButtonHeight + (margin / 2);
+    int colorButtonWidth = (int)(36 * scaleX);
+    int colorButtonHeight = (int)(20 * scaleY);
+    int colorButtonSpacing = (int)(6 * scaleX); // Small gap between buttons
+    
+    // Top row: Green and Teal
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_GREEN), NULL, 
+                sideButtonX, colorButtonStartY, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_TEAL), NULL, 
+                sideButtonX + colorButtonWidth + colorButtonSpacing, colorButtonStartY, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
+    
+    // Bottom row: Blue and White
+    int colorButtonRow2Y = colorButtonStartY + colorButtonHeight + (int)(4 * scaleY);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_BLUE), NULL, 
+                sideButtonX, colorButtonRow2Y, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_WHITE), NULL, 
+                sideButtonX + colorButtonWidth + colorButtonSpacing, colorButtonRow2Y, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
 }
 
 // Settings dialog procedure
