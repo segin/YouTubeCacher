@@ -3264,25 +3264,35 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case IDC_BUTTON3: { // Delete button
                     HWND hListView = GetDlgItem(hDlg, IDC_LIST);
-                    wchar_t* selectedVideoId = GetSelectedVideoId(hListView);
+                    int selectedCount = 0;
+                    wchar_t** selectedVideoIds = GetSelectedVideoIds(hListView, &selectedCount);
                     
-                    if (!selectedVideoId) {
+                    if (!selectedVideoIds || selectedCount == 0) {
                         ShowWarningMessage(hDlg, L"No Selection", 
-                                         L"Please select a video from the list to delete.");
+                                         L"Please select one or more videos from the list to delete.");
                         break;
                     }
                     
-                    // Find the cache entry to get the title for confirmation
-                    CacheEntry* entry = FindCacheEntry(&g_cacheManager, selectedVideoId);
-                    wchar_t confirmMsg[512];
-                    if (entry && entry->title) {
-                        swprintf(confirmMsg, 512, 
-                                L"Are you sure you want to delete \"%ls\"?\n\n"
-                                L"This will permanently delete the video file and any associated subtitle files.",
-                                entry->title);
+                    // Build confirmation message
+                    wchar_t confirmMsg[1024];
+                    if (selectedCount == 1) {
+                        // Single video - show title if available
+                        CacheEntry* entry = FindCacheEntry(&g_cacheManager, selectedVideoIds[0]);
+                        if (entry && entry->title) {
+                            swprintf(confirmMsg, 1024, 
+                                    L"Are you sure you want to delete \"%ls\"?\n\n"
+                                    L"This will permanently delete the video file and any associated subtitle files.",
+                                    entry->title);
+                        } else {
+                            wcscpy(confirmMsg, L"Are you sure you want to delete the selected video?\n\n"
+                                             L"This will permanently delete the video file and any associated subtitle files.");
+                        }
                     } else {
-                        wcscpy(confirmMsg, L"Are you sure you want to delete the selected video?\n\n"
-                                         L"This will permanently delete the video file and any associated subtitle files.");
+                        // Multiple videos
+                        swprintf(confirmMsg, 1024, 
+                                L"Are you sure you want to delete %d selected videos?\n\n"
+                                L"This will permanently delete all video files and any associated subtitle files.",
+                                selectedCount);
                     }
                     
                     // Confirm deletion
@@ -3290,24 +3300,86 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
                     
                     if (result == IDYES) {
-                        // Delete the files and remove from cache with detailed error reporting
-                        DeleteResult* deleteResult = DeleteCacheEntryFilesDetailed(&g_cacheManager, selectedVideoId);
+                        // Delete all selected videos
+                        int totalErrors = 0;
+                        int totalSuccessful = 0;
+                        wchar_t* combinedErrorDetails = NULL;
+                        size_t combinedErrorSize = 0;
                         
-                        if (deleteResult) {
-                            if (deleteResult->errorCount == 0) {
-                                // All files deleted successfully (no success popup)
-                                // Refresh the list
-                                RefreshCacheList(hListView, &g_cacheManager);
-                                UpdateCacheListStatus(hDlg, &g_cacheManager);
-                            } else {
-                                // Some files failed to delete - show detailed error
-                                wchar_t* errorDetails = FormatDeleteErrorDetails(deleteResult);
-                                if (errorDetails) {
-                                    // Create enhanced error dialog with detailed information
+                        for (int i = 0; i < selectedCount; i++) {
+                            DeleteResult* deleteResult = DeleteCacheEntryFilesDetailed(&g_cacheManager, selectedVideoIds[i]);
+                            
+                            if (deleteResult) {
+                                if (deleteResult->errorCount == 0) {
+                                    totalSuccessful++;
+                                } else {
+                                    totalErrors += deleteResult->errorCount;
+                                    
+                                    // Combine error details
+                                    wchar_t* errorDetails = FormatDeleteErrorDetails(deleteResult);
+                                    if (errorDetails) {
+                                        size_t errorLen = wcslen(errorDetails);
+                                        size_t newSize = combinedErrorSize + errorLen + 100; // Extra space for headers
+                                        
+                                        wchar_t* newCombined = (wchar_t*)realloc(combinedErrorDetails, newSize * sizeof(wchar_t));
+                                        if (newCombined) {
+                                            combinedErrorDetails = newCombined;
+                                            
+                                            if (combinedErrorSize == 0) {
+                                                wcscpy(combinedErrorDetails, L"Multiple Delete Operation Results:\n");
+                                                wcscpy(combinedErrorDetails + wcslen(combinedErrorDetails), L"=====================================\n\n");
+                                            }
+                                            
+                                            // Add video identifier
+                                            CacheEntry* entry = FindCacheEntry(&g_cacheManager, selectedVideoIds[i]);
+                                            if (entry && entry->title) {
+                                                swprintf(combinedErrorDetails + wcslen(combinedErrorDetails), 
+                                                        newSize - wcslen(combinedErrorDetails),
+                                                        L"Video: %ls\n", entry->title);
+                                            } else {
+                                                swprintf(combinedErrorDetails + wcslen(combinedErrorDetails), 
+                                                        newSize - wcslen(combinedErrorDetails),
+                                                        L"Video ID: %ls\n", selectedVideoIds[i]);
+                                            }
+                                            
+                                            wcscat(combinedErrorDetails, errorDetails);
+                                            wcscat(combinedErrorDetails, L"\n");
+                                            
+                                            combinedErrorSize = wcslen(combinedErrorDetails);
+                                        }
+                                        
+                                        free(errorDetails);
+                                    }
+                                }
+                                
+                                FreeDeleteResult(deleteResult);
+                            }
+                        }
+                        
+                        // Show results
+                        if (totalErrors == 0) {
+                            // All deletions successful (no success popup)
+                        } else {
+                            // Some deletions failed - show combined error details
+                            if (combinedErrorDetails) {
+                                // Add summary at the beginning
+                                wchar_t summary[256];
+                                swprintf(summary, 256, 
+                                        L"Summary: %d videos processed, %d successful, %d failed\n\n",
+                                        selectedCount, totalSuccessful, selectedCount - totalSuccessful);
+                                
+                                size_t summaryLen = wcslen(summary);
+                                size_t totalLen = summaryLen + wcslen(combinedErrorDetails) + 1;
+                                wchar_t* finalDetails = (wchar_t*)malloc(totalLen * sizeof(wchar_t));
+                                
+                                if (finalDetails) {
+                                    wcscpy(finalDetails, summary);
+                                    wcscat(finalDetails, combinedErrorDetails);
+                                    
                                     EnhancedErrorDialog* errorDialog = CreateEnhancedErrorDialog(
-                                        L"Delete Failed",
-                                        L"Failed to delete some or all files. They may be in use or you may not have permission.",
-                                        errorDetails,
+                                        L"Multiple Delete Failed",
+                                        L"Some files failed to delete. They may be in use or you may not have permission.",
+                                        finalDetails,
                                         L"Check if files are currently open in another application or if you have sufficient permissions.",
                                         L"• Close any applications that might be using the files\n"
                                         L"• Run as administrator if permission is denied\n"
@@ -3321,23 +3393,25 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                         FreeEnhancedErrorDialog(errorDialog);
                                     }
                                     
-                                    free(errorDetails);
-                                } else {
-                                    ShowWarningMessage(hDlg, L"Delete Failed", 
-                                                     L"Failed to delete some or all files. They may be in use or you may not have permission.");
+                                    free(finalDetails);
                                 }
-                                
-                                // Refresh the list anyway to show current state
-                                RefreshCacheList(hListView, &g_cacheManager);
-                                UpdateCacheListStatus(hDlg, &g_cacheManager);
+                            } else {
+                                ShowWarningMessage(hDlg, L"Delete Failed", 
+                                                 L"Failed to delete some or all files. They may be in use or you may not have permission.");
                             }
-                            
-                            FreeDeleteResult(deleteResult);
-                        } else {
-                            ShowWarningMessage(hDlg, L"Delete Failed", 
-                                             L"Failed to delete files. The video entry may not exist.");
                         }
+                        
+                        if (combinedErrorDetails) {
+                            free(combinedErrorDetails);
+                        }
+                        
+                        // Refresh the list to show current state
+                        RefreshCacheList(hListView, &g_cacheManager);
+                        UpdateCacheListStatus(hDlg, &g_cacheManager);
                     }
+                    
+                    // Clean up selected video IDs
+                    FreeSelectedVideoIds(selectedVideoIds, selectedCount);
                     break;
                 }
 

@@ -77,6 +77,8 @@ wchar_t* FormatCacheEntryDisplay(const CacheEntry* entry);
 // UI helper functions for ListView management
 void UpdateCacheListStatus(HWND hDlg, CacheManager* manager);
 wchar_t* GetSelectedVideoId(HWND hListView);
+wchar_t** GetSelectedVideoIds(HWND hListView, int* count);
+void FreeSelectedVideoIds(wchar_t** videoIds, int count);
 void InitializeCacheListView(HWND hListView);
 void ResizeCacheListViewColumns(HWND hListView, int totalWidth);
 void CleanupListViewItemData(HWND hListView);

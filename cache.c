@@ -953,7 +953,7 @@ void UpdateCacheListStatus(HWND hDlg, CacheManager* manager) {
     SetDlgItemTextW(hDlg, IDC_LABEL3, itemsText);
 }
 
-// Get the video ID of the currently selected item
+// Get the video ID of the currently selected item (single selection)
 wchar_t* GetSelectedVideoId(HWND hListView) {
     if (!hListView) return NULL;
     
@@ -969,6 +969,59 @@ wchar_t* GetSelectedVideoId(HWND hListView) {
     }
     
     return NULL;
+}
+
+// Get all selected video IDs (multiple selection)
+wchar_t** GetSelectedVideoIds(HWND hListView, int* count) {
+    if (!hListView || !count) return NULL;
+    
+    *count = 0;
+    
+    // First pass: count selected items
+    int selectedCount = 0;
+    int index = -1;
+    while ((index = (int)SendMessageW(hListView, LVM_GETNEXTITEM, index, LVNI_SELECTED)) != -1) {
+        selectedCount++;
+    }
+    
+    if (selectedCount == 0) return NULL;
+    
+    // Allocate array for video IDs
+    wchar_t** videoIds = (wchar_t**)malloc(selectedCount * sizeof(wchar_t*));
+    if (!videoIds) return NULL;
+    
+    // Second pass: collect video IDs
+    int currentIndex = 0;
+    index = -1;
+    while ((index = (int)SendMessageW(hListView, LVM_GETNEXTITEM, index, LVNI_SELECTED)) != -1) {
+        LVITEMW item = {0};
+        item.mask = LVIF_PARAM;
+        item.iItem = index;
+        
+        if (SendMessageW(hListView, LVM_GETITEMW, 0, (LPARAM)&item)) {
+            wchar_t* videoId = (wchar_t*)item.lParam;
+            if (videoId) {
+                videoIds[currentIndex] = _wcsdup(videoId);
+                currentIndex++;
+            }
+        }
+    }
+    
+    *count = currentIndex;
+    return videoIds;
+}
+
+// Free array of selected video IDs
+void FreeSelectedVideoIds(wchar_t** videoIds, int count) {
+    if (!videoIds) return;
+    
+    for (int i = 0; i < count; i++) {
+        if (videoIds[i]) {
+            free(videoIds[i]);
+        }
+    }
+    
+    free(videoIds);
 }
 
 // Clean up item data when clearing the ListView
