@@ -691,6 +691,11 @@ void RefreshCacheList(HWND hListView, CacheManager* manager) {
 wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
     if (!url) return NULL;
     
+    // Debug: Log the URL being processed
+    wchar_t debugMsg[1024];
+    swprintf(debugMsg, 1024, L"YouTubeCacher: ExtractVideoIdFromUrl - Processing URL: %ls\n", url);
+    OutputDebugStringW(debugMsg);
+    
     // Look for v= parameter
     const wchar_t* vParam = wcsstr(url, L"v=");
     if (vParam) {
@@ -709,6 +714,8 @@ wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
             if (videoId) {
                 wcsncpy(videoId, vParam, 11);
                 videoId[11] = L'\0';
+                swprintf(debugMsg, 1024, L"YouTubeCacher: ExtractVideoIdFromUrl - Found video ID (v= format): %ls\n", videoId);
+                OutputDebugStringW(debugMsg);
                 return videoId;
             }
         }
@@ -731,11 +738,38 @@ wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
             if (videoId) {
                 wcsncpy(videoId, shortUrl, 11);
                 videoId[11] = L'\0';
+                swprintf(debugMsg, 1024, L"YouTubeCacher: ExtractVideoIdFromUrl - Found video ID (youtu.be format): %ls\n", videoId);
+                OutputDebugStringW(debugMsg);
                 return videoId;
             }
         }
     }
     
+    // Look for YouTube Shorts format: youtube.com/shorts/VIDEO_ID
+    const wchar_t* shortsUrl = wcsstr(url, L"/shorts/");
+    if (shortsUrl) {
+        shortsUrl += 8; // Skip "/shorts/"
+        
+        const wchar_t* end = shortsUrl;
+        int count = 0;
+        while (*end && *end != L'?' && *end != L'&' && *end != L'#' && count < 11) {
+            end++;
+            count++;
+        }
+        
+        if (count == 11) {
+            wchar_t* videoId = (wchar_t*)malloc(12 * sizeof(wchar_t));
+            if (videoId) {
+                wcsncpy(videoId, shortsUrl, 11);
+                videoId[11] = L'\0';
+                swprintf(debugMsg, 1024, L"YouTubeCacher: ExtractVideoIdFromUrl - Found video ID (shorts format): %ls\n", videoId);
+                OutputDebugStringW(debugMsg);
+                return videoId;
+            }
+        }
+    }
+    
+    OutputDebugStringW(L"YouTubeCacher: ExtractVideoIdFromUrl - No video ID found in URL\n");
     return NULL;
 }
 
