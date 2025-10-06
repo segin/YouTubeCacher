@@ -716,7 +716,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             }
             
             // Calculate optimal dialog size based on message content
-            int optimalWidth, optimalHeight;
+            int optimalWidth = 400, optimalHeight = 300; // Default values
             CalculateOptimalDialogSize(hDlg, errorDialog->message, &optimalWidth, &optimalHeight);
             
             // Resize dialog to optimal dimensions first

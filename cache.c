@@ -1,5 +1,6 @@
 #include "cache.h"
 #include "YouTubeCacher.h"
+#include "base64.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,18 +10,34 @@
 
 // Initialize the cache manager
 BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) {
-    if (!manager || !downloadPath) return FALSE;
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - ENTRY\n");
+    
+    if (!manager || !downloadPath) {
+        OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - NULL parameters\n");
+        return FALSE;
+    }
+    
+    wchar_t debugMsg[512];
+    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - downloadPath: %ls\n", downloadPath);
+    OutputDebugStringW(debugMsg);
     
     memset(manager, 0, sizeof(CacheManager));
     
     // Initialize critical section for thread safety
     InitializeCriticalSection(&manager->lock);
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - Critical section initialized\n");
     
     // Build cache file path
     swprintf(manager->cacheFilePath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, CACHE_FILE_NAME);
+    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - cacheFilePath: %ls\n", manager->cacheFilePath);
+    OutputDebugStringW(debugMsg);
     
     // Load existing cache from file
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - Loading cache from file\n");
     LoadCacheFromFile(manager);
+    
+    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - SUCCESS, loaded %d entries\n", manager->totalEntries);
+    OutputDebugStringW(debugMsg);
     
     return TRUE;
 }
@@ -111,9 +128,11 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         // Parse video ID
         entry->videoId = _wcsdup(token);
         
-        // Parse title
+        // Parse title (base64 encoded)
         token = wcstok(NULL, L"|", &context);
-        if (token) entry->title = _wcsdup(token);
+        if (token && wcslen(token) > 0) {
+            entry->title = Base64DecodeWide(token);
+        }
         
         // Parse duration
         token = wcstok(NULL, L"|", &context);
@@ -179,12 +198,17 @@ BOOL SaveCacheToFile(CacheManager* manager) {
     CacheEntry* current = manager->entries;
     while (current) {
         if (ValidateCacheEntry(current)) {
+            // Encode title as base64 to handle all Unicode characters safely
+            wchar_t* encodedTitle = current->title ? Base64EncodeWide(current->title) : NULL;
+            
             fwprintf(file, L"%ls|%ls|%ls|%ls|%d",
                     current->videoId ? current->videoId : L"",
-                    current->title ? current->title : L"",
+                    encodedTitle ? encodedTitle : L"",
                     current->duration ? current->duration : L"",
                     current->mainVideoFile ? current->mainVideoFile : L"",
                     current->subtitleCount);
+            
+            if (encodedTitle) free(encodedTitle);
             
             // Write subtitle files
             for (int i = 0; i < current->subtitleCount; i++) {
@@ -531,7 +555,14 @@ BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t
 
 // Initialize ListView with columns
 void InitializeCacheListView(HWND hListView) {
-    if (!hListView) return;
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheListView - ENTRY\n");
+    
+    if (!hListView) {
+        OutputDebugStringW(L"YouTubeCacher: InitializeCacheListView - NULL hListView\n");
+        return;
+    }
+    
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheListView - Setting extended styles\n");
     
     // Set extended styles for better appearance
     DWORD exStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER;
@@ -541,17 +572,27 @@ void InitializeCacheListView(HWND hListView) {
     LVCOLUMNW column = {0};
     column.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
     
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheListView - Adding Title column\n");
+    
     // Title column (will resize with window)
     column.pszText = L"Title";
     column.cx = 300; // Initial width
     column.iSubItem = 0;
-    SendMessageW(hListView, LVM_INSERTCOLUMNW, 0, (LPARAM)&column);
+    int result1 = SendMessageW(hListView, LVM_INSERTCOLUMNW, 0, (LPARAM)&column);
+    
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheListView - Adding Duration column\n");
     
     // Duration column (fixed width)
     column.pszText = L"Duration";
     column.cx = 80; // Fixed width
     column.iSubItem = 1;
-    SendMessageW(hListView, LVM_INSERTCOLUMNW, 1, (LPARAM)&column);
+    int result2 = SendMessageW(hListView, LVM_INSERTCOLUMNW, 1, (LPARAM)&column);
+    
+    wchar_t debugMsg[256];
+    swprintf(debugMsg, 256, L"YouTubeCacher: InitializeCacheListView - Column results: %d, %d\n", result1, result2);
+    OutputDebugStringW(debugMsg);
+    
+    OutputDebugStringW(L"YouTubeCacher: InitializeCacheListView - COMPLETE\n");
 }
 
 // Resize ListView columns
@@ -617,6 +658,8 @@ void RefreshCacheList(HWND hListView, CacheManager* manager) {
     
     LeaveCriticalSection(&manager->lock);
 }
+
+
 
 // Extract video ID from YouTube URL
 wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {

@@ -14,7 +14,7 @@ LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lc
 TARGET = YouTubeCacher.exe
 
 # Source files
-SOURCES = main.c uri.c errordialog.c cache.c
+SOURCES = main.c uri.c errordialog.c cache.c base64.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object files
@@ -23,6 +23,11 @@ RC_OBJECT = $(RC_SOURCE:.rc=.o)
 
 # Default target
 all: $(TARGET)
+
+# Optimized release build
+release: CFLAGS += -O2 -DNDEBUG -s
+release: LDFLAGS += -s
+release: $(TARGET)
 
 # Build the executable
 $(TARGET): $(OBJECTS) $(RC_OBJECT)
@@ -45,4 +50,4 @@ run: $(TARGET)
 	./$(TARGET)
 
 # Phony targets
-.PHONY: all clean run
+.PHONY: all clean run release

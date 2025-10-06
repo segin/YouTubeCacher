@@ -404,6 +404,8 @@ typedef struct {
     wchar_t* status;
     wchar_t* speed;
     wchar_t* eta;
+    long long downloadedBytes;
+    long long totalBytes;
     BOOL isComplete;
 } ProgressInfo;
 
