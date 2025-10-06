@@ -228,6 +228,16 @@ typedef struct {
     size_t outputBufferSize;
 } SubprocessContext;
 
+// Structure for non-blocking download context
+typedef struct NonBlockingDownloadContext {
+    YtDlpConfig config;
+    YtDlpRequest* request;
+    HWND parentWindow;
+    wchar_t tempDir[MAX_EXTENDED_PATH];
+    wchar_t url[MAX_URL_LENGTH];
+    SubprocessContext* context;
+} NonBlockingDownloadContext;
+
 // Function prototypes
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
@@ -403,6 +413,10 @@ void FreeSubprocessContext(SubprocessContext* context);
 // Convenience function for simple multithreaded execution with progress dialog
 YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
                                              HWND parentWindow, const wchar_t* operationTitle);
+
+// Non-blocking download functions
+BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow);
+void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 
 // Thread-safe helper functions
 BOOL InitializeThreadContext(ThreadContext* threadContext);

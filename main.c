@@ -704,6 +704,9 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     DWORD exitCode;
     GetExitCodeProcess(pi.hProcess, &exitCode);
     
+    // Save command line for diagnostics before freeing
+    wchar_t* savedCmdLine = _wcsdup(cmdLine);
+    
     // Cleanup
     free(cmdLine);
     CloseHandle(hRead);
@@ -715,9 +718,44 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     result->exitCode = exitCode;
     result->output = outputBuffer;
     
-    if (!result->success && (!result->output || wcslen(result->output) == 0)) {
-        result->errorMessage = _wcsdup(L"yt-dlp process failed");
+    // For failed processes, extract meaningful error information from output
+    if (!result->success) {
+        if (result->output && wcslen(result->output) > 0) {
+            // Use the actual yt-dlp output as the error message
+            result->errorMessage = _wcsdup(result->output);
+            
+            // Generate diagnostic information based on the output
+            wchar_t* diagnostics = (wchar_t*)malloc(2048 * sizeof(wchar_t));
+            if (diagnostics) {
+                swprintf(diagnostics, 2048,
+                    L"yt-dlp process exited with code %lu\n\n"
+                    L"Command executed: %ls\n\n"
+                    L"Process output:\n%ls",
+                    exitCode, savedCmdLine ? savedCmdLine : L"Unknown", result->output);
+                result->diagnostics = diagnostics;
+            }
+        } else {
+            // Fallback for cases with no output
+            result->errorMessage = _wcsdup(L"yt-dlp process failed with no output");
+            
+            wchar_t* diagnostics = (wchar_t*)malloc(1024 * sizeof(wchar_t));
+            if (diagnostics) {
+                swprintf(diagnostics, 1024,
+                    L"yt-dlp process exited with code %lu but produced no output\n\n"
+                    L"Command executed: %ls\n\n"
+                    L"This may indicate:\n"
+                    L"- yt-dlp executable not found or corrupted\n"
+                    L"- Missing dependencies (Python runtime)\n"
+                    L"- Permission issues\n"
+                    L"- Invalid command line arguments",
+                    exitCode, savedCmdLine ? savedCmdLine : L"Unknown");
+                result->diagnostics = diagnostics;
+            }
+        }
     }
+    
+    // Cleanup saved command line
+    if (savedCmdLine) free(savedCmdLine);
     
     return result;
 }
@@ -965,8 +1003,40 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
         context->result->output = context->accumulatedOutput;
         context->accumulatedOutput = NULL; // Transfer ownership to result
         
-        if (!context->result->success && (!context->result->output || wcslen(context->result->output) == 0)) {
-            context->result->errorMessage = _wcsdup(L"yt-dlp process failed");
+        // For failed processes, extract meaningful error information from output
+        if (!context->result->success) {
+            if (context->result->output && wcslen(context->result->output) > 0) {
+                // Use the actual yt-dlp output as the error message
+                context->result->errorMessage = _wcsdup(context->result->output);
+                
+                // Generate diagnostic information based on the output
+                wchar_t* diagnostics = (wchar_t*)malloc(2048 * sizeof(wchar_t));
+                if (diagnostics) {
+                    swprintf(diagnostics, 2048,
+                        L"yt-dlp process exited with code %lu\n\n"
+                        L"Command executed: %ls\n\n"
+                        L"Process output:\n%ls",
+                        exitCode, cmdLine, context->result->output);
+                    context->result->diagnostics = diagnostics;
+                }
+            } else {
+                // Fallback for cases with no output
+                context->result->errorMessage = _wcsdup(L"yt-dlp process failed with no output");
+                
+                wchar_t* diagnostics = (wchar_t*)malloc(1024 * sizeof(wchar_t));
+                if (diagnostics) {
+                    swprintf(diagnostics, 1024,
+                        L"yt-dlp process exited with code %lu but produced no output\n\n"
+                        L"Command executed: %ls\n\n"
+                        L"This may indicate:\n"
+                        L"- yt-dlp executable not found or corrupted\n"
+                        L"- Missing dependencies (Python runtime)\n"
+                        L"- Permission issues\n"
+                        L"- Invalid command line arguments",
+                        exitCode, cmdLine);
+                    context->result->diagnostics = diagnostics;
+                }
+            }
         }
     }
     
@@ -1215,6 +1285,187 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
     DestroyProgressDialog(progress);
     
     return result;
+}
+
+
+
+// Custom window message for download completion
+#define WM_DOWNLOAD_COMPLETE (WM_USER + 102)
+
+// Thread function for non-blocking download
+DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
+    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lpParam;
+    if (!downloadContext) return 1;
+    
+    // Execute the download synchronously in this thread
+    YtDlpResult* result = ExecuteYtDlpRequest(&downloadContext->config, downloadContext->request);
+    
+    // Post completion message to main window with result
+    PostMessageW(downloadContext->parentWindow, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
+    
+    return 0;
+}
+
+// Start non-blocking download operation
+BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow) {
+    if (!config || !request || !parentWindow) return FALSE;
+    
+    // Create download context
+    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)malloc(sizeof(NonBlockingDownloadContext));
+    if (!downloadContext) return FALSE;
+    
+    // Copy configuration and request data
+    memcpy(&downloadContext->config, config, sizeof(YtDlpConfig));
+    downloadContext->request = request; // Transfer ownership
+    downloadContext->parentWindow = parentWindow;
+    
+    // Copy temp directory and URL for cleanup
+    if (request->tempDir) {
+        wcscpy(downloadContext->tempDir, request->tempDir);
+    }
+    if (request->url) {
+        wcscpy(downloadContext->url, request->url);
+    }
+    
+    // Create and start the download thread
+    HANDLE hThread = CreateThread(NULL, 0, NonBlockingDownloadThread, downloadContext, 0, NULL);
+    if (!hThread) {
+        free(downloadContext);
+        return FALSE;
+    }
+    
+    // Don't wait for thread - it will notify us via message when complete
+    CloseHandle(hThread);
+    return TRUE;
+}
+
+// Handle download completion
+void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext) {
+    if (!hDlg || !downloadContext) return;
+    
+    if (result && result->success) {
+        UpdateMainProgressBar(hDlg, 100, L"Download completed successfully");
+        // Keep progress bar visible - don't hide it
+        
+        // Add to cache - extract video ID from URL
+        wchar_t* videoId = ExtractVideoIdFromUrl(downloadContext->url);
+        if (videoId) {
+            // Get video title and duration from UI if available
+            wchar_t title[512] = {0};
+            wchar_t duration[64] = {0};
+            GetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title, 512);
+            GetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, duration, 64);
+            
+            // Get download path from config
+            wchar_t downloadPath[MAX_EXTENDED_PATH];
+            if (LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+                // Find the downloaded video file (look for common video extensions)
+                wchar_t videoPattern[MAX_EXTENDED_PATH];
+                swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\*[%ls]*", downloadPath, videoId);
+                
+                WIN32_FIND_DATAW findData;
+                HANDLE hFind = FindFirstFileW(videoPattern, &findData);
+                
+                if (hFind != INVALID_HANDLE_VALUE) {
+                    do {
+                        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                            // Check if it's a video file
+                            wchar_t* ext = wcsrchr(findData.cFileName, L'.');
+                            if (ext && (wcsicmp(ext, L".mp4") == 0 || wcsicmp(ext, L".mkv") == 0 || 
+                                       wcsicmp(ext, L".webm") == 0 || wcsicmp(ext, L".avi") == 0)) {
+                                
+                                wchar_t fullVideoPath[MAX_EXTENDED_PATH];
+                                swprintf(fullVideoPath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, findData.cFileName);
+                                
+                                // Find subtitle files
+                                wchar_t** subtitleFiles = NULL;
+                                int subtitleCount = 0;
+                                FindSubtitleFiles(fullVideoPath, &subtitleFiles, &subtitleCount);
+                                
+                                // Add to cache
+                                AddCacheEntry(&g_cacheManager, videoId, 
+                                            wcslen(title) > 0 ? title : findData.cFileName,
+                                            wcslen(duration) > 0 ? duration : L"Unknown",
+                                            fullVideoPath, subtitleFiles, subtitleCount);
+                                
+                                // Clean up subtitle files array
+                                if (subtitleFiles) {
+                                    for (int i = 0; i < subtitleCount; i++) {
+                                        if (subtitleFiles[i]) free(subtitleFiles[i]);
+                                    }
+                                    free(subtitleFiles);
+                                }
+                                
+                                break; // Found the main video file
+                            }
+                        }
+                    } while (FindNextFileW(hFind, &findData));
+                    FindClose(hFind);
+                }
+            }
+            
+            free(videoId);
+            
+            // Refresh the cache list UI
+            RefreshCacheList(GetDlgItem(hDlg, IDC_LIST), &g_cacheManager);
+            UpdateCacheListStatus(hDlg, &g_cacheManager);
+        }
+    } else {
+        UpdateMainProgressBar(hDlg, 0, L"Download failed");
+        Sleep(500);
+        ShowMainProgressBar(hDlg, FALSE);
+        
+        // Show enhanced error dialog with actual yt-dlp output and Windows API errors
+        if (result) {
+            // Enhance error details with Windows API error information if applicable
+            if (result->exitCode != 0 && result->exitCode > 1000) {
+                // This looks like a Windows error code
+                wchar_t windowsError[512];
+                DWORD errorCode = result->exitCode;
+                
+                if (FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                  NULL, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                  windowsError, 512, NULL)) {
+                    
+                    // Remove trailing newlines
+                    size_t len = wcslen(windowsError);
+                    while (len > 0 && (windowsError[len-1] == L'\n' || windowsError[len-1] == L'\r')) {
+                        windowsError[len-1] = L'\0';
+                        len--;
+                    }
+                    
+                    // Enhance the diagnostics with Windows error information
+                    size_t newDiagSize = (result->diagnostics ? wcslen(result->diagnostics) : 0) + 1024;
+                    wchar_t* enhancedDiag = (wchar_t*)malloc(newDiagSize * sizeof(wchar_t));
+                    if (enhancedDiag) {
+                        swprintf(enhancedDiag, newDiagSize,
+                            L"%ls\n\n=== WINDOWS API ERROR ===\n"
+                            L"Error Code: %lu (0x%08lX)\n"
+                            L"Error Message: %ls\n",
+                            result->diagnostics ? result->diagnostics : L"No diagnostic information available",
+                            errorCode, errorCode, windowsError);
+                        
+                        // Replace the diagnostics
+                        if (result->diagnostics) free(result->diagnostics);
+                        result->diagnostics = enhancedDiag;
+                    }
+                }
+            }
+            
+            ShowYtDlpError(hDlg, result, downloadContext->request);
+        } else {
+            ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
+        }
+    }
+    
+    // Cleanup resources
+    if (downloadContext->tempDir[0] != L'\0') {
+        CleanupTempDirectory(downloadContext->tempDir);
+    }
+    if (result) FreeYtDlpResult(result);
+    if (downloadContext->request) FreeYtDlpRequest(downloadContext->request);
+    CleanupYtDlpConfig(&downloadContext->config);
+    free(downloadContext);
 }
 
 // Structure for passing data to the video info thread
@@ -3100,101 +3351,35 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     request->tempDir = _wcsdup(tempDir);
                     
-                    // Show progress in main window instead of separate dialog
+                    // Show progress in main window and start non-blocking download
                     ShowMainProgressBar(hDlg, TRUE);
                     UpdateMainProgressBar(hDlg, 5, L"Initializing download...");
                     
-                    // Execute the download operation using multithreaded approach
-                    YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&config, request, hDlg, L"Downloading Video");
+                    // Execute the download operation using non-blocking approach
+                    BOOL downloadStarted = StartNonBlockingDownload(&config, request, hDlg);
                     
-                    if (result && result->success) {
-                        UpdateMainProgressBar(hDlg, 100, L"Download completed successfully");
-                        // Keep progress bar visible - don't hide it
-                        
-                        // Add to cache - extract video ID from URL
-                        wchar_t* videoId = ExtractVideoIdFromUrl(url);
-                        if (videoId) {
-                            // Get video title and duration from UI if available
-                            wchar_t title[512] = {0};
-                            wchar_t duration[64] = {0};
-                            GetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title, 512);
-                            GetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, duration, 64);
-                            
-                            // Find the downloaded video file (look for common video extensions)
-                            wchar_t videoPattern[MAX_EXTENDED_PATH];
-                            swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\*[%ls]*", downloadPath, videoId);
-                            
-                            WIN32_FIND_DATAW findData;
-                            HANDLE hFind = FindFirstFileW(videoPattern, &findData);
-                            
-                            if (hFind != INVALID_HANDLE_VALUE) {
-                                do {
-                                    if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                                        // Check if it's a video file
-                                        wchar_t* ext = wcsrchr(findData.cFileName, L'.');
-                                        if (ext && (wcsicmp(ext, L".mp4") == 0 || wcsicmp(ext, L".mkv") == 0 || 
-                                                   wcsicmp(ext, L".webm") == 0 || wcsicmp(ext, L".avi") == 0)) {
-                                            
-                                            wchar_t fullVideoPath[MAX_EXTENDED_PATH];
-                                            swprintf(fullVideoPath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, findData.cFileName);
-                                            
-                                            // Find subtitle files
-                                            wchar_t** subtitleFiles = NULL;
-                                            int subtitleCount = 0;
-                                            FindSubtitleFiles(fullVideoPath, &subtitleFiles, &subtitleCount);
-                                            
-                                            // Add to cache
-                                            AddCacheEntry(&g_cacheManager, videoId, 
-                                                        wcslen(title) > 0 ? title : findData.cFileName,
-                                                        wcslen(duration) > 0 ? duration : L"Unknown",
-                                                        fullVideoPath, subtitleFiles, subtitleCount);
-                                            
-                                            // Clean up subtitle files array
-                                            if (subtitleFiles) {
-                                                for (int i = 0; i < subtitleCount; i++) {
-                                                    if (subtitleFiles[i]) free(subtitleFiles[i]);
-                                                }
-                                                free(subtitleFiles);
-                                            }
-                                            
-                                            break; // Found the main video file
-                                        }
-                                    }
-                                } while (FindNextFileW(hFind, &findData));
-                                FindClose(hFind);
-                            }
-                            
-                            free(videoId);
-                            
-                            // Refresh the cache list UI
-                            RefreshCacheList(GetDlgItem(hDlg, IDC_LIST), &g_cacheManager);
-                            UpdateCacheListStatus(hDlg, &g_cacheManager);
-                        }
-                        
-                        // Success message removed - progress bar shows completion status
-                    } else {
-                        UpdateMainProgressBar(hDlg, 0, L"Download failed");
+                    if (!downloadStarted) {
+                        UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
                         Sleep(500);
                         ShowMainProgressBar(hDlg, FALSE);
                         
-                        // Show enhanced error dialog with comprehensive diagnostics
-                        if (result) {
-                            ShowYtDlpError(hDlg, result, request);
-                        } else {
-                            ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
-                        }
+                        ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
+                        
+                        // Cleanup resources
+                        CleanupTempDirectory(tempDir);
+                        FreeYtDlpRequest(request);
+                        FreeValidationInfo(&validationInfo);
+                        CleanupYtDlpConfig(&config);
+                        break;
                     }
                     
-                    // Cleanup resources
-                    CleanupTempDirectory(tempDir);
-                    if (result) FreeYtDlpResult(result);
-                    FreeYtDlpRequest(request);
-                    FreeValidationInfo(&validationInfo);
-                    CleanupYtDlpConfig(&config);
+                    // Resources will be cleaned up in the completion handler
+                    // Don't cleanup here since the download is running asynchronously
                     break;
                 }
                     
                 case IDC_GETINFO_BTN: {
+
                     // Get URL from text field
                     wchar_t url[MAX_URL_LENGTH];
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
@@ -3537,6 +3722,15 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 free(data);
             }
+            return TRUE;
+        }
+        
+        case WM_DOWNLOAD_COMPLETE: {
+            // Handle download completion
+            YtDlpResult* result = (YtDlpResult*)wParam;
+            NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lParam;
+            
+            HandleDownloadCompletion(hDlg, result, downloadContext);
             return TRUE;
         }
             
