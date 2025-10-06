@@ -1047,6 +1047,19 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                 if (converted > 0 && context->accumulatedOutput) {
                     tempOutput[converted] = L'\0';
                     
+                    // Debug: Log the raw bytes and converted wide chars
+                    wchar_t debugMsg[512];
+                    swprintf(debugMsg, 512, L"YouTubeCacher: Raw bytes (%lu): ", bytesRead);
+                    OutputDebugStringW(debugMsg);
+                    for (DWORD i = 0; i < min(bytesRead, 50); i++) {
+                        swprintf(debugMsg, 512, L"%02X ", (unsigned char)buffer[i]);
+                        OutputDebugStringW(debugMsg);
+                    }
+                    OutputDebugStringW(L"\n");
+                    
+                    swprintf(debugMsg, 512, L"YouTubeCacher: Converted wide chars (%d): %ls\n", converted, tempOutput);
+                    OutputDebugStringW(debugMsg);
+                    
                     size_t currentLen = wcslen(context->accumulatedOutput);
                     size_t newLen = currentLen + converted + 1;
                     if (newLen >= context->outputBufferSize) {
@@ -2355,6 +2368,19 @@ void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration)
     
     // Update video title field
     if (title && wcslen(title) > 0) {
+        // Debug: Log the title string being set
+        wchar_t debugMsg[1024];
+        swprintf(debugMsg, 1024, L"YouTubeCacher: Setting title in UI: %ls (length: %zu)\n", title, wcslen(title));
+        OutputDebugStringW(debugMsg);
+        
+        // Debug: Log individual characters
+        OutputDebugStringW(L"YouTubeCacher: Title character codes: ");
+        for (size_t i = 0; i < min(wcslen(title), 20); i++) {
+            swprintf(debugMsg, 1024, L"U+%04X ", (unsigned int)title[i]);
+            OutputDebugStringW(debugMsg);
+        }
+        OutputDebugStringW(L"\n");
+        
         SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title);
     } else {
         SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Title not available");
@@ -4968,6 +4994,19 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 case 1: { // Update video title
                     wchar_t* title = (wchar_t*)data;
                     if (title) {
+                        // Debug: Log the title received via message
+                        wchar_t debugMsg[1024];
+                        swprintf(debugMsg, 1024, L"YouTubeCacher: Received title via message: %ls (length: %zu)\n", title, wcslen(title));
+                        OutputDebugStringW(debugMsg);
+                        
+                        // Debug: Log individual characters
+                        OutputDebugStringW(L"YouTubeCacher: Message title character codes: ");
+                        for (size_t i = 0; i < min(wcslen(title), 20); i++) {
+                            swprintf(debugMsg, 1024, L"U+%04X ", (unsigned int)title[i]);
+                            OutputDebugStringW(debugMsg);
+                        }
+                        OutputDebugStringW(L"\n");
+                        
                         SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title);
                         free(title);
                     }
