@@ -407,11 +407,23 @@ typedef struct {
     BOOL isComplete;
 } ProgressInfo;
 
+// Heap-allocated progress data for PostMessage
+typedef struct {
+    int percentage;
+    wchar_t status[64];
+    wchar_t speed[32];
+    wchar_t eta[16];
+    BOOL isComplete;
+} HeapProgressData;
+
 // Video information retrieval functions
 BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
 void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration);
+
+// UI control functions
+void SetDownloadUIState(HWND hDlg, BOOL isDownloading);
 
 // Cached video metadata structure
 typedef struct {

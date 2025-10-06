@@ -36,6 +36,9 @@ CacheManager g_cacheManager;
 // Global cached video metadata
 CachedVideoMetadata g_cachedVideoMetadata;
 
+// Global download state flag
+BOOL g_isDownloading = FALSE;
+
 // Original text field window procedure
 WNDPROC OriginalTextFieldProc = NULL;
 
@@ -994,26 +997,38 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                                     if (progressInfo.percentage > lastProgressPercentage) {
                                         lastProgressPercentage = progressInfo.percentage;
                                         
-                                        // Update progress with parsed information
-                                        if (context->progressCallback) {
-                                            wchar_t statusMessage[256];
+                                        // Create heap-allocated progress data for PostMessage
+                                        HeapProgressData* heapProgress = (HeapProgressData*)malloc(sizeof(HeapProgressData));
+                                        if (heapProgress) {
+                                            heapProgress->percentage = progressInfo.percentage;
+                                            heapProgress->isComplete = progressInfo.isComplete;
+                                            
+                                            // Copy status
                                             if (progressInfo.status) {
-                                                if (progressInfo.speed && progressInfo.eta) {
-                                                    swprintf(statusMessage, 256, L"%ls - %ls (ETA: %ls)", 
-                                                            progressInfo.status, progressInfo.speed, progressInfo.eta);
-                                                } else if (progressInfo.speed) {
-                                                    swprintf(statusMessage, 256, L"%ls - %ls", 
-                                                            progressInfo.status, progressInfo.speed);
-                                                } else {
-                                                    swprintf(statusMessage, 256, L"%ls (%d%%)", 
-                                                            progressInfo.status, progressInfo.percentage);
-                                                }
+                                                wcsncpy(heapProgress->status, progressInfo.status, 63);
+                                                heapProgress->status[63] = L'\0';
                                             } else {
-                                                swprintf(statusMessage, 256, L"Processing... (%d%%)", 
-                                                        progressInfo.percentage);
+                                                wcscpy(heapProgress->status, L"Downloading");
                                             }
-                                            context->progressCallback(progressInfo.percentage, statusMessage, 
-                                                                    context->callbackUserData);
+                                            
+                                            // Copy speed
+                                            if (progressInfo.speed) {
+                                                wcsncpy(heapProgress->speed, progressInfo.speed, 31);
+                                                heapProgress->speed[31] = L'\0';
+                                            } else {
+                                                heapProgress->speed[0] = L'\0';
+                                            }
+                                            
+                                            // Copy ETA
+                                            if (progressInfo.eta) {
+                                                wcsncpy(heapProgress->eta, progressInfo.eta, 15);
+                                                heapProgress->eta[15] = L'\0';
+                                            } else {
+                                                heapProgress->eta[0] = L'\0';
+                                            }
+                                            
+                                            // Send progress update to main thread
+                                            PostMessageW(context->parentWindow, WM_USER + 104, 0, (LPARAM)heapProgress);
                                         }
                                     }
                                     FreeProgressInfo(&progressInfo);
@@ -1380,6 +1395,14 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
         wcscpy(downloadContext->url, request->url);
     }
     
+    // Set progress bar to indeterminate (marquee) mode before starting download
+    HWND hProgressBar = GetDlgItem(parentWindow, IDC_PROGRESS_BAR);
+    if (hProgressBar) {
+        SetWindowLongW(hProgressBar, GWL_STYLE, 
+            GetWindowLongW(hProgressBar, GWL_STYLE) | PBS_MARQUEE);
+        SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50); // 50ms animation speed
+    }
+    
     // Create and start the download thread
     HANDLE hThread = CreateThread(NULL, 0, NonBlockingDownloadThread, downloadContext, 0, NULL);
     if (!hThread) {
@@ -1398,6 +1421,8 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
     
     if (result && result->success) {
         UpdateMainProgressBar(hDlg, 100, L"Download completed successfully");
+        // Re-enable UI controls
+        SetDownloadUIState(hDlg, FALSE);
         // Keep progress bar visible - don't hide it
         
         // Add to cache - extract video ID from URL
@@ -1412,9 +1437,9 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
             // Get download path from config
             wchar_t downloadPath[MAX_EXTENDED_PATH];
             if (LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
-                // Find the downloaded video file (look for common video extensions)
+                // Find the downloaded video file (look for files starting with video ID)
                 wchar_t videoPattern[MAX_EXTENDED_PATH];
-                swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\*[%ls]*", downloadPath, videoId);
+                swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\%ls.*", downloadPath, videoId);
                 
                 WIN32_FIND_DATAW findData;
                 HANDLE hFind = FindFirstFileW(videoPattern, &findData);
@@ -1465,6 +1490,8 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
         }
     } else {
         UpdateMainProgressBar(hDlg, 0, L"Download failed");
+        // Re-enable UI controls
+        SetDownloadUIState(hDlg, FALSE);
         Sleep(500);
         ShowMainProgressBar(hDlg, FALSE);
         
@@ -1762,6 +1789,23 @@ void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration)
     InvalidateRect(GetDlgItem(hDlg, IDC_VIDEO_DURATION), NULL, TRUE);
 }
 
+// Enable/disable UI controls during download operations
+void SetDownloadUIState(HWND hDlg, BOOL isDownloading) {
+    if (!hDlg) return;
+    
+    // Disable/enable URL input field
+    EnableWindow(GetDlgItem(hDlg, IDC_TEXT_FIELD), !isDownloading);
+    
+    // Disable/enable Get Info button
+    EnableWindow(GetDlgItem(hDlg, IDC_GETINFO_BTN), !isDownloading);
+    
+    // Disable/enable Download button
+    EnableWindow(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), !isDownloading);
+    
+    // Update global state
+    g_isDownloading = isDownloading;
+}
+
 // Update the main window's progress bar instead of using separate dialogs
 void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status) {
     if (!hDlg) return;
@@ -1951,8 +1995,8 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             if (url && outputPath) {
                 // Enhanced download arguments with progress reporting
                 swprintf(operationArgs, 1024, 
-                    L"--progress --newline --no-colors --progress-template \"download:%%{_percent_str} %%{_speed_str} %%{_eta_str}\" "
-                    L"-o \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
+                    L"--newline --no-colors --progress-template \"%%{progress.downloaded_bytes}s|%%{progress.total_bytes_estimate}s|%%{progress.speed}s|%%{progress.eta}s|%%{progress.status}s\" "
+                    L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);
             } else {
                 return FALSE;
@@ -2316,118 +2360,138 @@ void FreeProgressInfo(ProgressInfo* progress) {
     }
 }
 
-// Parse yt-dlp progress output
+// Parse yt-dlp progress output (pipe-separated format)
+// Expected format: downloaded_bytes|total_bytes|speed|eta|status
 BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
     if (!line || !progress) return FALSE;
     
     // Initialize progress info
     memset(progress, 0, sizeof(ProgressInfo));
     
-    // Look for progress template format: "download:50.0% 1.2MiB/s 00:30"
-    const wchar_t* downloadPrefix = wcsstr(line, L"download:");
-    if (downloadPrefix) {
-        downloadPrefix += 9; // Skip "download:"
-        
-        // Parse percentage
-        const wchar_t* percentPos = wcsstr(downloadPrefix, L"%");
-        if (percentPos) {
-            // Go backwards to find the start of the number
-            const wchar_t* start = percentPos - 1;
-            while (start > downloadPrefix && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
-                start--;
-            }
-            start++; // Move to first digit
-            
-            if (start < percentPos) {
-                double percent = wcstod(start, NULL);
-                progress->percentage = (int)percent;
-            }
-        }
-        
-        // Parse speed (look for pattern like "1.2MiB/s")
-        const wchar_t* speedPos = wcsstr(downloadPrefix, L"/s");
-        if (speedPos) {
-            // Go backwards to find the start of the speed
-            const wchar_t* start = speedPos - 1;
-            while (start > downloadPrefix && *start != L' ') {
-                start--;
-            }
-            start++; // Move past space
-            
-            if (start < speedPos + 2) {
-                size_t speedLen = (speedPos + 2) - start;
-                progress->speed = (wchar_t*)malloc((speedLen + 1) * sizeof(wchar_t));
-                if (progress->speed) {
-                    wcsncpy(progress->speed, start, speedLen);
-                    progress->speed[speedLen] = L'\0';
-                }
-            }
-        }
-        
-        // Parse ETA (look for time pattern like "00:30")
-        const wchar_t* etaPos = wcsstr(downloadPrefix, L":");
-        if (etaPos && etaPos != percentPos) { // Make sure it's not part of percentage
-            // Go backwards to find the start of the time
-            const wchar_t* start = etaPos - 1;
-            while (start > downloadPrefix && iswdigit(*start)) {
-                start--;
-            }
-            start++; // Move to first digit
-            
-            // Go forwards to find the end of the time
-            const wchar_t* end = etaPos + 1;
-            while (*end && iswdigit(*end)) {
-                end++;
-            }
-            
-            if (start < end) {
-                size_t etaLen = end - start;
-                progress->eta = (wchar_t*)malloc((etaLen + 1) * sizeof(wchar_t));
-                if (progress->eta) {
-                    wcsncpy(progress->eta, start, etaLen);
-                    progress->eta[etaLen] = L'\0';
-                }
-            }
-        }
-        
-        progress->status = _wcsdup(L"Downloading");
-        progress->isComplete = (progress->percentage >= 100);
-        return TRUE;
+    // Skip lines that start with '[' (yt-dlp status messages)
+    if (line[0] == L'[') {
+        return FALSE;
     }
     
-    // Fallback: Look for traditional [download] format
-    if (wcsstr(line, L"[download]")) {
-        // Look for percentage in format like "50.0%"
-        const wchar_t* percentPos = wcsstr(line, L"%");
-        if (percentPos) {
-            // Go backwards to find the start of the number
-            const wchar_t* start = percentPos - 1;
-            while (start > line && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
-                start--;
-            }
-            start++; // Move to first digit
-            
-            if (start < percentPos) {
-                double percent = wcstod(start, NULL);
-                progress->percentage = (int)percent;
+    // Skip lines that don't start with a digit (0-9) - only process actual progress lines
+    if (line[0] < L'0' || line[0] > L'9') {
+        return FALSE;
+    }
+    
+    // Skip lines that don't contain progress data (look for pipe separators)
+    if (!wcsstr(line, L"|")) {
+        return FALSE;
+    }
+    
+    // Only process lines that start with a digit (actual progress data)
+    if (line[0] < L'0' || line[0] > L'9') {
+        return FALSE;
+    }
+    
+    // Make a copy of the line for tokenization
+    size_t lineLen = wcslen(line);
+    wchar_t* lineCopy = (wchar_t*)malloc((lineLen + 1) * sizeof(wchar_t));
+    if (!lineCopy) return FALSE;
+    
+    wcscpy(lineCopy, line);
+    
+    // Parse pipe-separated values: downloaded_bytes|total_bytes|speed|eta|status
+    wchar_t* context = NULL;
+    wchar_t* token;
+    int fieldIndex = 0;
+    
+    double downloadedBytes = 0;
+    double totalBytes = 0;
+    
+    token = wcstok(lineCopy, L"|", &context);
+    while (token && fieldIndex < 5) {
+        // Trim whitespace
+        while (*token == L' ' || *token == L'\t') token++;
+        
+        switch (fieldIndex) {
+            case 0: // downloaded_bytes
+                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0) {
+                    downloadedBytes = wcstod(token, NULL);
+                }
+                break;
                 
-                // Create a simple status message
-                progress->status = _wcsdup(L"Downloading");
-                progress->isComplete = (progress->percentage >= 100);
-                return TRUE;
-            }
+            case 1: // total_bytes_estimate
+                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0 && wcscmp(token, L"N/A") != 0) {
+                    totalBytes = wcstod(token, NULL);
+                }
+                break;
+                
+            case 2: // speed
+                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0) {
+                    // Convert speed to human readable format
+                    double speedBytes = wcstod(token, NULL);
+                    if (speedBytes > 0) {
+                        wchar_t speedStr[32];
+                        if (speedBytes >= 1024 * 1024) {
+                            swprintf(speedStr, 32, L"%.1fMB/s", speedBytes / (1024.0 * 1024.0));
+                        } else if (speedBytes >= 1024) {
+                            swprintf(speedStr, 32, L"%.1fKB/s", speedBytes / 1024.0);
+                        } else {
+                            swprintf(speedStr, 32, L"%.0fB/s", speedBytes);
+                        }
+                        progress->speed = _wcsdup(speedStr);
+                    }
+                }
+                break;
+                
+            case 3: // eta
+                if (wcslen(token) > 0 && wcscmp(token, L"NA") != 0) {
+                    int etaSeconds = _wtoi(token);
+                    if (etaSeconds > 0) {
+                        wchar_t etaStr[16];
+                        int minutes = etaSeconds / 60;
+                        int seconds = etaSeconds % 60;
+                        if (minutes > 0) {
+                            swprintf(etaStr, 16, L"%d:%02d", minutes, seconds);
+                        } else {
+                            swprintf(etaStr, 16, L"0:%02d", seconds);
+                        }
+                        progress->eta = _wcsdup(etaStr);
+                    }
+                }
+                break;
+                
+            case 4: // status
+                if (wcslen(token) > 0) {
+                    progress->status = _wcsdup(token);
+                }
+                break;
         }
         
-        // Check for completion messages
-        if (wcsstr(line, L"100%") || wcsstr(line, L"has already been downloaded")) {
-            progress->percentage = 100;
-            progress->status = _wcsdup(L"Download complete");
-            progress->isComplete = TRUE;
-            return TRUE;
-        }
+        token = wcstok(NULL, L"|", &context);
+        fieldIndex++;
     }
     
-    return FALSE;
+    // Calculate percentage if we have both downloaded and total bytes
+    if (totalBytes > 0 && downloadedBytes >= 0) {
+        progress->percentage = (int)((downloadedBytes / totalBytes) * 100.0);
+        progress->percentage = min(100, max(0, progress->percentage));
+    } else if (downloadedBytes > 0) {
+        // If we have downloaded bytes but no total, show indeterminate progress (-1)
+        progress->percentage = -1;
+    }
+    
+    // Set default status if not provided
+    if (!progress->status) {
+        progress->status = _wcsdup(L"Downloading");
+    }
+    
+    // Check if complete
+    progress->isComplete = (progress->percentage >= 100) || 
+                          (progress->status && wcscmp(progress->status, L"finished") == 0);
+    
+    // If finished, ensure we show 100% progress
+    if (progress->status && wcscmp(progress->status, L"finished") == 0) {
+        progress->percentage = 100;
+    }
+    
+    free(lineCopy);
+    return TRUE;
 }
 
 // Startup validation and configuration management functions
@@ -3875,8 +3939,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     request->tempDir = _wcsdup(tempDir);
                     
-                    // Show progress in main window and get/use metadata
+                    // Show progress in main window and disable UI controls
                     ShowMainProgressBar(hDlg, TRUE);
+                    SetDownloadUIState(hDlg, TRUE);
                     
                     VideoMetadata metadata;
                     BOOL hasMetadata = FALSE;
@@ -3922,6 +3987,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         
                         if (!downloadStarted) {
                             UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
+                            SetDownloadUIState(hDlg, FALSE);
                             Sleep(500);
                             ShowMainProgressBar(hDlg, FALSE);
                             
@@ -3946,6 +4012,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         
                         if (!downloadStarted) {
                             UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
+                            SetDownloadUIState(hDlg, FALSE);
                             Sleep(500);
                             ShowMainProgressBar(hDlg, FALSE);
                             
@@ -3966,6 +4033,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                     
                 case IDC_GETINFO_BTN: {
+                    // Check if download is in progress
+                    if (g_isDownloading) {
+                        ShowWarningMessage(hDlg, L"Download in Progress", L"Please wait for the current download to complete before getting video information.");
+                        break;
+                    }
+                    
                     // Get URL from text field
                     wchar_t url[MAX_URL_LENGTH];
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
@@ -4393,6 +4466,58 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 UpdateMainProgressBar(hDlg, 0, L"Failed to get video information");
             }
             
+            return TRUE;
+        }
+        
+        case WM_USER + 104: {
+            // Handle download progress update
+            HeapProgressData* progressData = (HeapProgressData*)lParam;
+            if (progressData) {
+                // Build status message
+                wchar_t statusMessage[256];
+                if (wcslen(progressData->speed) > 0 && wcslen(progressData->eta) > 0) {
+                    swprintf(statusMessage, 256, L"%ls - %ls (ETA: %ls)", 
+                            progressData->status, progressData->speed, progressData->eta);
+                } else if (wcslen(progressData->speed) > 0) {
+                    swprintf(statusMessage, 256, L"%ls - %ls", 
+                            progressData->status, progressData->speed);
+                } else {
+                    swprintf(statusMessage, 256, L"%ls (%d%%)", 
+                            progressData->status, progressData->percentage);
+                }
+                
+                // Update progress bar
+                HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+                if (hProgressBar) {
+                    LONG style = GetWindowLongW(hProgressBar, GWL_STYLE);
+                    
+                    if (progressData->percentage >= 0 || progressData->isComplete) {
+                        // We have a real percentage or completion - stop marquee and show progress
+                        if (style & PBS_MARQUEE) {
+                            SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                            SetWindowLongW(hProgressBar, GWL_STYLE, style & ~PBS_MARQUEE);
+                        }
+                        
+                        // If complete, show 100% and update status
+                        if (progressData->isComplete) {
+                            UpdateMainProgressBar(hDlg, 100, L"Download completed");
+                        } else {
+                            UpdateMainProgressBar(hDlg, progressData->percentage, statusMessage);
+                        }
+                    } else {
+                        // Indeterminate progress - keep or start marquee
+                        if (!(style & PBS_MARQUEE)) {
+                            SetWindowLongW(hProgressBar, GWL_STYLE, style | PBS_MARQUEE);
+                            SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50);
+                        }
+                        // Update status text only
+                        SetDlgItemTextW(hDlg, IDC_PROGRESS_TEXT, statusMessage);
+                    }
+                }
+                
+                // Free the heap-allocated data
+                free(progressData);
+            }
             return TRUE;
         }
         
