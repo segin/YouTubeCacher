@@ -695,7 +695,7 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
         while (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
             buffer[bytesRead] = '\0';
             wchar_t tempOutput[2048];
-            int converted = MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, tempOutput, 2047);
+            int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buffer, bytesRead, tempOutput, 2047);
             if (converted > 0) {
                 tempOutput[converted] = L'\0';
                 
@@ -1042,8 +1042,9 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                 OutputDebugStringW(debugMsg);
                 
                 // Convert to wide char and append to output buffer
+                // Use MB_ERR_INVALID_CHARS to detect incomplete UTF-8 sequences
                 wchar_t tempOutput[2048];
-                int converted = MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, tempOutput, 2047);
+                int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buffer, bytesRead, tempOutput, 2047);
                 if (converted > 0 && context->accumulatedOutput) {
                     tempOutput[converted] = L'\0';
                     
@@ -2581,7 +2582,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_TITLE:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-title --no-download --no-warnings \"%ls\"", url);
+                swprintf(operationArgs, 1024, L"--get-title --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
             } else {
                 return FALSE;
             }
@@ -2589,7 +2590,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_DURATION:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-duration --no-download --no-warnings \"%ls\"", url);
+                swprintf(operationArgs, 1024, L"--get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
             } else {
                 return FALSE;
             }
@@ -2597,7 +2598,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_TITLE_DURATION:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-title --get-duration --no-download --no-warnings \"%ls\"", url);
+                swprintf(operationArgs, 1024, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
             } else {
                 return FALSE;
             }
