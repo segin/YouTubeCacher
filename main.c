@@ -1035,18 +1035,78 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                 swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Read %lu bytes from process\n", bytesRead);
                 OutputDebugStringW(debugMsg);
                 
-
-                // Debug: Output to DebugView
-                wchar_t debugMsg[256];
-                swprintf(debugMsg, 256, L"YouTubeCacher: Read %lu bytes from yt-dlp\n", bytesRead);
-                OutputDebugStringW(debugMsg);
+                // Line-based UTF-8 processing to avoid character splitting
+                static char lineAccumulator[4096] = {0};
+                static size_t accumLen = 0;
                 
-                // Convert to wide char and append to output buffer
-                // Use MB_ERR_INVALID_CHARS to detect incomplete UTF-8 sequences
-                wchar_t tempOutput[2048];
-                int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buffer, bytesRead, tempOutput, 2047);
-                if (converted > 0 && context->accumulatedOutput) {
-                    tempOutput[converted] = L'\0';
+                // Add new bytes to accumulator
+                if (accumLen + bytesRead < sizeof(lineAccumulator) - 1) {
+                    memcpy(lineAccumulator + accumLen, buffer, bytesRead);
+                    accumLen += bytesRead;
+                    lineAccumulator[accumLen] = '\0';
+                }
+                
+                // Process complete lines
+                char* start = lineAccumulator;
+                char* newline;
+                while ((newline = strchr(start, '\n')) != NULL) {
+                    *newline = '\0';  // Null terminate the line
+                    
+                    // Remove \r if present
+                    size_t lineLen = newline - start;
+                    if (lineLen > 0 && start[lineLen - 1] == '\r') {
+                        start[lineLen - 1] = '\0';
+                        lineLen--;
+                    }
+                    
+                    // Convert this complete UTF-8 line to wide chars
+                    if (lineLen > 0) {
+                        wchar_t wideLineBuffer[2048];
+                        int converted = MultiByteToWideChar(CP_UTF8, 0, start, (int)lineLen, wideLineBuffer, 2047);
+                        if (converted > 0 && context->accumulatedOutput) {
+                            wideLineBuffer[converted] = L'\0';
+                            
+                            // Debug log the converted line
+                            wchar_t debugMsg[512];
+                            swprintf(debugMsg, 512, L"YouTubeCacher: Converted line: %ls\n", wideLineBuffer);
+                            OutputDebugStringW(debugMsg);
+                            
+                            // Add to accumulated output with newline
+                            size_t currentLen = wcslen(context->accumulatedOutput);
+                            size_t newLen = currentLen + converted + 2;
+                            if (newLen >= context->outputBufferSize) {
+                                context->outputBufferSize = newLen * 2;
+                                wchar_t* newBuffer = (wchar_t*)realloc(context->accumulatedOutput, 
+                                                                      context->outputBufferSize * sizeof(wchar_t));
+                                if (newBuffer) {
+                                    context->accumulatedOutput = newBuffer;
+                                }
+                            }
+                            
+                            if (context->accumulatedOutput) {
+                                wcscat(context->accumulatedOutput, wideLineBuffer);
+                                wcscat(context->accumulatedOutput, L"\n");
+                            }
+                        }
+                    }
+                    
+                    start = newline + 1;
+                }
+                
+                // Move remaining incomplete data to start of buffer
+                size_t remaining = accumLen - (start - lineAccumulator);
+                if (remaining > 0 && start != lineAccumulator) {
+                    memmove(lineAccumulator, start, remaining);
+                }
+                accumLen = remaining;
+                lineAccumulator[accumLen] = '\0';
+                
+                // Continue with existing progress parsing logic using accumulated output
+                if (context->accumulatedOutput && wcslen(context->accumulatedOutput) > 0) {
+                    wchar_t tempOutput[2048];
+                    wcsncpy(tempOutput, context->accumulatedOutput, 2047);
+                    tempOutput[2047] = L'\0';
+                    int converted = (int)wcslen(tempOutput);
                     
                     // Debug: Log the raw bytes and converted wide chars
                     wchar_t debugMsg[512];
