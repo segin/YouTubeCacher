@@ -1390,8 +1390,206 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
 
 
 
-// Custom window message for download completion
+// Custom window messages
 #define WM_DOWNLOAD_COMPLETE (WM_USER + 102)
+#define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
+
+// Unified download context
+typedef struct {
+    HWND hDialog;
+    wchar_t url[MAX_URL_LENGTH];
+    YtDlpConfig config;
+    YtDlpRequest* request;
+    wchar_t tempDir[MAX_EXTENDED_PATH];
+} UnifiedDownloadContext;
+
+// Unified download worker thread
+DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
+    UnifiedDownloadContext* context = (UnifiedDownloadContext*)lpParam;
+    if (!context) return 1;
+    
+    HWND hDlg = context->hDialog;
+    
+    // Step 1: Get video info if not cached
+    VideoMetadata metadata;
+    BOOL hasMetadata = FALSE;
+    
+    if (IsCachedMetadataValid(&g_cachedVideoMetadata, context->url)) {
+        if (GetCachedMetadata(&g_cachedVideoMetadata, &metadata)) {
+            hasMetadata = TRUE;
+            // Update UI immediately with cached data
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(metadata.title ? metadata.title : L"Unknown Title"));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(metadata.duration ? metadata.duration : L"Unknown"));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+        }
+    }
+    
+    if (!hasMetadata) {
+        // Show marquee progress while getting info
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 4, 0); // Start marquee
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(L"Getting video information..."));
+        
+        if (GetVideoMetadata(context->url, &metadata)) {
+            StoreCachedMetadata(&g_cachedVideoMetadata, context->url, &metadata);
+            hasMetadata = TRUE;
+            
+            // Update UI with retrieved data
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 6, 0); // Stop marquee
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(metadata.title ? metadata.title : L"Unknown Title"));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(metadata.duration ? metadata.duration : L"Unknown"));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+        } else {
+            // Failed to get metadata, continue anyway
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 6, 0); // Stop marquee
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(L"Unknown Title"));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(L"Unknown"));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+        }
+    }
+    
+    // Step 2: Execute download with progress updates
+    PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(L"Starting download..."));
+    
+    // Create subprocess context for download
+    SubprocessContext* subprocessContext = CreateSubprocessContext(&context->config, context->request, 
+                                                                   UnifiedDownloadProgressCallback, hDlg, hDlg);
+    if (!subprocessContext) {
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        goto cleanup;
+    }
+    
+    // Start download
+    if (!StartSubprocessExecution(subprocessContext)) {
+        FreeSubprocessContext(subprocessContext);
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        goto cleanup;
+    }
+    
+    // Wait for completion
+    while (IsSubprocessRunning(subprocessContext)) {
+        Sleep(100);
+    }
+    
+    WaitForSubprocessCompletion(subprocessContext, 1000);
+    YtDlpResult* result = GetSubprocessResult(subprocessContext);
+    
+    // Create completion context
+    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)malloc(sizeof(NonBlockingDownloadContext));
+    if (downloadContext) {
+        memcpy(&downloadContext->config, &context->config, sizeof(YtDlpConfig));
+        downloadContext->request = context->request; // Transfer ownership
+        downloadContext->parentWindow = hDlg;
+        wcscpy(downloadContext->tempDir, context->tempDir);
+        wcscpy(downloadContext->url, context->url);
+        
+        PostMessageW(hDlg, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
+    } else {
+        if (result) FreeYtDlpResult(result);
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+    }
+    
+    FreeSubprocessContext(subprocessContext);
+
+cleanup:
+    if (hasMetadata) {
+        FreeVideoMetadata(&metadata);
+    }
+    
+    // Don't free context->request here - ownership transferred to completion handler
+    free(context);
+    return 0;
+}
+
+// Progress callback for unified download
+void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void* userData) {
+    HWND hDlg = (HWND)userData;
+    if (!hDlg) return;
+    
+    PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage); // Progress update
+    if (status) {
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status)); // Status update
+    }
+}
+
+// Start unified download process
+BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
+    if (!hDlg || !url) return FALSE;
+    
+    // Initialize configuration
+    YtDlpConfig config = {0};
+    if (!InitializeYtDlpConfig(&config)) {
+        return FALSE;
+    }
+    
+    // Validate configuration
+    ValidationInfo validationInfo = {0};
+    if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
+        FreeValidationInfo(&validationInfo);
+        CleanupYtDlpConfig(&config);
+        return FALSE;
+    }
+    FreeValidationInfo(&validationInfo);
+    
+    // Get download path
+    wchar_t downloadPath[MAX_EXTENDED_PATH];
+    if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+        GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+    }
+    
+    // Create download directory
+    if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
+        CleanupYtDlpConfig(&config);
+        return FALSE;
+    }
+    
+    // Create request
+    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_DOWNLOAD, url, downloadPath);
+    if (!request) {
+        CleanupYtDlpConfig(&config);
+        return FALSE;
+    }
+    
+    // Create temp directory
+    wchar_t tempDir[MAX_EXTENDED_PATH];
+    if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
+        if (!CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH)) {
+            FreeYtDlpRequest(request);
+            CleanupYtDlpConfig(&config);
+            return FALSE;
+        }
+    }
+    request->tempDir = _wcsdup(tempDir);
+    
+    // Create context
+    UnifiedDownloadContext* context = (UnifiedDownloadContext*)malloc(sizeof(UnifiedDownloadContext));
+    if (!context) {
+        FreeYtDlpRequest(request);
+        CleanupYtDlpConfig(&config);
+        return FALSE;
+    }
+    
+    context->hDialog = hDlg;
+    wcscpy(context->url, url);
+    context->config = config; // Copy config
+    context->request = request;
+    wcscpy(context->tempDir, tempDir);
+    
+    // Show progress and disable UI
+    ShowMainProgressBar(hDlg, TRUE);
+    SetDownloadUIState(hDlg, TRUE);
+    
+    // Start worker thread
+    HANDLE hThread = CreateThread(NULL, 0, UnifiedDownloadWorkerThread, context, 0, NULL);
+    if (!hThread) {
+        free(context);
+        FreeYtDlpRequest(request);
+        CleanupYtDlpConfig(&config);
+        return FALSE;
+    }
+    
+    CloseHandle(hThread);
+    return TRUE;
+}
 
 // Thread function for non-blocking download
 DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
@@ -1891,12 +2089,15 @@ void ShowMainProgressBar(HWND hDlg, BOOL show) {
     }
 }
 
-// Progress callback for the main window (thread-safe)
+// Progress callback for the main window (thread-safe) - Legacy function, kept for compatibility
 void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData) {
     HWND hDlg = (HWND)userData;
-    if (hDlg) {
-        // Use PostMessage for thread-safe UI updates
-        PostMessageW(hDlg, WM_USER + 100, (WPARAM)percentage, (LPARAM)status);
+    if (!hDlg) return;
+    
+    // Use unified download update message
+    PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage); // Progress update
+    if (status) {
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status)); // Status update
     }
 }
 
@@ -2378,6 +2579,8 @@ BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata*
     CloseHandle(hThread);
     return TRUE;
 }
+
+
 
 // Progress parsing functions
 
@@ -3823,200 +4026,19 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 
 
                 case IDC_DOWNLOAD_BTN: {
-                    // Initialize YtDlp configuration
-                    YtDlpConfig config = {0};
-                    if (!InitializeYtDlpConfig(&config)) {
-                        EnhancedErrorDialog* errorDialog = CreateEnhancedErrorDialog(
-                            L"Configuration Error",
-                            L"Failed to initialize yt-dlp configuration.",
-                            L"The application could not load or initialize the yt-dlp configuration settings.",
-                            L"This may indicate a problem with registry access, memory allocation, or corrupted settings.",
-                            L"1. Try restarting the application\r\n"
-                            L"2. Check if you have permission to access the registry\r\n"
-                            L"3. Reset settings through the Settings dialog\r\n"
-                            L"4. Reinstall the application if the problem persists",
-                            ERROR_TYPE_UNKNOWN
-                        );
-                        if (errorDialog) {
-                            ShowEnhancedErrorDialog(hDlg, errorDialog);
-                            FreeEnhancedErrorDialog(errorDialog);
-                        }
-                        break;
-                    }
-                    
-                    // Perform comprehensive validation
-                    ValidationInfo validationInfo = {0};
-                    if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
-                        // Show enhanced error dialog with diagnostic information
-                        wchar_t diagnosticReport[2048];
-                        swprintf(diagnosticReport, 2048, 
-                            L"yt-dlp validation failed:\n\n"
-                            L"Issue: %ls\n\n"
-                            L"Suggestions:\n%ls\n\n"
-                            L"Path checked: %ls",
-                            validationInfo.errorDetails ? validationInfo.errorDetails : L"Unknown validation error",
-                            validationInfo.suggestions ? validationInfo.suggestions : L"Please check yt-dlp installation",
-                            config.ytDlpPath);
-                        
-                        ShowValidationError(hDlg, &validationInfo);
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
-                        break;
-                    }
-                    
                     // Get URL from text field
                     wchar_t url[MAX_URL_LENGTH];
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
                     
                     if (wcslen(url) == 0) {
-                        EnhancedErrorDialog* errorDialog = CreateEnhancedErrorDialog(
-                            L"No URL Provided",
-                            L"Please enter a URL to download.",
-                            L"A valid YouTube or supported video URL is required to perform the download operation.",
-                            L"The URL field is currently empty. Please paste or type a valid video URL.",
-                            L"1. Copy a video URL from your browser\r\n"
-                            L"2. Paste it into the URL field\r\n"
-                            L"3. Ensure the URL is from a supported site (YouTube, etc.)\r\n"
-                            L"4. Check that the URL is complete and properly formatted",
-                            ERROR_TYPE_URL_INVALID
-                        );
-                        if (errorDialog) {
-                            ShowEnhancedErrorDialog(hDlg, errorDialog);
-                            FreeEnhancedErrorDialog(errorDialog);
-                        }
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
+                        ShowWarningMessage(hDlg, L"No URL Provided", L"Please enter a YouTube URL to download.");
                         break;
                     }
                     
-                    // Get the current download folder path from registry settings
-                    wchar_t downloadPath[MAX_EXTENDED_PATH];
-                    if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
-                        // Fall back to default if not found in registry
-                        GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+                    // Start unified download process
+                    if (!StartUnifiedDownload(hDlg, url)) {
+                        ShowConfigurationError(hDlg, L"Failed to start download. Please check your yt-dlp configuration.");
                     }
-                    
-                    // Create the download directory if it doesn't exist
-                    if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
-                        ShowTempDirError(hDlg, downloadPath, GetLastError());
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
-                        break;
-                    }
-                    
-                    // Create YtDlp request for download operation
-                    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_DOWNLOAD, url, downloadPath);
-                    if (!request) {
-                        ShowMemoryError(hDlg, L"yt-dlp request creation");
-                        FreeValidationInfo(&validationInfo);
-                        CleanupYtDlpConfig(&config);
-                        break;
-                    }
-                    
-                    // Create temporary directory for download operation
-                    wchar_t tempDir[MAX_EXTENDED_PATH];
-                    if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
-                        // Try alternative temp directory strategies
-                        if (!CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH)) {
-                            ShowTempDirError(hDlg, L"System temporary directory", GetLastError());
-                            FreeYtDlpRequest(request);
-                            FreeValidationInfo(&validationInfo);
-                            CleanupYtDlpConfig(&config);
-                            break;
-                        }
-                    }
-                    request->tempDir = _wcsdup(tempDir);
-                    
-                    // Show progress in main window and disable UI controls
-                    ShowMainProgressBar(hDlg, TRUE);
-                    SetDownloadUIState(hDlg, TRUE);
-                    
-                    VideoMetadata metadata;
-                    BOOL hasMetadata = FALSE;
-                    
-                    // Check if we have cached metadata for this URL
-                    if (IsCachedMetadataValid(&g_cachedVideoMetadata, url)) {
-                        UpdateMainProgressBar(hDlg, 5, L"Using cached video information...");
-                        if (GetCachedMetadata(&g_cachedVideoMetadata, &metadata)) {
-                            hasMetadata = TRUE;
-                        }
-                    }
-                    
-                    // If no cached metadata, fetch it now
-                    if (!hasMetadata) {
-                        UpdateMainProgressBar(hDlg, 5, L"Getting video information...");
-                        if (GetVideoMetadata(url, &metadata)) {
-                            // Store in cache for future use
-                            StoreCachedMetadata(&g_cachedVideoMetadata, url, &metadata);
-                            hasMetadata = TRUE;
-                        }
-                    }
-                    
-                    // Update UI with video information
-                    if (hasMetadata) {
-                        if (metadata.title) {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
-                        } else {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
-                        }
-                        if (metadata.duration) {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata.duration);
-                        } else {
-                            SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
-                        }
-                        
-                        UpdateMainProgressBar(hDlg, 15, L"Starting download...");
-                        
-                        // Execute the download operation using non-blocking approach
-                        BOOL downloadStarted = StartNonBlockingDownload(&config, request, hDlg);
-                        
-                        // Cleanup metadata
-                        FreeVideoMetadata(&metadata);
-                        
-                        if (!downloadStarted) {
-                            UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
-                            SetDownloadUIState(hDlg, FALSE);
-                            Sleep(500);
-                            ShowMainProgressBar(hDlg, FALSE);
-                            
-                            ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
-                            
-                            // Cleanup resources
-                            CleanupTempDirectory(tempDir);
-                            FreeYtDlpRequest(request);
-                            FreeValidationInfo(&validationInfo);
-                            CleanupYtDlpConfig(&config);
-                            break;
-                        }
-                    } else {
-                        // Failed to get metadata, but continue with download
-                        SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
-                        SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
-                        
-                        UpdateMainProgressBar(hDlg, 15, L"Starting download...");
-                        
-                        // Execute the download operation using non-blocking approach
-                        BOOL downloadStarted = StartNonBlockingDownload(&config, request, hDlg);
-                        
-                        if (!downloadStarted) {
-                            UpdateMainProgressBar(hDlg, 0, L"Failed to start download");
-                            SetDownloadUIState(hDlg, FALSE);
-                            Sleep(500);
-                            ShowMainProgressBar(hDlg, FALSE);
-                            
-                            ShowConfigurationError(hDlg, L"Download operation failed to initialize properly. Please check your yt-dlp configuration.");
-                            
-                            // Cleanup resources
-                            CleanupTempDirectory(tempDir);
-                            FreeYtDlpRequest(request);
-                            FreeValidationInfo(&validationInfo);
-                            CleanupYtDlpConfig(&config);
-                            break;
-                        }
-                    }
-                    
-                    // Resources will be cleaned up in the completion handler
-                    // Don't cleanup here since the download is running asynchronously
                     break;
                 }
                     
@@ -4404,110 +4426,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             return TRUE;
         }
         
-        case WM_USER + 103: {
-            // Handle non-blocking Get Info completion
-            BOOL success = (BOOL)wParam;
-            VideoMetadata* metadata = (VideoMetadata*)lParam;
-            
-            if (success && metadata) {
-                // Store in cache
-                wchar_t url[MAX_URL_LENGTH];
-                GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
-                StoreCachedMetadata(&g_cachedVideoMetadata, url, metadata);
-                
-                // Update UI
-                if (metadata->title) {
-                    SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata->title);
-                } else {
-                    SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Unknown Title");
-                }
-                
-                if (metadata->duration) {
-                    SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata->duration);
-                } else {
-                    SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
-                }
-                
-                // Stop marquee animation and set progress to complete but keep visible
-                HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
-                if (hProgressBar) {
-                    SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
-                    SetWindowLongW(hProgressBar, GWL_STYLE, 
-                        GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
-                }
-                UpdateMainProgressBar(hDlg, 100, L"Video information retrieved");
-                
-                // Free the metadata (it's now cached)
-                FreeVideoMetadata(metadata);
-            } else {
-                // Failed to get info - stop marquee animation
-                HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
-                if (hProgressBar) {
-                    SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
-                    SetWindowLongW(hProgressBar, GWL_STYLE, 
-                        GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
-                }
-                
-                SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, L"Failed to retrieve");
-                SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, L"Unknown");
-                
-                UpdateMainProgressBar(hDlg, 0, L"Failed to get video information");
-            }
-            
-            return TRUE;
-        }
-        
-        case WM_USER + 104: {
-            // Handle download progress update
-            HeapProgressData* progressData = (HeapProgressData*)lParam;
-            if (progressData) {
-                // Build status message
-                wchar_t statusMessage[256];
-                if (wcslen(progressData->speed) > 0 && wcslen(progressData->eta) > 0) {
-                    swprintf(statusMessage, 256, L"%ls - %ls (ETA: %ls)", 
-                            progressData->status, progressData->speed, progressData->eta);
-                } else if (wcslen(progressData->speed) > 0) {
-                    swprintf(statusMessage, 256, L"%ls - %ls", 
-                            progressData->status, progressData->speed);
-                } else {
-                    swprintf(statusMessage, 256, L"%ls (%d%%)", 
-                            progressData->status, progressData->percentage);
-                }
-                
-                // Update progress bar
-                HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
-                if (hProgressBar) {
-                    LONG style = GetWindowLongW(hProgressBar, GWL_STYLE);
-                    
-                    if (progressData->percentage >= 0 || progressData->isComplete) {
-                        // We have a real percentage or completion - stop marquee and show progress
-                        if (style & PBS_MARQUEE) {
-                            SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
-                            SetWindowLongW(hProgressBar, GWL_STYLE, style & ~PBS_MARQUEE);
-                        }
-                        
-                        // If complete, show 100% and update status
-                        if (progressData->isComplete) {
-                            UpdateMainProgressBar(hDlg, 100, L"Download completed");
-                        } else {
-                            UpdateMainProgressBar(hDlg, progressData->percentage, statusMessage);
-                        }
-                    } else {
-                        // Indeterminate progress - keep or start marquee
-                        if (!(style & PBS_MARQUEE)) {
-                            SetWindowLongW(hProgressBar, GWL_STYLE, style | PBS_MARQUEE);
-                            SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50);
-                        }
-                        // Update status text only
-                        SetDlgItemTextW(hDlg, IDC_PROGRESS_TEXT, statusMessage);
-                    }
-                }
-                
-                // Free the heap-allocated data
-                free(progressData);
-            }
-            return TRUE;
-        }
+
         
         case WM_DOWNLOAD_COMPLETE: {
             // Handle download completion
@@ -4515,6 +4434,78 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lParam;
             
             HandleDownloadCompletion(hDlg, result, downloadContext);
+            return TRUE;
+        }
+        
+        case WM_UNIFIED_DOWNLOAD_UPDATE: {
+            int updateType = (int)wParam;
+            LPARAM data = lParam;
+            
+            switch (updateType) {
+                case 1: { // Update video title
+                    wchar_t* title = (wchar_t*)data;
+                    if (title) {
+                        SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title);
+                        free(title);
+                    }
+                    break;
+                }
+                case 2: { // Update video duration
+                    wchar_t* duration = (wchar_t*)data;
+                    if (duration) {
+                        SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, duration);
+                        free(duration);
+                    }
+                    break;
+                }
+                case 3: { // Update progress percentage
+                    int percentage = (int)data;
+                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+                    if (hProgressBar) {
+                        // Ensure we're not in marquee mode
+                        LONG style = GetWindowLongW(hProgressBar, GWL_STYLE);
+                        if (style & PBS_MARQUEE) {
+                            SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                            SetWindowLongW(hProgressBar, GWL_STYLE, style & ~PBS_MARQUEE);
+                        }
+                        SendMessageW(hProgressBar, PBM_SETPOS, percentage, 0);
+                    }
+                    break;
+                }
+                case 4: { // Start marquee
+                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+                    if (hProgressBar) {
+                        SetWindowLongW(hProgressBar, GWL_STYLE, 
+                            GetWindowLongW(hProgressBar, GWL_STYLE) | PBS_MARQUEE);
+                        SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50);
+                    }
+                    break;
+                }
+                case 5: { // Update status text
+                    wchar_t* status = (wchar_t*)data;
+                    if (status) {
+                        SetDlgItemTextW(hDlg, IDC_PROGRESS_TEXT, status);
+                        free(status);
+                    }
+                    break;
+                }
+                case 6: { // Stop marquee
+                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+                    if (hProgressBar) {
+                        SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                        SetWindowLongW(hProgressBar, GWL_STYLE, 
+                            GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
+                    }
+                    break;
+                }
+                case 7: { // Download failed
+                    UpdateMainProgressBar(hDlg, 0, L"Download failed");
+                    SetDownloadUIState(hDlg, FALSE);
+                    Sleep(500);
+                    ShowMainProgressBar(hDlg, FALSE);
+                    break;
+                }
+            }
             return TRUE;
         }
             

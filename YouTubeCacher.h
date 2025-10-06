@@ -451,8 +451,15 @@ typedef struct {
     CachedVideoMetadata* cachedMetadata;
 } GetInfoContext;
 
+
+
 DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam);
 BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata);
+
+// Unified download functions
+DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam);
+void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void* userData);
+BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url);
 
 // Progress parsing functions
 BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress);
