@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "YouTubeCacher.h"
 #include "uri.h"
+#include "output_parser.h"
 #include <commdlg.h>
 #include <shlobj.h>
 #include <commctrl.h>
@@ -1834,39 +1835,44 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting 'Starting download' status\n");
     PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(L"Starting download..."));
     
-    // Create subprocess context for download
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Creating subprocess context\n");
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - About to call CreateSubprocessContext\n");
-    SubprocessContext* subprocessContext = CreateSubprocessContext(&context->config, context->request, 
-                                                                   UnifiedDownloadProgressCallback, hDlg, hDlg);
-    if (!subprocessContext) {
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - CreateSubprocessContext FAILED\n");
+    // Create enhanced subprocess context for download with better output processing
+    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Creating enhanced subprocess context\n");
+    EnhancedSubprocessContext* enhancedContext = CreateEnhancedSubprocessContext(&context->config, context->request, 
+                                                                                 UnifiedDownloadProgressCallback, hDlg, hDlg);
+    if (!enhancedContext) {
+        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - CreateEnhancedSubprocessContext FAILED\n");
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting download failed message\n");
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
         goto cleanup;
     }
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - CreateSubprocessContext SUCCESS\n");
+    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - CreateEnhancedSubprocessContext SUCCESS\n");
     
-    // Start download
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting subprocess execution\n");
-    if (!StartSubprocessExecution(subprocessContext)) {
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - StartSubprocessExecution FAILED\n");
-        FreeSubprocessContext(subprocessContext);
+    // Start enhanced download
+    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting enhanced subprocess execution\n");
+    if (!StartEnhancedSubprocessExecution(enhancedContext)) {
+        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - StartEnhancedSubprocessExecution FAILED\n");
+        FreeEnhancedSubprocessContext(enhancedContext);
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting download failed after subprocess start failure\n");
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
         goto cleanup;
     }
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - StartSubprocessExecution SUCCESS\n");
+    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - StartEnhancedSubprocessExecution SUCCESS\n");
     
-    // Wait for completion
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Entering wait loop for subprocess completion\n");
+    // Wait for completion with enhanced monitoring
+    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Entering wait loop for enhanced subprocess completion\n");
     int waitCount = 0;
+    SubprocessContext* subprocessContext = enhancedContext->baseContext;
     while (!subprocessContext->completed) {
         Sleep(100);
         waitCount++;
         if (waitCount % 50 == 0) { // Every 5 seconds
             swprintf(debugMsg, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Still waiting for subprocess completion (count: %d)\n", waitCount);
             OutputDebugStringW(debugMsg);
+            
+            // Log enhanced progress state
+            EnterCriticalSection(&enhancedContext->progressLock);
+            LogProgressState(enhancedContext->enhancedProgress);
+            LeaveCriticalSection(&enhancedContext->progressLock);
         }
         
         // Safety timeout after 5 minutes
@@ -1875,7 +1881,7 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
             break;
         }
     }
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Subprocess completed, waiting for cleanup\n");
+    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Enhanced subprocess completed, waiting for cleanup\n");
     
     WaitForSubprocessCompletion(subprocessContext, 1000);
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Getting subprocess result\n");
@@ -1916,8 +1922,8 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
     }
     
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Freeing subprocess context\n");
-    FreeSubprocessContext(subprocessContext);
+    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Freeing enhanced subprocess context\n");
+    FreeEnhancedSubprocessContext(enhancedContext);
 
 cleanup:
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - CLEANUP phase\n");
@@ -2158,56 +2164,73 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
             if (LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
                 swprintf(debugMsg, 256, L"YouTubeCacher: HandleDownloadCompletion - Download path: %ls\n", downloadPath);
                 OutputDebugStringW(debugMsg);
-                // Find the downloaded video file (look for files starting with video ID)
+                // Enhanced video file detection - look for files with video ID and any video extension
                 wchar_t videoPattern[MAX_EXTENDED_PATH];
-                swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\%ls.*", downloadPath, videoId);
+                swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\*%ls*", downloadPath, videoId);
                 swprintf(debugMsg, 256, L"YouTubeCacher: HandleDownloadCompletion - Searching pattern: %ls\n", videoPattern);
                 OutputDebugStringW(debugMsg);
                 
                 WIN32_FIND_DATAW findData;
                 HANDLE hFind = FindFirstFileW(videoPattern, &findData);
                 
+                wchar_t* bestVideoFile = NULL;
+                FILETIME latestTime = {0};
+                
                 if (hFind != INVALID_HANDLE_VALUE) {
                     OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - Found files matching pattern\n");
                     do {
                         if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                            // Check if it's a video file
+                            // Check if it's a video file with enhanced extension detection
                             wchar_t* ext = wcsrchr(findData.cFileName, L'.');
-                            if (ext && (wcsicmp(ext, L".mp4") == 0 || wcsicmp(ext, L".mkv") == 0 || 
-                                       wcsicmp(ext, L".webm") == 0 || wcsicmp(ext, L".avi") == 0)) {
-                                
+                            if (ext && IsVideoFileExtension(ext)) {
                                 wchar_t fullVideoPath[MAX_EXTENDED_PATH];
                                 swprintf(fullVideoPath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, findData.cFileName);
                                 
-                                // Find subtitle files
-                                wchar_t** subtitleFiles = NULL;
-                                int subtitleCount = 0;
-                                FindSubtitleFiles(fullVideoPath, &subtitleFiles, &subtitleCount);
-                                
-                                // Add to cache
-                                swprintf(debugMsg, 256, L"YouTubeCacher: HandleDownloadCompletion - Adding to cache: %ls\n", findData.cFileName);
+                                swprintf(debugMsg, 256, L"YouTubeCacher: HandleDownloadCompletion - Found video file: %ls (ext: %ls)\n", 
+                                        findData.cFileName, ext);
                                 OutputDebugStringW(debugMsg);
                                 
-                                AddCacheEntry(&g_cacheManager, videoId, 
-                                            wcslen(title) > 0 ? title : findData.cFileName,
-                                            wcslen(duration) > 0 ? duration : L"Unknown",
-                                            fullVideoPath, subtitleFiles, subtitleCount);
-                                
-                                OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - Cache entry added successfully\n");
-                                
-                                // Clean up subtitle files array
-                                if (subtitleFiles) {
-                                    for (int i = 0; i < subtitleCount; i++) {
-                                        if (subtitleFiles[i]) free(subtitleFiles[i]);
-                                    }
-                                    free(subtitleFiles);
+                                // Select the most recent video file (in case of multiple formats)
+                                if (!bestVideoFile || CompareFileTime(&findData.ftLastWriteTime, &latestTime) > 0) {
+                                    if (bestVideoFile) free(bestVideoFile);
+                                    bestVideoFile = _wcsdup(fullVideoPath);
+                                    latestTime = findData.ftLastWriteTime;
                                 }
-                                
-                                break; // Found the main video file
                             }
                         }
                     } while (FindNextFileW(hFind, &findData));
                     FindClose(hFind);
+                }
+                
+                // If we found a video file, add it to cache
+                if (bestVideoFile) {
+                    // Find subtitle files
+                    wchar_t** subtitleFiles = NULL;
+                    int subtitleCount = 0;
+                    FindSubtitleFiles(bestVideoFile, &subtitleFiles, &subtitleCount);
+                    
+                    // Add to cache
+                    swprintf(debugMsg, 256, L"YouTubeCacher: HandleDownloadCompletion - Adding to cache: %ls\n", bestVideoFile);
+                    OutputDebugStringW(debugMsg);
+                    
+                    AddCacheEntry(&g_cacheManager, videoId, 
+                                wcslen(title) > 0 ? title : ExtractFileNameFromPath(bestVideoFile),
+                                wcslen(duration) > 0 ? duration : L"Unknown",
+                                bestVideoFile, subtitleFiles, subtitleCount);
+                    
+                    OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - Cache entry added successfully\n");
+                    
+                    // Clean up subtitle files array
+                    if (subtitleFiles) {
+                        for (int i = 0; i < subtitleCount; i++) {
+                            if (subtitleFiles[i]) free(subtitleFiles[i]);
+                        }
+                        free(subtitleFiles);
+                    }
+                    
+                    free(bestVideoFile);
+                } else {
+                    OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - No video file found with enhanced detection\n");
                 }
             }
             
