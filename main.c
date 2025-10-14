@@ -40,6 +40,11 @@ CachedVideoMetadata g_cachedVideoMetadata;
 // Global download state flag
 BOOL g_isDownloading = FALSE;
 
+// Global debug settings
+BOOL g_enableDebug = FALSE;
+BOOL g_enableLogfile = FALSE;
+BOOL g_enableAutopaste = TRUE;  // Default to enabled
+
 // Original text field window procedure
 WNDPROC OriginalTextFieldProc = NULL;
 
@@ -138,6 +143,47 @@ void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize) {
         // Free the allocated path string
         CoTaskMemFree(localAppDataW);
     }
+}
+
+// Function to write debug message to logfile
+void WriteToLogfile(const wchar_t* message) {
+    if (!g_enableLogfile) return;
+    
+    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
+    if (logFile) {
+        // Get current timestamp
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        
+        fwprintf(logFile, L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] %ls\n",
+                st.wYear, st.wMonth, st.wDay,
+                st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+                message);
+        
+        fclose(logFile);
+    }
+}
+
+// Enhanced debug output function
+void DebugOutput(const wchar_t* message) {
+    if (g_enableDebug) {
+        OutputDebugStringW(message);
+    }
+    WriteToLogfile(message);
+}
+
+// Function to update debug control visibility
+void UpdateDebugControlVisibility(HWND hDlg) {
+    int showState = g_enableDebug ? SW_SHOW : SW_HIDE;
+    
+    // Show/hide Add button
+    ShowWindow(GetDlgItem(hDlg, IDC_BUTTON1), showState);
+    
+    // Show/hide color buttons
+    ShowWindow(GetDlgItem(hDlg, IDC_COLOR_GREEN), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_COLOR_TEAL), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_COLOR_BLUE), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_COLOR_WHITE), showState);
 }
 
 // Function to create the download directory if it doesn't exist
@@ -286,9 +332,33 @@ void LoadSettings(HWND hDlg) {
     if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
         BOOL enableDebug = (wcscmp(buffer, L"1") == 0);
         CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
+        g_enableDebug = enableDebug;
     } else {
         // Default to unchecked
         CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, BST_UNCHECKED);
+        g_enableDebug = FALSE;
+    }
+    
+    // Load logfile setting
+    if (LoadSettingFromRegistry(REG_ENABLE_LOGFILE, buffer, MAX_EXTENDED_PATH)) {
+        BOOL enableLogfile = (wcscmp(buffer, L"1") == 0);
+        CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, enableLogfile ? BST_CHECKED : BST_UNCHECKED);
+        g_enableLogfile = enableLogfile;
+    } else {
+        // Default to unchecked
+        CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, BST_UNCHECKED);
+        g_enableLogfile = FALSE;
+    }
+    
+    // Load autopaste setting
+    if (LoadSettingFromRegistry(REG_ENABLE_AUTOPASTE, buffer, MAX_EXTENDED_PATH)) {
+        BOOL enableAutopaste = (wcscmp(buffer, L"1") == 0);
+        CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, enableAutopaste ? BST_CHECKED : BST_UNCHECKED);
+        g_enableAutopaste = enableAutopaste;
+    } else {
+        // Default to checked (enabled)
+        CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, BST_CHECKED);
+        g_enableAutopaste = TRUE;
     }
 }
 
@@ -329,6 +399,17 @@ void SaveSettings(HWND hDlg) {
     // Save debug setting
     BOOL enableDebug = (IsDlgButtonChecked(hDlg, IDC_ENABLE_DEBUG) == BST_CHECKED);
     SaveSettingToRegistry(REG_ENABLE_DEBUG, enableDebug ? L"1" : L"0");
+    g_enableDebug = enableDebug;
+    
+    // Save logfile setting
+    BOOL enableLogfile = (IsDlgButtonChecked(hDlg, IDC_ENABLE_LOGFILE) == BST_CHECKED);
+    SaveSettingToRegistry(REG_ENABLE_LOGFILE, enableLogfile ? L"1" : L"0");
+    g_enableLogfile = enableLogfile;
+    
+    // Save autopaste setting
+    BOOL enableAutopaste = (IsDlgButtonChecked(hDlg, IDC_ENABLE_AUTOPASTE) == BST_CHECKED);
+    SaveSettingToRegistry(REG_ENABLE_AUTOPASTE, enableAutopaste ? L"1" : L"0");
+    g_enableAutopaste = enableAutopaste;
 }
 
 // Stub implementations for YtDlp Manager system functions
@@ -912,70 +993,70 @@ BOOL IsCancellationRequested(const ThreadContext* threadContext) {
 
 // Worker thread function that executes yt-dlp subprocess
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread started\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread started");
     
     SubprocessContext* context = (SubprocessContext*)lpParam;
     if (!context || !context->config || !context->request) {
-        OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - invalid context\n");
+        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - invalid context");
         return 1;
     }
     
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - context valid\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - context valid");
     
     wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - URL: %ls\n", context->request->url ? context->request->url : L"NULL");
-    OutputDebugStringW(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - OutputPath: %ls\n", context->request->outputPath ? context->request->outputPath : L"NULL");
-    OutputDebugStringW(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - TempDir: %ls\n", context->request->tempDir ? context->request->tempDir : L"NULL");
-    OutputDebugStringW(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Operation: %d\n", context->request->operation);
-    OutputDebugStringW(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - YtDlpPath: %ls\n", context->config->ytDlpPath);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - URL: %ls", context->request->url ? context->request->url : L"NULL");
+    DebugOutput(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - OutputPath: %ls", context->request->outputPath ? context->request->outputPath : L"NULL");
+    DebugOutput(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - TempDir: %ls", context->request->tempDir ? context->request->tempDir : L"NULL");
+    DebugOutput(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Operation: %d", context->request->operation);
+    DebugOutput(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - YtDlpPath: %ls", context->config->ytDlpPath);
+    DebugOutput(debugMsg);
     
     // Mark thread as running
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Marking thread as running\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Marking thread as running");
     EnterCriticalSection(&context->threadContext.criticalSection);
     context->threadContext.isRunning = TRUE;
     LeaveCriticalSection(&context->threadContext.criticalSection);
     
     // Initialize result structure
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Initializing result structure\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Initializing result structure");
     context->result = (YtDlpResult*)malloc(sizeof(YtDlpResult));
     if (!context->result) {
-        OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Failed to allocate result structure\n");
+        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Failed to allocate result structure");
         context->completed = TRUE;
         return 1;
     }
     memset(context->result, 0, sizeof(YtDlpResult));
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Result structure initialized\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Result structure initialized");
     
     // Report initial progress
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Reporting initial progress\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Reporting initial progress");
     if (context->progressCallback) {
         context->progressCallback(0, L"Initializing yt-dlp process...", context->callbackUserData);
     }
     
     // Build command line arguments
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Building command line arguments\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Building command line arguments");
     wchar_t arguments[2048];
     if (!GetYtDlpArgsForOperation(context->request->operation, context->request->url, 
                                  context->request->outputPath, context->config, arguments, 2048)) {
-        OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - FAILED to build yt-dlp arguments\n");
+        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - FAILED to build yt-dlp arguments");
         context->result->success = FALSE;
         context->result->exitCode = 1;
         context->result->errorMessage = _wcsdup(L"Failed to build yt-dlp arguments");
         context->completed = TRUE;
         return 1;
     }
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Arguments: %ls\n", arguments);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Arguments: %ls", arguments);
+    DebugOutput(debugMsg);
     
     // Check for cancellation before starting process
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Checking for cancellation\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Checking for cancellation");
     if (IsCancellationRequested(&context->threadContext)) {
-        OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Operation was cancelled\n");
+        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Operation was cancelled");
         context->result->success = FALSE;
         context->result->errorMessage = _wcsdup(L"Operation cancelled by user");
         context->completed = TRUE;
@@ -983,24 +1064,24 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     }
     
     // Create pipes for output capture
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Creating pipes for output capture\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Creating pipes for output capture");
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     if (!CreatePipe(&context->hOutputRead, &context->hOutputWrite, &sa, 0)) {
         DWORD error = GetLastError();
-        swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - FAILED to create output pipe, error: %lu\n", error);
-        OutputDebugStringW(debugMsg);
+        swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - FAILED to create output pipe, error: %lu", error);
+        DebugOutput(debugMsg);
         context->result->success = FALSE;
         context->result->exitCode = 1;
         context->result->errorMessage = _wcsdup(L"Failed to create output pipe");
         context->completed = TRUE;
         return 1;
     }
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Pipes created successfully\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Pipes created successfully");
     
     SetHandleInformation(context->hOutputRead, HANDLE_FLAG_INHERIT, 0);
     
     // Setup process startup info
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Setting up process startup info\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Setting up process startup info");
     STARTUPINFOW si = {0};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
@@ -1011,11 +1092,11 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     PROCESS_INFORMATION pi = {0};
     
     // Build command line
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Building command line\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Building command line");
     size_t cmdLineLen = wcslen(context->config->ytDlpPath) + wcslen(arguments) + 10;
     wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
     if (!cmdLine) {
-        OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - FAILED to allocate command line memory\n");
+        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - FAILED to allocate command line memory");
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
         context->result->success = FALSE;
@@ -1026,8 +1107,8 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     }
     
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->config->ytDlpPath, arguments);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Full command line: %ls\n", cmdLine);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Full command line: %ls", cmdLine);
+    DebugOutput(debugMsg);
     
     // Report progress
     OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Reporting progress: Starting yt-dlp process\n");
@@ -3744,6 +3825,11 @@ void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInf
 
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
+    // Check if autopaste is enabled
+    if (!g_enableAutopaste) {
+        return; // Autopaste is disabled
+    }
+    
     // Only check clipboard if text field is empty
     wchar_t currentText[MAX_BUFFER_SIZE];
     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, currentText, MAX_BUFFER_SIZE);
@@ -4382,6 +4468,20 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                     return TRUE;
                 }
                 
+                case IDC_ENABLE_DEBUG:
+                    // Handle debug checkbox change - update visibility immediately
+                    if (HIWORD(wParam) == BN_CLICKED) {
+                        BOOL enableDebug = (IsDlgButtonChecked(hDlg, IDC_ENABLE_DEBUG) == BST_CHECKED);
+                        g_enableDebug = enableDebug;
+                        
+                        // Find the main dialog window and update debug control visibility
+                        HWND hMainDlg = GetParent(hDlg);
+                        if (hMainDlg) {
+                            UpdateDebugControlVisibility(hMainDlg);
+                        }
+                    }
+                    return TRUE;
+                
                 case IDOK:
                     // Save settings to registry
                     SaveSettings(hDlg);
@@ -4522,6 +4622,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
             // Initialize cached video metadata
             InitializeCachedMetadata(&g_cachedVideoMetadata);
+            
+            // Load debug settings from registry
+            wchar_t buffer[MAX_EXTENDED_PATH];
+            if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
+                g_enableDebug = (wcscmp(buffer, L"1") == 0);
+            }
+            if (LoadSettingFromRegistry(REG_ENABLE_LOGFILE, buffer, MAX_EXTENDED_PATH)) {
+                g_enableLogfile = (wcscmp(buffer, L"1") == 0);
+            }
+            if (LoadSettingFromRegistry(REG_ENABLE_AUTOPASTE, buffer, MAX_EXTENDED_PATH)) {
+                g_enableAutopaste = (wcscmp(buffer, L"1") == 0);
+            } else {
+                g_enableAutopaste = TRUE; // Default to enabled
+            }
+            
+            // Update debug control visibility
+            UpdateDebugControlVisibility(hDlg);
             
             // Check command line first, then clipboard
             if (wcslen(cmdLineURL) > 0) {

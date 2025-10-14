@@ -6,6 +6,9 @@
 #include <wchar.h>
 #include <wctype.h>
 
+// External debug output function from main.c
+extern void DebugOutput(const wchar_t* message);
+
 // Custom window messages (should match main.c)
 #define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
 
@@ -86,8 +89,8 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
     
     // Log the raw line for debugging
     wchar_t debugMsg[1024];
-    swprintf(debugMsg, 1024, L"YouTubeCacher: ProcessYtDlpOutputLine: %ls\n", line);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 1024, L"YouTubeCacher: ProcessYtDlpOutputLine: %ls", line);
+    DebugOutput(debugMsg);
     
     // Classify the line type
     OutputLineType lineType = ClassifyOutputLine(line);
@@ -442,9 +445,9 @@ BOOL AddTrackedFile(EnhancedProgressInfo* progress, const wchar_t* filePath, BOO
     progress->trackedFiles[progress->fileCount++] = file;
     
     wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: Added tracked file: %ls (main video: %s)\n", 
+    swprintf(debugMsg, 512, L"YouTubeCacher: Added tracked file: %ls (main video: %s)", 
             filePath, isMainVideo ? L"yes" : L"no");
-    OutputDebugStringW(debugMsg);
+    DebugOutput(debugMsg);
     
     return TRUE;
 }
@@ -477,9 +480,9 @@ void UpdateDownloadState(EnhancedProgressInfo* progress, DownloadState newState,
         progress->stateDescription = description ? _wcsdup(description) : NULL;
         
         wchar_t debugMsg[256];
-        swprintf(debugMsg, 256, L"YouTubeCacher: Download state changed to: %d (%ls)\n", 
+        swprintf(debugMsg, 256, L"YouTubeCacher: Download state changed to: %d (%ls)", 
                 newState, description ? description : L"no description");
-        OutputDebugStringW(debugMsg);
+        DebugOutput(debugMsg);
     }
 }
 
@@ -585,11 +588,11 @@ void LogProgressState(const EnhancedProgressInfo* progress) {
         L"YouTubeCacher: Progress State - State: %d, Progress: %d%%, Files: %d, Messages: %d\n",
         progress->currentState, progress->progressPercentage, 
         progress->fileCount, progress->messageCount);
-    OutputDebugStringW(debugMsg);
+    DebugOutput(debugMsg);
     
     if (progress->finalVideoFile) {
-        swprintf(debugMsg, 1024, L"YouTubeCacher: Final video file: %ls\n", progress->finalVideoFile);
-        OutputDebugStringW(debugMsg);
+        swprintf(debugMsg, 1024, L"YouTubeCacher: Final video file: %ls", progress->finalVideoFile);
+        DebugOutput(debugMsg);
     }
 }
 
@@ -669,18 +672,18 @@ BOOL StartEnhancedSubprocessExecution(EnhancedSubprocessContext* context) {
 
 // Enhanced subprocess worker thread
 DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
-    OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread started\n");
+    DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread started");
     
     EnhancedSubprocessContext* enhancedContext = (EnhancedSubprocessContext*)lpParam;
     if (!enhancedContext || !enhancedContext->baseContext) {
-        OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - invalid context\n");
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - invalid context");
         return 1;
     }
     
     SubprocessContext* context = enhancedContext->baseContext;
     EnhancedProgressInfo* progress = enhancedContext->enhancedProgress;
     
-    OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - context valid\n");
+    DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - context valid");
     
     // Mark thread as running
     EnterCriticalSection(&context->threadContext.criticalSection);
@@ -690,7 +693,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     // Initialize result structure
     context->result = (YtDlpResult*)malloc(sizeof(YtDlpResult));
     if (!context->result) {
-        OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Failed to allocate result structure\n");
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Failed to allocate result structure");
         context->completed = TRUE;
         return 1;
     }
@@ -706,7 +709,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     wchar_t arguments[2048];
     if (!GetYtDlpArgsForOperation(context->request->operation, context->request->url, 
                                  context->request->outputPath, context->config, arguments, 2048)) {
-        OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to build yt-dlp arguments\n");
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to build yt-dlp arguments");
         context->result->success = FALSE;
         context->result->exitCode = 1;
         context->result->errorMessage = _wcsdup(L"Failed to build yt-dlp arguments");
@@ -716,7 +719,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     
     // Check for cancellation before starting process
     if (IsCancellationRequested(&context->threadContext)) {
-        OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Operation was cancelled\n");
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Operation was cancelled");
         context->result->success = FALSE;
         context->result->errorMessage = _wcsdup(L"Operation cancelled by user");
         context->completed = TRUE;
@@ -727,7 +730,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     if (!CreatePipe(&context->hOutputRead, &context->hOutputWrite, &sa, 0)) {
         DWORD error = GetLastError();
-        OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create output pipe\n");
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create output pipe");
         context->result->success = FALSE;
         context->result->exitCode = error;
         context->result->errorMessage = _wcsdup(L"Failed to create output pipe");
@@ -751,7 +754,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     size_t cmdLineLen = wcslen(context->config->ytDlpPath) + wcslen(arguments) + 10;
     wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
     if (!cmdLine) {
-        OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to allocate command line memory\n");
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to allocate command line memory");
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
         context->result->success = FALSE;
@@ -774,7 +777,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     
     if (!processCreated) {
         DWORD error = GetLastError();
-        OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create process\n");
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create process");
         free(cmdLine);
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
@@ -812,7 +815,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         
         // Check for cancellation
         if (IsCancellationRequested(&context->threadContext)) {
-            OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Cancellation requested\n");
+            DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Cancellation requested");
             TerminateProcess(pi.hProcess, 1);
             break;
         }
@@ -982,7 +985,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     context->completed = TRUE;
     context->completionTime = GetTickCount();
     
-    OutputDebugStringW(L"YouTubeCacher: EnhancedSubprocessWorkerThread completed\n");
+    DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread completed");
     return 0;
 }
 

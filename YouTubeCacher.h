@@ -240,6 +240,7 @@ typedef struct NonBlockingDownloadContext {
 } NonBlockingDownloadContext;
 
 // Function prototypes
+void DebugOutput(const wchar_t* message);
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
 void ApplyModernThemeToDialog(HWND hDlg);
@@ -364,6 +365,8 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
 // Registry constants for custom arguments
 #define REG_CUSTOM_ARGS     L"CustomYtDlpArgs"
 #define REG_ENABLE_DEBUG    L"EnableDebug"
+#define REG_ENABLE_LOGFILE  L"EnableLogfile"
+#define REG_ENABLE_AUTOPASTE L"EnableAutopaste"
 
 // Enhanced error dialog functions
 EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message, 

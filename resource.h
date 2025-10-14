@@ -56,6 +56,8 @@
 #define IDC_CUSTOM_ARGS_LABEL  1030
 #define IDC_CUSTOM_ARGS_FIELD  1031
 #define IDC_ENABLE_DEBUG       1055
+#define IDC_ENABLE_LOGFILE     1056
+#define IDC_ENABLE_AUTOPASTE   1057
 
 // Video Information Controls
 #define IDC_VIDEO_TITLE_LABEL  1041
