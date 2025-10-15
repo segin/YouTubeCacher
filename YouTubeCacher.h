@@ -241,6 +241,8 @@ typedef struct NonBlockingDownloadContext {
 
 // Function prototypes
 void DebugOutput(const wchar_t* message);
+void WriteSessionStartToLogfile(void);
+void WriteSessionEndToLogfile(const wchar_t* reason);
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
 void ApplyModernThemeToDialog(HWND hDlg);

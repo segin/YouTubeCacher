@@ -164,6 +164,50 @@ void WriteToLogfile(const wchar_t* message) {
     }
 }
 
+// Function to write session start marker to logfile
+void WriteSessionStartToLogfile(void) {
+    if (!g_enableLogfile) return;
+    
+    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
+    if (logFile) {
+        // Get current timestamp
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        
+        fwprintf(logFile, L"\n");
+        fwprintf(logFile, L"=== YouTubeCacher Session Started: %04d-%02d-%02d %02d:%02d:%02d ===\n",
+                st.wYear, st.wMonth, st.wDay,
+                st.wHour, st.wMinute, st.wSecond);
+        fwprintf(logFile, L"=== Version: %ls ===\n", APP_VERSION);
+        fwprintf(logFile, L"\n");
+        
+        fclose(logFile);
+    }
+}
+
+// Function to write session end marker to logfile
+void WriteSessionEndToLogfile(const wchar_t* reason) {
+    if (!g_enableLogfile) return;
+    
+    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
+    if (logFile) {
+        // Get current timestamp
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        
+        fwprintf(logFile, L"\n");
+        fwprintf(logFile, L"=== YouTubeCacher Session Ended: %04d-%02d-%02d %02d:%02d:%02d ===\n",
+                st.wYear, st.wMonth, st.wDay,
+                st.wHour, st.wMinute, st.wSecond);
+        if (reason) {
+            fwprintf(logFile, L"=== Reason: %ls ===\n", reason);
+        }
+        fwprintf(logFile, L"\n");
+        
+        fclose(logFile);
+    }
+}
+
 // Enhanced debug output function
 void DebugOutput(const wchar_t* message) {
     if (g_enableDebug) {
@@ -403,6 +447,12 @@ void SaveSettings(HWND hDlg) {
     
     // Save logfile setting
     BOOL enableLogfile = (IsDlgButtonChecked(hDlg, IDC_ENABLE_LOGFILE) == BST_CHECKED);
+    
+    // If logging is being disabled, write session end marker first
+    if (g_enableLogfile && !enableLogfile) {
+        WriteSessionEndToLogfile(L"Logging disabled by user");
+    }
+    
     SaveSettingToRegistry(REG_ENABLE_LOGFILE, enableLogfile ? L"1" : L"0");
     g_enableLogfile = enableLogfile;
     
@@ -1111,19 +1161,19 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     DebugOutput(debugMsg);
     
     // Report progress
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Reporting progress: Starting yt-dlp process\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Reporting progress: Starting yt-dlp process");
     if (context->progressCallback) {
         context->progressCallback(10, L"Starting yt-dlp process...", context->callbackUserData);
     }
     
     // Create the yt-dlp process
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Creating yt-dlp process\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Creating yt-dlp process");
     BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
     
     if (!processCreated) {
         DWORD error = GetLastError();
-        swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - FAILED to create process, error: %lu\n", error);
-        OutputDebugStringW(debugMsg);
+        swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - FAILED to create process, error: %lu", error);
+        DebugOutput(debugMsg);
         free(cmdLine);
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
@@ -1134,17 +1184,17 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
         return 1;
     }
     
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Process created successfully, PID: %lu\n", pi.dwProcessId);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Process created successfully, PID: %lu", pi.dwProcessId);
+    DebugOutput(debugMsg);
     
     // Store process handle for potential cancellation
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Storing process handle and closing write pipe\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Storing process handle and closing write pipe");
     context->hProcess = pi.hProcess;
     CloseHandle(context->hOutputWrite);
     context->hOutputWrite = NULL;
     
     // Initialize output buffer
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Initializing output buffer\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Initializing output buffer");
     context->outputBufferSize = 8192;
     context->accumulatedOutput = (wchar_t*)malloc(context->outputBufferSize * sizeof(wchar_t));
     if (context->accumulatedOutput) {
@@ -1152,7 +1202,7 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     }
     
     // Read output and monitor process with enhanced progress parsing
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Starting output reading loop\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Starting output reading loop");
     char buffer[4096];
     DWORD bytesRead;
     BOOL processRunning = TRUE;
@@ -4637,6 +4687,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 g_enableAutopaste = TRUE; // Default to enabled
             }
             
+            // Write session start marker to logfile if logging is enabled
+            WriteSessionStartToLogfile();
+            
             // Update debug control visibility
             UpdateDebugControlVisibility(hDlg);
             
@@ -5347,6 +5400,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
         }
             
         case WM_DESTROY:
+            // Write session end marker for clean shutdown
+            WriteSessionEndToLogfile(L"Clean program shutdown");
+            
             // Clean up cache manager
             CleanupCacheManager(&g_cacheManager);
             
