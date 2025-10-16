@@ -476,6 +476,7 @@ void FreeProgressInfo(ProgressInfo* progress);
 // Main window progress bar functions
 void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status);
 void ShowMainProgressBar(HWND hDlg, BOOL show);
+void SetProgressBarMarquee(HWND hDlg, BOOL enable);
 void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData);
 
 // Multithreaded subprocess execution functions

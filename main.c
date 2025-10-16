@@ -2178,8 +2178,10 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Context created successfully\n");
     
     // Show progress and disable UI
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Setting up UI\n");
+    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Setting up UI");
     ShowMainProgressBar(hDlg, TRUE);
+    SetProgressBarMarquee(hDlg, TRUE);  // Start with marquee for indefinite "Starting..." phase
+    UpdateMainProgressBar(hDlg, -1, L"Starting download...");
     SetDownloadUIState(hDlg, TRUE);
     
     // Start worker thread
@@ -2711,7 +2713,25 @@ void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status) {
     // Update the progress bar
     HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
     if (hProgressBar) {
-        SendMessageW(hProgressBar, PBM_SETPOS, percentage, 0);
+        // Check if we're in marquee mode
+        LONG style = GetWindowLongW(hProgressBar, GWL_STYLE);
+        BOOL isMarquee = (style & PBS_MARQUEE) != 0;
+        
+        // If we have a valid percentage (> 0) and we're in marquee mode, switch to normal mode
+        if (percentage > 0 && isMarquee) {
+            SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+            SetWindowLongW(hProgressBar, GWL_STYLE, style & ~PBS_MARQUEE);
+            SendMessageW(hProgressBar, PBM_SETPOS, percentage, 0);
+        }
+        // If we have a valid percentage and we're not in marquee mode, just update position
+        else if (percentage > 0 && !isMarquee) {
+            SendMessageW(hProgressBar, PBM_SETPOS, percentage, 0);
+        }
+        // If percentage is 0 or negative, don't interfere with marquee mode
+        // (Let the caller explicitly manage marquee mode)
+        else if (!isMarquee) {
+            SendMessageW(hProgressBar, PBM_SETPOS, percentage, 0);
+        }
         
         // Enable/show the progress bar during operations
         EnableWindow(hProgressBar, TRUE);
@@ -2738,7 +2758,12 @@ void ShowMainProgressBar(HWND hDlg, BOOL show) {
         EnableWindow(hProgressBar, show);
         
         if (!show) {
-            // Reset progress bar when hiding
+            // Stop marquee and reset progress bar when hiding
+            LONG style = GetWindowLongW(hProgressBar, GWL_STYLE);
+            if (style & PBS_MARQUEE) {
+                SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                SetWindowLongW(hProgressBar, GWL_STYLE, style & ~PBS_MARQUEE);
+            }
             SendMessageW(hProgressBar, PBM_SETPOS, 0, 0);
         }
     }
@@ -2748,6 +2773,31 @@ void ShowMainProgressBar(HWND hDlg, BOOL show) {
     if (hProgressText) {
         SetWindowTextW(hProgressText, show ? L"" : L"");
     }
+}
+
+// Set progress bar to marquee mode for indefinite operations (only if not already marqueeing)
+void SetProgressBarMarquee(HWND hDlg, BOOL enable) {
+    if (!hDlg) return;
+    
+    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
+    if (!hProgressBar) return;
+    
+    LONG style = GetWindowLongW(hProgressBar, GWL_STYLE);
+    BOOL isCurrentlyMarquee = (style & PBS_MARQUEE) != 0;
+    
+    if (enable && !isCurrentlyMarquee) {
+        // Enable marquee mode
+        SetWindowLongW(hProgressBar, GWL_STYLE, style | PBS_MARQUEE);
+        SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50); // 50ms animation speed
+        DebugOutput(L"YouTubeCacher: Progress bar set to marquee mode");
+    } else if (!enable && isCurrentlyMarquee) {
+        // Disable marquee mode
+        SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+        SetWindowLongW(hProgressBar, GWL_STYLE, style & ~PBS_MARQUEE);
+        SendMessageW(hProgressBar, PBM_SETPOS, 0, 0);
+        DebugOutput(L"YouTubeCacher: Progress bar marquee mode disabled");
+    }
+    // If already in the requested state, do nothing (don't reset)
 }
 
 // Progress callback for the main window (thread-safe) - Legacy function, kept for compatibility
@@ -4947,23 +4997,14 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                     // Show progress bar with indeterminate animation
                     ShowMainProgressBar(hDlg, TRUE);
-                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
-                    if (hProgressBar) {
-                        // Set progress bar to marquee (indeterminate) style
-                        SetWindowLongW(hProgressBar, GWL_STYLE, 
-                            GetWindowLongW(hProgressBar, GWL_STYLE) | PBS_MARQUEE);
-                        SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50); // 50ms animation speed
-                    }
-                    UpdateMainProgressBar(hDlg, 0, L"Getting video information...");
+                    // Set progress bar to marquee (indeterminate) style for indefinite operation
+                    SetProgressBarMarquee(hDlg, TRUE);
+                    UpdateMainProgressBar(hDlg, -1, L"Getting video information...");
                     
                     // Start non-blocking Get Info operation
                     if (!StartNonBlockingGetInfo(hDlg, url, &g_cachedVideoMetadata)) {
                         // Failed to start operation
-                        if (hProgressBar) {
-                            SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
-                            SetWindowLongW(hProgressBar, GWL_STYLE, 
-                                GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
-                        }
+                        SetProgressBarMarquee(hDlg, FALSE);
                         UpdateMainProgressBar(hDlg, 0, L"Failed to start operation");
                         ShowWarningMessage(hDlg, L"Operation Failed", L"Could not start video information retrieval. Please try again.");
                     }
@@ -5350,25 +5391,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 case 3: { // Update progress percentage
                     int percentage = (int)data;
-                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
-                    if (hProgressBar) {
-                        // Ensure we're not in marquee mode
-                        LONG style = GetWindowLongW(hProgressBar, GWL_STYLE);
-                        if (style & PBS_MARQUEE) {
-                            SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
-                            SetWindowLongW(hProgressBar, GWL_STYLE, style & ~PBS_MARQUEE);
-                        }
-                        SendMessageW(hProgressBar, PBM_SETPOS, percentage, 0);
-                    }
+                    // Use the improved UpdateMainProgressBar which handles marquee transition
+                    UpdateMainProgressBar(hDlg, percentage, NULL);
                     break;
                 }
                 case 4: { // Start marquee
-                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
-                    if (hProgressBar) {
-                        SetWindowLongW(hProgressBar, GWL_STYLE, 
-                            GetWindowLongW(hProgressBar, GWL_STYLE) | PBS_MARQUEE);
-                        SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50);
-                    }
+                    SetProgressBarMarquee(hDlg, TRUE);
                     break;
                 }
                 case 5: { // Update status text
@@ -5380,12 +5408,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     break;
                 }
                 case 6: { // Stop marquee
-                    HWND hProgressBar = GetDlgItem(hDlg, IDC_PROGRESS_BAR);
-                    if (hProgressBar) {
-                        SendMessageW(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
-                        SetWindowLongW(hProgressBar, GWL_STYLE, 
-                            GetWindowLongW(hProgressBar, GWL_STYLE) & ~PBS_MARQUEE);
-                    }
+                    SetProgressBarMarquee(hDlg, FALSE);
                     break;
                 }
                 case 7: { // Download failed
