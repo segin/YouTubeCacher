@@ -1221,7 +1221,7 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
         // Check if process is still running
         DWORD waitResult = WaitForSingleObject(pi.hProcess, 100); // 100ms timeout
         if (waitResult == WAIT_OBJECT_0) {
-            OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Process has exited\n");
+            DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Process has exited");
             processRunning = FALSE;
         }
         
@@ -1231,8 +1231,8 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
             if (ReadFile(context->hOutputRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
                 buffer[bytesRead] = '\0';
                 
-                swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Read %lu bytes from process\n", bytesRead);
-                OutputDebugStringW(debugMsg);
+                swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Read %lu bytes from process", bytesRead);
+                DebugOutput(debugMsg);
                 
                 // Line-based UTF-8 processing with 8K buffer and safe bounds checking
                 static char lineAccumulator[8192] = {0};
@@ -1248,7 +1248,7 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
                     lineAccumulator[fillCounter] = '\0';
                     
                     if (bytesToCopy < bytesRead) {
-                        OutputDebugStringW(L"YouTubeCacher: Warning - Line accumulator buffer full, some data truncated\n");
+                        DebugOutput(L"YouTubeCacher: Warning - Line accumulator buffer full, some data truncated");
                     }
                 }
                 
@@ -1520,7 +1520,7 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     context->hProcess = NULL;
     
     // Mark as completed
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Marking as completed\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Marking as completed");
     context->completed = TRUE;
     context->completionTime = GetTickCount();
     
@@ -1538,40 +1538,40 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
             OutputDebugStringW(debugMsg);
         }
     } else {
-        OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - RESULT IS NULL!\n");
+        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - RESULT IS NULL!");
     }
     
     // Mark thread as no longer running
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - Marking thread as no longer running\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Marking thread as no longer running");
     EnterCriticalSection(&context->threadContext.criticalSection);
     context->threadContext.isRunning = FALSE;
     LeaveCriticalSection(&context->threadContext.criticalSection);
     
-    OutputDebugStringW(L"YouTubeCacher: SubprocessWorkerThread - EXITING\n");
+    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - EXITING");
     return 0;
 }
 
 // Create subprocess context for multithreaded execution
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
                                           ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow) {
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - ENTRY\n");
+    DebugOutput(L"YouTubeCacher: CreateSubprocessContext - ENTRY");
     
     if (!config || !request) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - NULL config or request, RETURNING NULL\n");
+        DebugOutput(L"YouTubeCacher: CreateSubprocessContext - NULL config or request, RETURNING NULL");
         return NULL;
     }
     
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Parameters valid, proceeding\n");
+    DebugOutput(L"YouTubeCacher: CreateSubprocessContext - Parameters valid, proceeding");
     
     wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Config ytDlpPath: %ls\n", config->ytDlpPath);
-    OutputDebugStringW(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request URL: %ls\n", request->url ? request->url : L"NULL");
-    OutputDebugStringW(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request outputPath: %ls\n", request->outputPath ? request->outputPath : L"NULL");
-    OutputDebugStringW(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request tempDir: %ls\n", request->tempDir ? request->tempDir : L"NULL");
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Config ytDlpPath: %ls", config->ytDlpPath);
+    DebugOutput(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request URL: %ls", request->url ? request->url : L"NULL");
+    DebugOutput(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request outputPath: %ls", request->outputPath ? request->outputPath : L"NULL");
+    DebugOutput(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request tempDir: %ls", request->tempDir ? request->tempDir : L"NULL");
+    DebugOutput(debugMsg);
     swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request operation: %d\n", request->operation);
     OutputDebugStringW(debugMsg);
     
@@ -2083,10 +2083,10 @@ void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void
 
 // Start unified download process
 BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Entry\n");
+    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Entry");
     
     if (!hDlg || !url) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Invalid parameters\n");
+        DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Invalid parameters");
         return FALSE;
     }
     
@@ -2095,13 +2095,13 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     OutputDebugStringW(debugMsg);
     
     // Initialize configuration
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Initializing config\n");
+    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Initializing config");
     YtDlpConfig config = {0};
     if (!InitializeYtDlpConfig(&config)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to initialize config\n");
+        DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to initialize config");
         return FALSE;
     }
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Config initialized successfully\n");
+    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config initialized successfully");
     
     // Validate configuration
     OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Validating config\n");
@@ -2194,7 +2194,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     }
     
     CloseHandle(hThread);
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Worker thread started successfully\n");
+    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Worker thread started successfully");
     return TRUE;
 }
 
