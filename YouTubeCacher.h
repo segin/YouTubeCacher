@@ -243,6 +243,8 @@ typedef struct NonBlockingDownloadContext {
 void DebugOutput(const wchar_t* message);
 void WriteSessionStartToLogfile(void);
 void WriteSessionEndToLogfile(const wchar_t* reason);
+void FormatDuration(wchar_t* duration, size_t bufferSize);
+void InstallYtDlpWithWinget(HWND hParent);
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
 void ApplyModernThemeToDialog(HWND hDlg);

@@ -216,6 +216,90 @@ void DebugOutput(const wchar_t* message) {
     WriteToLogfile(message);
 }
 
+// Format duration string to proper time format
+// Handles: single numbers (seconds), single digits, ensures proper MM:SS or HH:MM:SS format
+void FormatDuration(wchar_t* duration, size_t bufferSize) {
+    if (!duration || bufferSize == 0) return;
+    
+    // Remove any whitespace
+    wchar_t* src = duration;
+    wchar_t* dst = duration;
+    while (*src) {
+        if (!iswspace(*src)) {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst = L'\0';
+    
+    // If empty, leave as is
+    if (wcslen(duration) == 0) return;
+    
+    // Check if it's already in time format (contains colon)
+    if (wcschr(duration, L':') != NULL) {
+        // Already formatted, but check if it needs leading zeros
+        if (wcslen(duration) == 1 && iswdigit(duration[0])) {
+            // Single digit - format as "00:0X"
+            wchar_t temp[32];
+            swprintf(temp, 32, L"00:0%lc", duration[0]);
+            wcsncpy(duration, temp, bufferSize - 1);
+            duration[bufferSize - 1] = L'\0';
+        } else if (wcslen(duration) == 2 && iswdigit(duration[0]) && iswdigit(duration[1])) {
+            // Two digits without colon - format as "00:XX"
+            wchar_t temp[32];
+            swprintf(temp, 32, L"00:%ls", duration);
+            wcsncpy(duration, temp, bufferSize - 1);
+            duration[bufferSize - 1] = L'\0';
+        }
+        return;
+    }
+    
+    // Check if it's a pure number (seconds)
+    BOOL isNumber = TRUE;
+    for (size_t i = 0; i < wcslen(duration); i++) {
+        if (!iswdigit(duration[i])) {
+            isNumber = FALSE;
+            break;
+        }
+    }
+    
+    if (isNumber) {
+        int totalSeconds = _wtoi(duration);
+        
+        if (totalSeconds < 0) {
+            // Invalid number, leave as is
+            return;
+        }
+        
+        int hours = totalSeconds / 3600;
+        int minutes = (totalSeconds % 3600) / 60;
+        int seconds = totalSeconds % 60;
+        
+        wchar_t formatted[32];
+        
+        if (hours > 0) {
+            // Format as HH:MM:SS
+            swprintf(formatted, 32, L"%d:%02d:%02d", hours, minutes, seconds);
+        } else {
+            // Format as MM:SS (always include minutes for clarity)
+            swprintf(formatted, 32, L"%02d:%02d", minutes, seconds);
+        }
+        
+        wcsncpy(duration, formatted, bufferSize - 1);
+        duration[bufferSize - 1] = L'\0';
+    } else {
+        // Not a pure number, check for single digit case
+        if (wcslen(duration) == 1 && iswdigit(duration[0])) {
+            // Single digit - treat as seconds and format as "00:0X"
+            wchar_t temp[32];
+            swprintf(temp, 32, L"00:0%lc", duration[0]);
+            wcsncpy(duration, temp, bufferSize - 1);
+            duration[bufferSize - 1] = L'\0';
+        }
+        // For other non-numeric formats, leave as is
+    }
+}
+
 // Function to update debug control visibility
 void UpdateDebugControlVisibility(HWND hDlg) {
     int showState = g_enableDebug ? SW_SHOW : SW_HIDE;
@@ -228,6 +312,64 @@ void UpdateDebugControlVisibility(HWND hDlg) {
     ShowWindow(GetDlgItem(hDlg, IDC_COLOR_TEAL), showState);
     ShowWindow(GetDlgItem(hDlg, IDC_COLOR_BLUE), showState);
     ShowWindow(GetDlgItem(hDlg, IDC_COLOR_WHITE), showState);
+}
+
+// Function to install yt-dlp using winget
+void InstallYtDlpWithWinget(HWND hParent) {
+    DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - Starting yt-dlp installation");
+    
+    // Create process to run winget install yt-dlp
+    STARTUPINFOW si = {0};
+    PROCESS_INFORMATION pi = {0};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOW; // Show the command window so user can see progress
+    
+    wchar_t cmdLine[] = L"winget install yt-dlp";
+    
+    // Create the process
+    BOOL processCreated = CreateProcessW(
+        NULL,           // No module name (use command line)
+        cmdLine,        // Command line
+        NULL,           // Process handle not inheritable
+        NULL,           // Thread handle not inheritable
+        FALSE,          // Set handle inheritance to FALSE
+        0,              // No creation flags
+        NULL,           // Use parent's environment block
+        NULL,           // Use parent's starting directory
+        &si,            // Pointer to STARTUPINFO structure
+        &pi             // Pointer to PROCESS_INFORMATION structure
+    );
+    
+    if (!processCreated) {
+        DWORD error = GetLastError();
+        wchar_t debugMsg[256];
+        swprintf(debugMsg, 256, L"YouTubeCacher: InstallYtDlpWithWinget - Failed to create winget process, error: %lu", error);
+        DebugOutput(debugMsg);
+        
+        // Show error message about winget not being available
+        ShowWarningMessage(hParent, L"WinGet Not Available", 
+                         L"Could not run 'winget install yt-dlp'. WinGet may not be installed or available on this system.\n\n"
+                         L"Please install yt-dlp manually:\n"
+                         L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\n"
+                         L"2. Download the latest yt-dlp.exe\n"
+                         L"3. Place it in a folder in your PATH or configure the path in File > Settings\n\n"
+                         L"Alternatively, you can install WinGet from the Microsoft Store and try again.");
+        return;
+    }
+    
+    DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - WinGet process started successfully");
+    
+    // Show info message that installation is in progress
+    ShowInfoMessage(hParent, L"Installing yt-dlp", 
+                   L"WinGet is installing yt-dlp. Please wait for the installation to complete.\n\n"
+                   L"A command window will show the installation progress. "
+                   L"After installation completes, you may need to restart YouTubeCacher or update the yt-dlp path in File > Settings.");
+    
+    // Don't wait for the process - let it run independently
+    // Close handles to avoid resource leaks
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
 }
 
 // Function to create the download directory if it doesn't exist
@@ -2581,6 +2723,9 @@ BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t tit
                 wcsncpy(duration, cleanDuration, durationSize - 1);
                 duration[durationSize - 1] = L'\0';
                 
+                // Format the duration properly
+                FormatDuration(duration, durationSize);
+                
                 // If we got duration but not title, still consider it a partial success
                 if (!success && wcslen(duration) > 0) {
                     success = TRUE;
@@ -3135,7 +3280,7 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
             }
             
             if (durationLen > 0) {
-                metadata->duration = (wchar_t*)malloc((durationLen + 1) * sizeof(wchar_t));
+                metadata->duration = (wchar_t*)malloc((durationLen + 32) * sizeof(wchar_t)); // Extra space for formatting
                 if (metadata->duration) {
                     wcsncpy(metadata->duration, durationStart, durationLen);
                     metadata->duration[durationLen] = L'\0';
@@ -3144,6 +3289,9 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
                     if (durationLen > 0 && metadata->duration[durationLen - 1] == L'\r') {
                         metadata->duration[durationLen - 1] = L'\0';
                     }
+                    
+                    // Format the duration properly
+                    FormatDuration(metadata->duration, durationLen + 32);
                 }
             }
             
@@ -4890,7 +5038,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     return TRUE;
                     
                 case ID_HELP_INSTALL_YTDLP:
-                    // TODO: Implement yt-dlp installation help
+                    InstallYtDlpWithWinget(hDlg);
                     return TRUE;
                     
                 case ID_HELP_ABOUT:

@@ -144,7 +144,26 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         
         // Parse duration
         token = wcstok(NULL, L"|", &context);
-        if (token) entry->duration = _wcsdup(token);
+        if (token) {
+            entry->duration = _wcsdup(token);
+            // Format the duration properly (fix legacy single-number durations)
+            if (entry->duration) {
+                // Create a temporary buffer for formatting
+                size_t len = wcslen(entry->duration);
+                wchar_t* tempDuration = (wchar_t*)malloc((len + 32) * sizeof(wchar_t));
+                if (tempDuration) {
+                    wcscpy(tempDuration, entry->duration);
+                    FormatDuration(tempDuration, len + 32);
+                    
+                    // Replace the original if it changed
+                    if (wcscmp(entry->duration, tempDuration) != 0) {
+                        free(entry->duration);
+                        entry->duration = _wcsdup(tempDuration);
+                    }
+                    free(tempDuration);
+                }
+            }
+        }
         
         // Parse main video file
         token = wcstok(NULL, L"|", &context);
