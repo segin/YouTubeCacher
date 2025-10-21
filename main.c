@@ -356,14 +356,41 @@ void InstallYtDlpWithWinget(HWND hParent) {
         swprintf(debugMsg, 256, L"YouTubeCacher: InstallYtDlpWithWinget - Failed to create winget process, error: %lu", error);
         DebugOutput(debugMsg);
         
-        // Show error message about winget not being available
-        ShowWarningMessage(hParent, L"WinGet Not Available", 
-                         L"Could not run 'winget install yt-dlp'. WinGet is part of Windows Package Manager and should be available on Windows 10 (version 1809+) and Windows 11.\n\n"
-                         L"If WinGet is not available, please install yt-dlp manually:\n"
+        // Create enhanced error dialog with proper content separation
+        wchar_t details[512];
+        swprintf(details, 512, L"Process creation failed with error code: %lu\n\n"
+                              L"WinGet is the Windows Package Manager that should be available on:\n"
+                              L"• Windows 10 version 1809 and later\n"
+                              L"• Windows 11 (all versions)\n\n"
+                              L"WinGet is typically installed automatically when an admin user first logs in to modern Windows systems.",
+                              error);
+        
+        wchar_t diagnostics[256];
+        wcscpy(diagnostics, L"The system was unable to execute the 'winget install yt-dlp' command. "
+                           L"This indicates WinGet may not be installed, not in PATH, or access is restricted.");
+        
+        wchar_t solutions[512];
+        wcscpy(solutions, L"Manual yt-dlp Installation:\n"
                          L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\n"
                          L"2. Download the latest yt-dlp.exe\n"
                          L"3. Place it in a folder in your PATH or configure the path in File > Settings\n\n"
-                         L"Note: WinGet is typically installed automatically when an admin user first logs in to modern Windows systems.");
+                         L"Alternative - Install WinGet:\n"
+                         L"• Download from Microsoft Store: 'App Installer'\n"
+                         L"• Or download from GitHub: microsoft/winget-cli");
+        
+        EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
+            L"WinGet Not Available",
+            L"Could not run 'winget install yt-dlp'. WinGet may not be installed or available on this system.",
+            details,
+            diagnostics,
+            solutions,
+            ERROR_TYPE_DEPENDENCIES
+        );
+        
+        if (dialog) {
+            ShowEnhancedErrorDialog(hParent, dialog);
+            FreeEnhancedErrorDialog(dialog);
+        }
         return;
     }
     

@@ -415,7 +415,7 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int collapsedHeight = buttonY + buttonHeight + margin;
     
     // Win32 minimum dialog height should accommodate all elements
-    int minCollapsedHeight = ScaleForDpi(isSuccessDialog ? 150 : 120, dpi); // Larger minimum for success dialogs
+    int minCollapsedHeight = ScaleForDpi(isSuccessDialog ? 180 : 150, dpi); // Increased minimum heights
     collapsedHeight = max(collapsedHeight, minCollapsedHeight);
     
     // === STEP 8: Calculate expanded height with proper margins ===
@@ -1233,7 +1233,8 @@ INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* mes
 
 INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message) {
     wchar_t solutions[512];
-    wcscpy(solutions, L"This is a warning message. Please review the information and take appropriate action if needed.");
+    wcscpy(solutions, L"Review the warning details and follow any recommended actions. "
+                     L"If the issue persists, check the application logs or contact support.");
     
     // Log the warning
     LogWarning(L"Warning", message ? message : L"Warning condition detected");
@@ -1241,8 +1242,8 @@ INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* mes
     EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
         title ? title : L"Warning",
         message ? message : L"A warning condition has been detected",
-        L"Please review the warning information and take appropriate action.",
-        L"Warning condition detected. Review and take action if necessary.",
+        L"A warning condition was encountered during operation. Review the details to understand the issue and determine if action is needed.",
+        L"The application detected a condition that may require attention but does not prevent continued operation.",
         solutions,
         ERROR_TYPE_UNKNOWN
     );
@@ -1258,7 +1259,7 @@ INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* mes
 
 INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message) {
     wchar_t solutions[512];
-    wcscpy(solutions, L"This is an informational message. No action is required.");
+    wcscpy(solutions, L"No action is required. This information is provided for your reference and awareness.");
     
     // Log the info
     LogInfo(L"Info", message ? message : L"Information message");
@@ -1266,8 +1267,8 @@ INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* messag
     EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
         title ? title : L"Information",
         message ? message : L"Information",
-        message ? message : L"Informational message",
-        L"This is an informational message for your reference.",
+        message ? message : L"Additional information about the current operation or system state.",
+        L"Informational message provided to keep you informed about the application's status or operations.",
         solutions,
         ERROR_TYPE_UNKNOWN
     );
