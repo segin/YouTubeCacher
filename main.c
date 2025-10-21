@@ -3484,8 +3484,14 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
     // Check for pipe-delimited progress format (downloaded|total|speed|eta)
     const wchar_t* firstPipe = wcschr(line, L'|');
     if (firstPipe) {
+        // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
+        const wchar_t* dataStart = line;
+        if (wcsstr(line, L"download:") == line) {
+            dataStart = line + 9; // Skip "download:" prefix
+        }
+        
         // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-        wchar_t* lineCopy = _wcsdup(line);
+        wchar_t* lineCopy = _wcsdup(dataStart);
         if (!lineCopy) return FALSE;
         
         wchar_t* context = NULL;
