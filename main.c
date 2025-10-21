@@ -358,12 +358,12 @@ void InstallYtDlpWithWinget(HWND hParent) {
         
         // Show error message about winget not being available
         ShowWarningMessage(hParent, L"WinGet Not Available", 
-                         L"Could not run 'winget install yt-dlp'. WinGet may not be installed or available on this system.\n\n"
-                         L"Please install yt-dlp manually:\n"
+                         L"Could not run 'winget install yt-dlp'. WinGet is part of Windows Package Manager and should be available on Windows 10 (version 1809+) and Windows 11.\n\n"
+                         L"If WinGet is not available, please install yt-dlp manually:\n"
                          L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\n"
                          L"2. Download the latest yt-dlp.exe\n"
                          L"3. Place it in a folder in your PATH or configure the path in File > Settings\n\n"
-                         L"Alternatively, you can install WinGet from the Microsoft Store and try again.");
+                         L"Note: WinGet is typically installed automatically when an admin user first logs in to modern Windows systems.");
         return;
     }
     
