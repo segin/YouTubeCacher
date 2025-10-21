@@ -358,10 +358,10 @@ void InstallYtDlpWithWinget(HWND hParent) {
         
         // Create enhanced error dialog with proper content separation
         wchar_t details[512];
-        swprintf(details, 512, L"Process creation failed with error code: %lu\n\n"
-                              L"WinGet is the Windows Package Manager that should be available on:\n"
-                              L"• Windows 10 version 1809 and later\n"
-                              L"• Windows 11 (all versions)\n\n"
+        swprintf(details, 512, L"Process creation failed with error code: %lu\r\n\r\n"
+                              L"WinGet is the Windows Package Manager that should be available on:\r\n"
+                              L"- Windows 10 version 1809 and later\r\n"
+                              L"- Windows 11 (all versions)\r\n\r\n"
                               L"WinGet is typically installed automatically when an admin user first logs in to modern Windows systems.",
                               error);
         
@@ -370,13 +370,13 @@ void InstallYtDlpWithWinget(HWND hParent) {
                            L"This indicates WinGet may not be installed, not in PATH, or access is restricted.");
         
         wchar_t solutions[512];
-        wcscpy(solutions, L"Manual yt-dlp Installation:\n"
-                         L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\n"
-                         L"2. Download the latest yt-dlp.exe\n"
-                         L"3. Place it in a folder in your PATH or configure the path in File > Settings\n\n"
-                         L"Alternative - Install WinGet:\n"
-                         L"• Download from Microsoft Store: 'App Installer'\n"
-                         L"• Or download from GitHub: microsoft/winget-cli");
+        wcscpy(solutions, L"Manual yt-dlp Installation:\r\n"
+                         L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\r\n"
+                         L"2. Download the latest yt-dlp.exe\r\n"
+                         L"3. Place it in a folder in your PATH or configure the path in File > Settings\r\n\r\n"
+                         L"Alternative - Install WinGet:\r\n"
+                         L"- Download from Microsoft Store: 'App Installer'\r\n"
+                         L"- Or download from GitHub: microsoft/winget-cli");
         
         EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
             L"WinGet Not Available",
