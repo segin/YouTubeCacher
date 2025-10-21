@@ -245,8 +245,8 @@ static const wchar_t* TAB_NAMES[] = {
 
 // Tab names for the success dialog
 static const wchar_t* SUCCESS_TAB_NAMES[] = {
-    L"Operation Details",
-    L"Information",
+    L"Details",
+    L"Information", 
     L"Summary"
 };
 
@@ -533,6 +533,18 @@ void InitializeSuccessDialogTabs(HWND hTabControl) {
     TCITEMW tie;
     tie.mask = TCIF_TEXT;
     
+    // Always add the Details tab
+    tie.pszText = (wchar_t*)SUCCESS_TAB_NAMES[0];
+    TabCtrl_InsertItem(hTabControl, 0, &tie);
+    
+    TabCtrl_SetCurSel(hTabControl, 0);
+}
+
+// Initialize success dialog tabs with all tabs (for full dialogs)
+void InitializeFullSuccessDialogTabs(HWND hTabControl) {
+    TCITEMW tie;
+    tie.mask = TCIF_TEXT;
+    
     for (int i = 0; i < 3; i++) {
         tie.pszText = (wchar_t*)SUCCESS_TAB_NAMES[i];
         TabCtrl_InsertItem(hTabControl, i, &tie);
@@ -699,7 +711,12 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             
             // Initialize tabs with appropriate labels
             if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
-                InitializeSuccessDialogTabs(errorDialog->hTabControl);
+                // Check if we have diagnostics and solutions to determine tab setup
+                if (errorDialog->diagnostics && errorDialog->solutions) {
+                    InitializeFullSuccessDialogTabs(errorDialog->hTabControl);
+                } else {
+                    InitializeSuccessDialogTabs(errorDialog->hTabControl);
+                }
             } else {
                 InitializeErrorDialogTabs(errorDialog->hTabControl);
             }

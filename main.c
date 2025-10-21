@@ -396,11 +396,31 @@ void InstallYtDlpWithWinget(HWND hParent) {
     
     DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - WinGet process started successfully");
     
-    // Show info message that installation is in progress
-    ShowInfoMessage(hParent, L"Installing yt-dlp", 
-                   L"WinGet is installing yt-dlp. Please wait for the installation to complete.\n\n"
+    // Show simple informational dialog about installation progress
+    wchar_t message[512];
+    wcscpy(message, L"winget is installing yt-dlp. Please wait for the installation to complete.\r\n\r\n"
                    L"A command window will show the installation progress. "
                    L"After installation completes, you may need to restart YouTubeCacher or update the yt-dlp path in File > Settings.");
+    
+    wchar_t details[256];
+    wcscpy(details, L"The winget package manager is downloading and installing yt-dlp automatically. "
+                   L"This process may take a few minutes depending on your internet connection.");
+    
+    // Create a simple informational dialog without diagnostics/solutions tabs
+    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
+        L"Installing yt-dlp",
+        message,
+        details,
+        NULL,  // No diagnostics needed
+        NULL,  // No solutions needed
+        ERROR_TYPE_UNKNOWN
+    );
+    
+    if (dialog) {
+        dialog->dialogType = DIALOG_TYPE_SUCCESS; // Use success dialog type for informational
+        ShowEnhancedErrorDialog(hParent, dialog);
+        FreeEnhancedErrorDialog(dialog);
+    }
     
     // Don't wait for the process - let it run independently
     // Close handles to avoid resource leaks
