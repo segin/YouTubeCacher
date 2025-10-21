@@ -375,8 +375,8 @@ void InstallYtDlpWithWinget(HWND hParent) {
                          L"2. Download the latest yt-dlp.exe\r\n"
                          L"3. Place it in a folder in your PATH or configure the path in File > Settings\r\n\r\n"
                          L"Alternative - Install WinGet:\r\n"
-                         L"- Download from Microsoft Store: 'App Installer'\r\n"
-                         L"- Or download from GitHub: microsoft/winget-cli");
+                         L"- Download MSIX bundle from: https://github.com/microsoft/winget-cli/releases\r\n"
+                         L"- Install the .msixbundle file (requires sideloading enabled)");
         
         EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
             L"WinGet Not Available",
