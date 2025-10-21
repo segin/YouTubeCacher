@@ -41,6 +41,8 @@ static int ScaleForDpi(int value, int dpi) {
     return MulDiv(value, dpi, 96); // 96 is the standard DPI
 }
 
+
+
 // Dynamic dialog layout and sizing with proper icon-text alignment
 static void CalculateOptimalDialogSize(HWND hDlg, const wchar_t* message, int* width, int* height) {
     if (!message || !width || !height) return;
@@ -249,6 +251,52 @@ static const wchar_t* SUCCESS_TAB_NAMES[] = {
     L"Information", 
     L"Summary"
 };
+
+// Unified dialog function - single entry point for all dialog types
+INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config) {
+    if (!config) return IDCANCEL;
+    
+    // Convert unified dialog type to existing dialog type
+    DialogType dialogType;
+    ErrorType errorType = ERROR_TYPE_UNKNOWN;
+    
+    switch (config->dialogType) {
+        case UNIFIED_DIALOG_INFO:
+            dialogType = DIALOG_TYPE_SUCCESS;
+            break;
+        case UNIFIED_DIALOG_SUCCESS:
+            dialogType = DIALOG_TYPE_SUCCESS;
+            break;
+        case UNIFIED_DIALOG_WARNING:
+        case UNIFIED_DIALOG_ERROR:
+            dialogType = DIALOG_TYPE_ERROR;
+            errorType = (config->dialogType == UNIFIED_DIALOG_WARNING) ? ERROR_TYPE_UNKNOWN : ERROR_TYPE_DEPENDENCIES;
+            break;
+        default:
+            dialogType = DIALOG_TYPE_ERROR;
+            break;
+    }
+    
+    // Create enhanced dialog with the unified config
+    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
+        config->title ? config->title : L"Information",
+        config->message ? config->message : L"No message provided",
+        config->details ? config->details : L"No additional details available",
+        config->tab2_content,  // Use tab2 as diagnostics/info
+        config->tab3_content,  // Use tab3 as solutions/summary
+        errorType
+    );
+    
+    if (!dialog) return IDCANCEL;
+    
+    // Set dialog type
+    dialog->dialogType = dialogType;
+    
+    INT_PTR result = ShowEnhancedErrorDialog(parent, dialog);
+    FreeEnhancedErrorDialog(dialog);
+    
+    return result;
+}
 
 // Enhanced error dialog creation
 EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message,

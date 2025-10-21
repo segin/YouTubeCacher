@@ -178,6 +178,32 @@ typedef enum {
     DIALOG_TYPE_INFO
 } DialogType;
 
+// Unified dialog types
+typedef enum {
+    UNIFIED_DIALOG_INFO,
+    UNIFIED_DIALOG_WARNING, 
+    UNIFIED_DIALOG_ERROR,
+    UNIFIED_DIALOG_SUCCESS
+} UnifiedDialogType;
+
+// Unified dialog configuration structure
+typedef struct {
+    UnifiedDialogType dialogType;   // INFO, WARNING, ERROR, SUCCESS
+    const wchar_t* title;
+    const wchar_t* message;
+    const wchar_t* details;         // Always shown in first tab
+    
+    // Optional additional tabs (NULL to hide)
+    const wchar_t* tab1_name;       // Custom name for tab 1 (details)
+    const wchar_t* tab2_content;    // Content for tab 2
+    const wchar_t* tab2_name;       // Custom name for tab 2
+    const wchar_t* tab3_content;    // Content for tab 3
+    const wchar_t* tab3_name;       // Custom name for tab 3
+    
+    BOOL showDetailsButton;         // Whether to show expandable details
+    BOOL showCopyButton;           // Whether to show copy button
+} UnifiedDialogConfig;
+
 // Enhanced dialog structure (supports both error and success dialogs)
 typedef struct {
     wchar_t* title;
@@ -378,6 +404,9 @@ EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar
                                               const wchar_t* solutions, ErrorType errorType);
 INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog);
 void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog);
+
+// Unified dialog function - single entry point for all dialog types
+INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config);
 BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog);
 void ResizeErrorDialog(HWND hDlg, BOOL expanded);
 void InitializeErrorDialogTabs(HWND hTabControl);

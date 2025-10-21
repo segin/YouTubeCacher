@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include "YouTubeCacher.h"
 #include "uri.h"
-#include "output_parser.h"
+#include "parser.h"
 #include <commdlg.h>
 #include <shlobj.h>
 #include <commctrl.h>
@@ -356,71 +356,61 @@ void InstallYtDlpWithWinget(HWND hParent) {
         swprintf(debugMsg, 256, L"YouTubeCacher: InstallYtDlpWithWinget - Failed to create winget process, error: %lu", error);
         DebugOutput(debugMsg);
         
-        // Create enhanced error dialog with proper content separation
-        wchar_t details[512];
+        // Create unified warning dialog for WinGet not available
+        static wchar_t details[512];
         swprintf(details, 512, L"Process creation failed with error code: %lu\r\n\r\n"
-                              L"WinGet is the Windows Package Manager that should be available on:\r\n"
+                              L"winget is the Windows Package Manager that should be available on:\r\n"
                               L"- Windows 10 version 1809 and later\r\n"
                               L"- Windows 11 (all versions)\r\n\r\n"
-                              L"WinGet is typically installed automatically when an admin user first logs in to modern Windows systems.",
+                              L"winget is typically installed automatically when an admin user first logs in to modern Windows systems.",
                               error);
         
-        wchar_t diagnostics[256];
+        static wchar_t diagnostics[256];
         wcscpy(diagnostics, L"The system was unable to execute the 'winget install yt-dlp' command. "
-                           L"This indicates WinGet may not be installed, not in PATH, or access is restricted.");
+                           L"This indicates winget may not be installed, not in PATH, or access is restricted.");
         
-        wchar_t solutions[512];
+        static wchar_t solutions[512];
         wcscpy(solutions, L"Manual yt-dlp Installation:\r\n"
                          L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\r\n"
                          L"2. Download the latest yt-dlp.exe\r\n"
                          L"3. Place it in a folder in your PATH or configure the path in File > Settings\r\n\r\n"
-                         L"Alternative - Install WinGet:\r\n"
+                         L"Alternative - Install winget:\r\n"
                          L"- Download MSIX bundle from: https://github.com/microsoft/winget-cli/releases\r\n"
                          L"- Install the .msixbundle file (requires sideloading enabled)");
         
-        EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-            L"WinGet Not Available",
-            L"Could not run 'winget install yt-dlp'. WinGet may not be installed or available on this system.",
-            details,
-            diagnostics,
-            solutions,
-            ERROR_TYPE_DEPENDENCIES
-        );
+        UnifiedDialogConfig config = {0};
+        config.dialogType = UNIFIED_DIALOG_WARNING;
+        config.title = L"winget Not Available";
+        config.message = L"Could not run 'winget install yt-dlp'. winget may not be installed or available on this system.";
+        config.details = details;
+        config.tab1_name = L"Details";
+        config.tab2_content = diagnostics;
+        config.tab2_name = L"Diagnostics";
+        config.tab3_content = solutions;
+        config.tab3_name = L"Solutions";
+        config.showDetailsButton = TRUE;
+        config.showCopyButton = TRUE;
         
-        if (dialog) {
-            ShowEnhancedErrorDialog(hParent, dialog);
-            FreeEnhancedErrorDialog(dialog);
-        }
+        ShowUnifiedDialog(hParent, &config);
         return;
     }
     
     DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - WinGet process started successfully");
     
-    // Show simple informational dialog about installation progress
-    wchar_t message[512];
-    wcscpy(message, L"winget is installing yt-dlp. Please wait for the installation to complete.\r\n\r\n"
-                   L"A command window will show the installation progress. "
-                   L"After installation completes, you may need to restart YouTubeCacher or update the yt-dlp path in File > Settings.");
+    // Show simple informational dialog about installation progress using unified dialog
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_INFO;
+    config.title = L"Installing yt-dlp";
+    config.message = L"winget is installing yt-dlp. Please wait for the installation to complete.\r\n\r\n"
+                    L"A command window will show the installation progress. "
+                    L"After installation completes, you may need to restart YouTubeCacher or update the yt-dlp path in File > Settings.";
+    config.details = L"The winget package manager is downloading and installing yt-dlp automatically. "
+                    L"This process may take a few minutes depending on your internet connection.";
+    config.tab1_name = L"Details";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    wchar_t details[256];
-    wcscpy(details, L"The winget package manager is downloading and installing yt-dlp automatically. "
-                   L"This process may take a few minutes depending on your internet connection.");
-    
-    // Create a simple informational dialog without diagnostics/solutions tabs
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        L"Installing yt-dlp",
-        message,
-        details,
-        NULL,  // No diagnostics needed
-        NULL,  // No solutions needed
-        ERROR_TYPE_UNKNOWN
-    );
-    
-    if (dialog) {
-        dialog->dialogType = DIALOG_TYPE_SUCCESS; // Use success dialog type for informational
-        ShowEnhancedErrorDialog(hParent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    ShowUnifiedDialog(hParent, &config);
     
     // Don't wait for the process - let it run independently
     // Close handles to avoid resource leaks

@@ -1,5 +1,5 @@
-#ifndef OUTPUT_PARSER_H
-#define OUTPUT_PARSER_H
+#ifndef PARSER_H
+#define PARSER_H
 
 #include <windows.h>
 #include "YouTubeCacher.h"
@@ -130,4 +130,4 @@ BOOL StartEnhancedSubprocessExecution(EnhancedSubprocessContext* context);
 DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam);
 void EnhancedProgressCallback(const EnhancedProgressInfo* progress, void* userData);
 
-#endif // OUTPUT_PARSER_H
+#endif // PARSER_H
