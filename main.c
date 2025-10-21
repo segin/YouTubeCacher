@@ -3567,6 +3567,9 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
         if (totalBytes > 0 && downloadedBytes >= 0) {
             progress->percentage = (int)((downloadedBytes * 100) / totalBytes);
             if (progress->percentage > 100) progress->percentage = 100;
+        } else {
+            // No total size available - use marquee mode (indicated by -1)
+            progress->percentage = -1;
         }
         
         // Build comprehensive status message
@@ -3597,6 +3600,24 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
                         downloadedStr, totalStr, progress->speed);
             } else {
                 swprintf(statusMsg, 256, L"Downloading %ls of %ls (%d%%)", downloadedStr, totalStr, progress->percentage);
+            }
+        } else if (downloadedBytes > 0) {
+            // We have downloaded bytes but no total - show downloaded amount with speed if available
+            wchar_t downloadedStr[32];
+            if (downloadedBytes >= 1024 * 1024 * 1024) {
+                swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024 * 1024) {
+                swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024) {
+                swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
+            } else {
+                swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
+            }
+            
+            if (progress->speed) {
+                swprintf(statusMsg, 256, L"Downloaded %ls at %ls", downloadedStr, progress->speed);
+            } else {
+                swprintf(statusMsg, 256, L"Downloaded %ls", downloadedStr);
             }
         } else if (progress->speed) {
             swprintf(statusMsg, 256, L"Downloading at %ls", progress->speed);
@@ -5548,8 +5569,13 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 case 3: { // Update progress percentage
                     int percentage = (int)data;
-                    // Use the improved UpdateMainProgressBar which handles marquee transition
-                    UpdateMainProgressBar(hDlg, percentage, NULL);
+                    if (percentage == -1) {
+                        // Indeterminate progress - use marquee mode
+                        SetProgressBarMarquee(hDlg, TRUE);
+                    } else {
+                        // Determinate progress - use percentage mode
+                        UpdateMainProgressBar(hDlg, percentage, NULL);
+                    }
                     break;
                 }
                 case 4: { // Start marquee
