@@ -170,6 +170,22 @@ OutputLineType ClassifyOutputLine(const wchar_t* line) {
     else if (wcsstr(lowerLine, L"[download]") && (wcsstr(lowerLine, L"%") || wcsstr(lowerLine, L"downloading"))) {
         result = LINE_TYPE_DOWNLOAD_PROGRESS;
     }
+    // Check for pipe-delimited progress format: numbers|numbers|numbers|numbers
+    else if (wcschr(line, L'|')) {
+        // Simple heuristic: if line has pipes and starts with digits, likely progress
+        const wchar_t* p = line;
+        while (*p && iswspace(*p)) p++; // Skip leading whitespace
+        if (*p && iswdigit(*p)) {
+            // Count pipes to see if it matches expected format (3 pipes = 4 fields)
+            int pipeCount = 0;
+            for (const wchar_t* q = line; *q; q++) {
+                if (*q == L'|') pipeCount++;
+            }
+            if (pipeCount >= 3) { // At least 3 pipes for downloaded|total|speed|eta format
+                result = LINE_TYPE_DOWNLOAD_PROGRESS;
+            }
+        }
+    }
     else if (wcsstr(lowerLine, L"[ffmpeg]") || wcsstr(lowerLine, L"post-process") || wcsstr(lowerLine, L"converting")) {
         result = LINE_TYPE_POST_PROCESSING;
     }
@@ -199,6 +215,88 @@ OutputLineType ClassifyOutputLine(const wchar_t* line) {
 BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
     if (!line || !progress) return FALSE;
     
+    // Check for pipe-delimited progress format first: downloaded|total|speed|eta
+    const wchar_t* firstPipe = wcschr(line, L'|');
+    if (firstPipe) {
+        // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
+        const wchar_t* dataStart = line;
+        if (wcsstr(line, L"download:") == line) {
+            dataStart = line + 9; // Skip "download:" prefix
+        }
+        
+        // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
+        wchar_t* lineCopy = _wcsdup(dataStart);
+        if (!lineCopy) return FALSE;
+        
+        wchar_t* context = NULL;
+        wchar_t* token = wcstok(lineCopy, L"|", &context);
+        int tokenIndex = 0;
+        
+        long long downloadedBytes = 0;
+        long long totalBytes = 0;
+        
+        while (token && tokenIndex < 4) {
+            switch (tokenIndex) {
+                case 0: { // Downloaded bytes
+                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0 && wcscmp(token, L"NA") != 0) {
+                        downloadedBytes = wcstoll(token, NULL, 10);
+                    }
+                    break;
+                }
+                case 1: { // Total bytes
+                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0 && wcscmp(token, L"NA") != 0) {
+                        totalBytes = wcstoll(token, NULL, 10);
+                    }
+                    break;
+                }
+                case 2: { // Speed (we'll parse this for status message)
+                    // Speed parsing can be added here if needed
+                    break;
+                }
+                case 3: { // ETA (we'll parse this for status message)
+                    // ETA parsing can be added here if needed
+                    break;
+                }
+            }
+            token = wcstok(NULL, L"|", &context);
+            tokenIndex++;
+        }
+        
+        free(lineCopy);
+        
+        // Calculate percentage from raw data
+        if (totalBytes > 0 && downloadedBytes >= 0) {
+            progress->progressPercentage = (int)((downloadedBytes * 100) / totalBytes);
+            if (progress->progressPercentage > 100) progress->progressPercentage = 100;
+            
+            // Update status message
+            if (progress->statusMessage) free(progress->statusMessage);
+            wchar_t statusMsg[256];
+            swprintf(statusMsg, 256, L"Downloading (%d%%)", progress->progressPercentage);
+            progress->statusMessage = _wcsdup(statusMsg);
+            
+            return TRUE;
+        } else if (downloadedBytes > 0) {
+            // No total size available - use indeterminate progress (-1)
+            progress->progressPercentage = -1;
+            
+            // Update status message with downloaded amount
+            if (progress->statusMessage) free(progress->statusMessage);
+            wchar_t statusMsg[256];
+            if (downloadedBytes >= 1024 * 1024) {
+                swprintf(statusMsg, 256, L"Downloaded %.1f MB", downloadedBytes / (1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024) {
+                swprintf(statusMsg, 256, L"Downloaded %.1f KB", downloadedBytes / 1024.0);
+            } else {
+                swprintf(statusMsg, 256, L"Downloaded %lld bytes", downloadedBytes);
+            }
+            progress->statusMessage = _wcsdup(statusMsg);
+            
+            return TRUE;
+        }
+    }
+    
+    // Fallback to traditional percentage pattern parsing
     // Look for percentage pattern
     const wchar_t* percentPos = wcsstr(line, L"%");
     if (percentPos) {
