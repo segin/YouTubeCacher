@@ -1,11 +1,9 @@
+#include "YouTubeCacher.h"
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
 #include <wctype.h>
 #include <stdlib.h>
-#include "YouTubeCacher.h"
-#include "uri.h"
-#include "parser.h"
 #include <commdlg.h>
 #include <shlobj.h>
 #include <commctrl.h>
@@ -15,57 +13,24 @@
 
 // MinGW32 provides _wcsdup and _wcsicmp, no custom implementation needed
 
-// Global variable for command line URL
-wchar_t cmdLineURL[MAX_URL_LENGTH] = {0};
-
-// Global variables for text field colors
-HBRUSH hBrushWhite = NULL;
-HBRUSH hBrushLightGreen = NULL;
-HBRUSH hBrushLightBlue = NULL;
-HBRUSH hBrushLightTeal = NULL;
-HBRUSH hCurrentBrush = NULL;
-
-// Flag to track programmatic text changes
-BOOL bProgrammaticChange = FALSE;
-
-// Flag to track manual paste operations
-BOOL bManualPaste = FALSE;
-
-// Global cache manager
-CacheManager g_cacheManager;
-
-// Global cached video metadata
-CachedVideoMetadata g_cachedVideoMetadata;
-
-// Global download state flag
-BOOL g_isDownloading = FALSE;
-
-// Global debug settings
-BOOL g_enableDebug = FALSE;
-BOOL g_enableLogfile = FALSE;
-BOOL g_enableAutopaste = TRUE;  // Default to enabled
-
-// Original text field window procedure
-WNDPROC OriginalTextFieldProc = NULL;
-
 // Subclass procedure for text field to detect paste operations
 LRESULT CALLBACK TextFieldSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_PASTE:
             // User is manually pasting - set flag
-            bManualPaste = TRUE;
+            SetManualPasteFlag(TRUE);
             break;
             
         case WM_KEYDOWN:
             // Check for Ctrl+V
             if (wParam == 'V' && (GetKeyState(VK_CONTROL) & 0x8000)) {
-                bManualPaste = TRUE;
+                SetManualPasteFlag(TRUE);
             }
             break;
     }
     
     // Call original window procedure
-    return CallWindowProc(OriginalTextFieldProc, hwnd, uMsg, wParam, lParam);
+    return CallWindowProc(GetOriginalTextFieldProc(), hwnd, uMsg, wParam, lParam);
 }
 
 // Function to get the default download path (Downloads/YouTubeCacher)
@@ -147,7 +112,9 @@ void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize) {
 
 // Function to write debug message to logfile
 void WriteToLogfile(const wchar_t* message) {
-    if (!g_enableLogfile) return;
+    BOOL enableDebug, enableLogfile;
+    GetDebugState(&enableDebug, &enableLogfile);
+    if (!enableLogfile) return;
     
     FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
     if (logFile) {
@@ -166,7 +133,9 @@ void WriteToLogfile(const wchar_t* message) {
 
 // Function to write session start marker to logfile
 void WriteSessionStartToLogfile(void) {
-    if (!g_enableLogfile) return;
+    BOOL enableDebug, enableLogfile;
+    GetDebugState(&enableDebug, &enableLogfile);
+    if (!enableLogfile) return;
     
     FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
     if (logFile) {
@@ -187,7 +156,9 @@ void WriteSessionStartToLogfile(void) {
 
 // Function to write session end marker to logfile
 void WriteSessionEndToLogfile(const wchar_t* reason) {
-    if (!g_enableLogfile) return;
+    BOOL enableDebug, enableLogfile;
+    GetDebugState(&enableDebug, &enableLogfile);
+    if (!enableLogfile) return;
     
     FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
     if (logFile) {
@@ -210,7 +181,9 @@ void WriteSessionEndToLogfile(const wchar_t* reason) {
 
 // Enhanced debug output function
 void DebugOutput(const wchar_t* message) {
-    if (g_enableDebug) {
+    BOOL enableDebug, enableLogfile;
+    GetDebugState(&enableDebug, &enableLogfile);
+    if (enableDebug) {
         OutputDebugStringW(message);
     }
     WriteToLogfile(message);
@@ -311,7 +284,9 @@ void FormatDuration(wchar_t* duration, size_t bufferSize) {
 
 // Function to update debug control visibility
 void UpdateDebugControlVisibility(HWND hDlg) {
-    int showState = g_enableDebug ? SW_SHOW : SW_HIDE;
+    BOOL enableDebug, enableLogfile;
+    GetDebugState(&enableDebug, &enableLogfile);
+    int showState = enableDebug ? SW_SHOW : SW_HIDE;
     
     // Show/hide Add button
     ShowWindow(GetDlgItem(hDlg, IDC_BUTTON1), showState);
@@ -564,33 +539,41 @@ void LoadSettings(HWND hDlg) {
     if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
         BOOL enableDebug = (wcscmp(buffer, L"1") == 0);
         CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
-        g_enableDebug = enableDebug;
+        BOOL enableLogfile;
+        GetDebugState(&enableLogfile, &enableLogfile);  // Get current logfile state
+        SetDebugState(enableDebug, enableLogfile);
     } else {
         // Default to unchecked
         CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, BST_UNCHECKED);
-        g_enableDebug = FALSE;
+        BOOL enableLogfile;
+        GetDebugState(&enableLogfile, &enableLogfile);  // Get current logfile state
+        SetDebugState(FALSE, enableLogfile);
     }
     
     // Load logfile setting
     if (LoadSettingFromRegistry(REG_ENABLE_LOGFILE, buffer, MAX_EXTENDED_PATH)) {
         BOOL enableLogfile = (wcscmp(buffer, L"1") == 0);
         CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, enableLogfile ? BST_CHECKED : BST_UNCHECKED);
-        g_enableLogfile = enableLogfile;
+        BOOL enableDebug;
+        GetDebugState(&enableDebug, &enableDebug);  // Get current debug state
+        SetDebugState(enableDebug, enableLogfile);
     } else {
         // Default to unchecked
         CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, BST_UNCHECKED);
-        g_enableLogfile = FALSE;
+        BOOL enableDebug;
+        GetDebugState(&enableDebug, &enableDebug);  // Get current debug state
+        SetDebugState(enableDebug, FALSE);
     }
     
     // Load autopaste setting
     if (LoadSettingFromRegistry(REG_ENABLE_AUTOPASTE, buffer, MAX_EXTENDED_PATH)) {
         BOOL enableAutopaste = (wcscmp(buffer, L"1") == 0);
         CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, enableAutopaste ? BST_CHECKED : BST_UNCHECKED);
-        g_enableAutopaste = enableAutopaste;
+        SetAutopasteState(enableAutopaste);
     } else {
         // Default to checked (enabled)
         CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, BST_CHECKED);
-        g_enableAutopaste = TRUE;
+        SetAutopasteState(TRUE);
     }
 }
 
@@ -631,23 +614,24 @@ void SaveSettings(HWND hDlg) {
     // Save debug setting
     BOOL enableDebug = (IsDlgButtonChecked(hDlg, IDC_ENABLE_DEBUG) == BST_CHECKED);
     SaveSettingToRegistry(REG_ENABLE_DEBUG, enableDebug ? L"1" : L"0");
-    g_enableDebug = enableDebug;
     
     // Save logfile setting
     BOOL enableLogfile = (IsDlgButtonChecked(hDlg, IDC_ENABLE_LOGFILE) == BST_CHECKED);
     
     // If logging is being disabled, write session end marker first
-    if (g_enableLogfile && !enableLogfile) {
+    BOOL currentEnableDebug, currentEnableLogfile;
+    GetDebugState(&currentEnableDebug, &currentEnableLogfile);
+    if (currentEnableLogfile && !enableLogfile) {
         WriteSessionEndToLogfile(L"Logging disabled by user");
     }
     
     SaveSettingToRegistry(REG_ENABLE_LOGFILE, enableLogfile ? L"1" : L"0");
-    g_enableLogfile = enableLogfile;
+    SetDebugState(enableDebug, enableLogfile);
     
     // Save autopaste setting
     BOOL enableAutopaste = (IsDlgButtonChecked(hDlg, IDC_ENABLE_AUTOPASTE) == BST_CHECKED);
     SaveSettingToRegistry(REG_ENABLE_AUTOPASTE, enableAutopaste ? L"1" : L"0");
-    g_enableAutopaste = enableAutopaste;
+    SetAutopasteState(enableAutopaste);
 }
 
 // Stub implementations for YtDlp Manager system functions
@@ -2092,9 +2076,9 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     VideoMetadata metadata;
     BOOL hasMetadata = FALSE;
     
-    if (IsCachedMetadataValid(&g_cachedVideoMetadata, context->url)) {
+    if (IsCachedMetadataValid(GetCachedVideoMetadata(), context->url)) {
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Cached metadata is valid\n");
-        if (GetCachedMetadata(&g_cachedVideoMetadata, &metadata)) {
+        if (GetCachedMetadata(GetCachedVideoMetadata(), &metadata)) {
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Successfully retrieved cached metadata\n");
             hasMetadata = TRUE;
             // Update UI immediately with cached data
@@ -2123,7 +2107,7 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
         if (GetVideoMetadata(context->url, &metadata)) {
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - GetVideoMetadata SUCCESS\n");
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Storing metadata in cache\n");
-            StoreCachedMetadata(&g_cachedVideoMetadata, context->url, &metadata);
+            StoreCachedMetadata(GetCachedVideoMetadata(), context->url, &metadata);
             hasMetadata = TRUE;
             
             // Update UI with retrieved data
@@ -2534,7 +2518,7 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
                     swprintf(debugMsg, 256, L"YouTubeCacher: HandleDownloadCompletion - Adding to cache: %ls\n", bestVideoFile);
                     OutputDebugStringW(debugMsg);
                     
-                    AddCacheEntry(&g_cacheManager, videoId, 
+                    AddCacheEntry(GetCacheManager(), videoId, 
                                 wcslen(title) > 0 ? title : ExtractFileNameFromPath(bestVideoFile),
                                 wcslen(duration) > 0 ? duration : L"Unknown",
                                 bestVideoFile, subtitleFiles, subtitleCount);
@@ -2559,8 +2543,8 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
             
             // Refresh the cache list UI
             OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - Refreshing cache list UI\n");
-            RefreshCacheList(GetDlgItem(hDlg, IDC_LIST), &g_cacheManager);
-            UpdateCacheListStatus(hDlg, &g_cacheManager);
+            RefreshCacheList(GetDlgItem(hDlg, IDC_LIST), GetCacheManager());
+            UpdateCacheListStatus(hDlg, GetCacheManager());
             OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - Cache list refreshed\n");
         }
     } else {
@@ -2894,7 +2878,7 @@ void SetDownloadUIState(HWND hDlg, BOOL isDownloading) {
     EnableWindow(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), !isDownloading);
     
     // Update global state
-    g_isDownloading = isDownloading;
+    SetDownloadingState(isDownloading);
 }
 
 // Update the main window's progress bar instead of using separate dialogs
@@ -4147,7 +4131,7 @@ void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInf
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
     // Check if autopaste is enabled
-    if (!g_enableAutopaste) {
+    if (!GetAutopasteState()) {
         return; // Autopaste is disabled
     }
     
@@ -4161,11 +4145,11 @@ void CheckClipboardForYouTubeURL(HWND hDlg) {
             if (hData != NULL) {
                 wchar_t* clipText = (wchar_t*)GlobalLock(hData);
                 if (clipText != NULL && IsYouTubeURL(clipText)) {
-                    bProgrammaticChange = TRUE;
+                    SetProgrammaticChangeFlag(TRUE);
                     SetDlgItemTextW(hDlg, IDC_TEXT_FIELD, clipText);
-                    hCurrentBrush = hBrushLightGreen;
+                    SetCurrentBrush(GetBrush(BRUSH_LIGHT_GREEN));
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
-                    bProgrammaticChange = FALSE;
+                    SetProgrammaticChangeFlag(FALSE);
                 }
                 GlobalUnlock(hData);
             }
@@ -4793,7 +4777,9 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                     // Handle debug checkbox change - update visibility immediately
                     if (HIWORD(wParam) == BN_CLICKED) {
                         BOOL enableDebug = (IsDlgButtonChecked(hDlg, IDC_ENABLE_DEBUG) == BST_CHECKED);
-                        g_enableDebug = enableDebug;
+                        BOOL currentEnableDebug, currentEnableLogfile;
+                        GetDebugState(&currentEnableDebug, &currentEnableLogfile);
+                        SetDebugState(enableDebug, currentEnableLogfile);
                         
                         // Find the main dialog window and update debug control visibility
                         HWND hMainDlg = GetParent(hDlg);
@@ -4911,12 +4897,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             // Apply modern Windows theming to dialog and controls
             ApplyModernThemeToDialog(hDlg);
             
-            // Create brushes for text field colors
-            hBrushWhite = CreateSolidBrush(COLOR_WHITE);
-            hBrushLightGreen = CreateSolidBrush(COLOR_LIGHT_GREEN);
-            hBrushLightBlue = CreateSolidBrush(COLOR_LIGHT_BLUE);
-            hBrushLightTeal = CreateSolidBrush(COLOR_LIGHT_TEAL);
-            hCurrentBrush = hBrushWhite;
+            // Initialize brushes for text field colors (created on-demand in ApplicationState)
+            SetCurrentBrush(GetBrush(BRUSH_WHITE));
             
             // Initialize cache manager
             wchar_t downloadPath[MAX_EXTENDED_PATH];
@@ -4928,13 +4910,13 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             HWND hListView = GetDlgItem(hDlg, IDC_LIST);
             InitializeCacheListView(hListView);
             
-            if (InitializeCacheManager(&g_cacheManager, downloadPath)) {
+            if (InitializeCacheManager(GetCacheManager(), downloadPath)) {
                 // Scan for existing videos in download folder
-                ScanDownloadFolderForVideos(&g_cacheManager, downloadPath);
+                ScanDownloadFolderForVideos(GetCacheManager(), downloadPath);
                 
                 // Refresh the UI with cached videos
-                RefreshCacheList(hListView, &g_cacheManager);
-                UpdateCacheListStatus(hDlg, &g_cacheManager);
+                RefreshCacheList(hListView, GetCacheManager());
+                UpdateCacheListStatus(hDlg, GetCacheManager());
             } else {
                 // Initialize dialog controls with defaults if cache fails
                 SetDlgItemTextW(hDlg, IDC_LABEL2, L"Status: Cache initialization failed");
@@ -4942,21 +4924,25 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             }
             
             // Initialize cached video metadata
-            InitializeCachedMetadata(&g_cachedVideoMetadata);
+            InitializeCachedMetadata(GetCachedVideoMetadata());
             
             // Load debug settings from registry
             wchar_t buffer[MAX_EXTENDED_PATH];
+            BOOL enableDebug = FALSE, enableLogfile = FALSE, enableAutopaste = TRUE;
+            
             if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
-                g_enableDebug = (wcscmp(buffer, L"1") == 0);
+                enableDebug = (wcscmp(buffer, L"1") == 0);
             }
             if (LoadSettingFromRegistry(REG_ENABLE_LOGFILE, buffer, MAX_EXTENDED_PATH)) {
-                g_enableLogfile = (wcscmp(buffer, L"1") == 0);
+                enableLogfile = (wcscmp(buffer, L"1") == 0);
             }
             if (LoadSettingFromRegistry(REG_ENABLE_AUTOPASTE, buffer, MAX_EXTENDED_PATH)) {
-                g_enableAutopaste = (wcscmp(buffer, L"1") == 0);
-            } else {
-                g_enableAutopaste = TRUE; // Default to enabled
+                enableAutopaste = (wcscmp(buffer, L"1") == 0);
             }
+            
+            // Set the state using the application state functions
+            SetDebugState(enableDebug, enableLogfile);
+            SetAutopasteState(enableAutopaste);
             
             // Write session start marker to logfile if logging is enabled
             WriteSessionStartToLogfile();
@@ -4965,12 +4951,13 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             UpdateDebugControlVisibility(hDlg);
             
             // Check command line first, then clipboard
-            if (wcslen(cmdLineURL) > 0) {
-                bProgrammaticChange = TRUE;
-                SetDlgItemTextW(hDlg, IDC_TEXT_FIELD, cmdLineURL);
-                hCurrentBrush = hBrushLightTeal;
+            const wchar_t* cmdURL = GetCommandLineURL();
+            if (wcslen(cmdURL) > 0) {
+                SetProgrammaticChangeFlag(TRUE);
+                SetDlgItemTextW(hDlg, IDC_TEXT_FIELD, cmdURL);
+                SetCurrentBrush(GetBrush(BRUSH_LIGHT_TEAL));
                 InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
-                bProgrammaticChange = FALSE;
+                SetProgrammaticChangeFlag(FALSE);
             } else {
                 // Check clipboard for YouTube URL
                 CheckClipboardForYouTubeURL(hDlg);
@@ -4981,7 +4968,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
             // Subclass the text field to detect paste operations
             HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
-            OriginalTextFieldProc = (WNDPROC)SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)TextFieldSubclassProc);
+            WNDPROC originalProc = (WNDPROC)SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)TextFieldSubclassProc);
+            SetOriginalTextFieldProc(originalProc);
             
             // Calculate and set optimal default window size based on DPI
             HDC hdc = GetDC(hDlg);
@@ -5038,16 +5026,17 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             if ((HWND)lParam == GetDlgItem(hDlg, IDC_TEXT_FIELD)) {
                 HDC hdc = (HDC)wParam;
                 // Set the background color based on current brush
-                if (hCurrentBrush == hBrushLightGreen) {
+                HBRUSH currentBrush = GetCurrentBrush();
+                if (currentBrush == GetBrush(BRUSH_LIGHT_GREEN)) {
                     SetBkColor(hdc, COLOR_LIGHT_GREEN);
-                } else if (hCurrentBrush == hBrushLightBlue) {
+                } else if (currentBrush == GetBrush(BRUSH_LIGHT_BLUE)) {
                     SetBkColor(hdc, COLOR_LIGHT_BLUE);
-                } else if (hCurrentBrush == hBrushLightTeal) {
+                } else if (currentBrush == GetBrush(BRUSH_LIGHT_TEAL)) {
                     SetBkColor(hdc, COLOR_LIGHT_TEAL);
                 } else {
                     SetBkColor(hdc, COLOR_WHITE);
                 }
-                return (INT_PTR)hCurrentBrush;
+                return (INT_PTR)currentBrush;
             }
             break;
             
@@ -5121,31 +5110,32 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 case IDC_TEXT_FIELD:
                     if (HIWORD(wParam) == EN_CHANGE) {
                         // Skip processing if this is a programmatic change
-                        if (bProgrammaticChange) {
+                        if (GetProgrammaticChangeFlag()) {
                             break;
                         }
                         
                         // Clear cached metadata when URL changes
-                        FreeCachedMetadata(&g_cachedVideoMetadata);
+                        FreeCachedMetadata(GetCachedVideoMetadata());
                         
                         // Get current text
                         wchar_t buffer[MAX_BUFFER_SIZE];
                         GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, buffer, MAX_BUFFER_SIZE);
                         
                         // Handle different user input scenarios
-                        if (hCurrentBrush == hBrushLightGreen) {
+                        HBRUSH currentBrush = GetCurrentBrush();
+                        if (currentBrush == GetBrush(BRUSH_LIGHT_GREEN)) {
                             // User has modified the autopasted content - return to white
-                            hCurrentBrush = hBrushWhite;
-                        } else if (hCurrentBrush == hBrushLightBlue) {
+                            SetCurrentBrush(GetBrush(BRUSH_WHITE));
+                        } else if (currentBrush == GetBrush(BRUSH_LIGHT_BLUE)) {
                             // User is editing manually pasted content - return to white
-                            hCurrentBrush = hBrushWhite;
-                        } else if (bManualPaste && IsYouTubeURL(buffer)) {
+                            SetCurrentBrush(GetBrush(BRUSH_WHITE));
+                        } else if (GetManualPasteFlag() && IsYouTubeURL(buffer)) {
                             // Manual paste of YouTube URL - set to light blue
-                            hCurrentBrush = hBrushLightBlue;
-                            bManualPaste = FALSE; // Reset flag after use
-                        } else if (bManualPaste) {
+                            SetCurrentBrush(GetBrush(BRUSH_LIGHT_BLUE));
+                            SetManualPasteFlag(FALSE); // Reset flag after use
+                        } else if (GetManualPasteFlag()) {
                             // Manual paste of non-YouTube content - keep white but reset flag
-                            bManualPaste = FALSE;
+                            SetManualPasteFlag(FALSE);
                         }
                         // Note: Light teal (command line) is preserved during editing
                         // Regular typing in white background stays white
@@ -5175,7 +5165,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case IDC_GETINFO_BTN: {
                     // Check if download is in progress
-                    if (g_isDownloading) {
+                    if (GetDownloadingState()) {
                         ShowWarningMessage(hDlg, L"Download in Progress", L"Please wait for the current download to complete before getting video information.");
                         break;
                     }
@@ -5191,9 +5181,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     
                     // Check if we already have cached data for this URL
-                    if (IsCachedMetadataValid(&g_cachedVideoMetadata, url)) {
+                    if (IsCachedMetadataValid(GetCachedVideoMetadata(), url)) {
                         VideoMetadata metadata;
-                        if (GetCachedMetadata(&g_cachedVideoMetadata, &metadata)) {
+                        if (GetCachedMetadata(GetCachedVideoMetadata(), &metadata)) {
                             // Update UI with cached information
                             if (metadata.title) {
                                 SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
@@ -5223,7 +5213,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     UpdateMainProgressBar(hDlg, -1, L"Getting video information...");
                     
                     // Start non-blocking Get Info operation
-                    if (!StartNonBlockingGetInfo(hDlg, url, &g_cachedVideoMetadata)) {
+                    if (!StartNonBlockingGetInfo(hDlg, url, GetCachedVideoMetadata())) {
                         // Failed to start operation
                         SetProgressBarMarquee(hDlg, FALSE);
                         UpdateMainProgressBar(hDlg, 0, L"Failed to start operation");
@@ -5260,12 +5250,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     
                     // Play the video (no success popup)
-                    if (!PlayCacheEntry(&g_cacheManager, selectedVideoId, playerPath)) {
+                    if (!PlayCacheEntry(GetCacheManager(), selectedVideoId, playerPath)) {
                         ShowWarningMessage(hDlg, L"Playback Failed", 
                                          L"Failed to launch the video. The file may have been moved or deleted.");
                         // Refresh cache to remove invalid entries
-                        RefreshCacheList(hListView, &g_cacheManager);
-                        UpdateCacheListStatus(hDlg, &g_cacheManager);
+                        RefreshCacheList(hListView, GetCacheManager());
+                        UpdateCacheListStatus(hDlg, GetCacheManager());
                     }
                     break;
                 }
@@ -5285,7 +5275,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     wchar_t confirmMsg[1024];
                     if (selectedCount == 1) {
                         // Single video - show title if available
-                        CacheEntry* entry = FindCacheEntry(&g_cacheManager, selectedVideoIds[0]);
+                        CacheEntry* entry = FindCacheEntry(GetCacheManager(), selectedVideoIds[0]);
                         if (entry && entry->title) {
                             swprintf(confirmMsg, 1024, 
                                     L"Are you sure you want to delete \"%ls\"?\n\n"
@@ -5315,7 +5305,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         size_t combinedErrorSize = 0;
                         
                         for (int i = 0; i < selectedCount; i++) {
-                            DeleteResult* deleteResult = DeleteCacheEntryFilesDetailed(&g_cacheManager, selectedVideoIds[i]);
+                            DeleteResult* deleteResult = DeleteCacheEntryFilesDetailed(GetCacheManager(), selectedVideoIds[i]);
                             
                             if (deleteResult) {
                                 if (deleteResult->errorCount == 0) {
@@ -5339,7 +5329,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                             }
                                             
                                             // Add video identifier
-                                            CacheEntry* entry = FindCacheEntry(&g_cacheManager, selectedVideoIds[i]);
+                                            CacheEntry* entry = FindCacheEntry(GetCacheManager(), selectedVideoIds[i]);
                                             if (entry && entry->title) {
                                                 swprintf(combinedErrorDetails + wcslen(combinedErrorDetails), 
                                                         newSize - wcslen(combinedErrorDetails),
@@ -5414,8 +5404,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         }
                         
                         // Refresh the list to show current state
-                        RefreshCacheList(hListView, &g_cacheManager);
-                        UpdateCacheListStatus(hDlg, &g_cacheManager);
+                        RefreshCacheList(hListView, GetCacheManager());
+                        UpdateCacheListStatus(hDlg, GetCacheManager());
                     }
                     
                     // Clean up selected video IDs
@@ -5434,11 +5424,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     CreateDownloadDirectoryIfNeeded(downloadPath);
                     
                     // Add dummy video (no success popup)
-                    if (AddDummyVideo(&g_cacheManager, downloadPath)) {
+                    if (AddDummyVideo(GetCacheManager(), downloadPath)) {
                         // Refresh the list
                         HWND hListView = GetDlgItem(hDlg, IDC_LIST);
-                        RefreshCacheList(hListView, &g_cacheManager);
-                        UpdateCacheListStatus(hDlg, &g_cacheManager);
+                        RefreshCacheList(hListView, GetCacheManager());
+                        UpdateCacheListStatus(hDlg, GetCacheManager());
                     } else {
                         ShowWarningMessage(hDlg, L"Add Failed", L"Failed to add dummy video to cache.");
                     }
@@ -5446,22 +5436,22 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                     
                 case IDC_COLOR_GREEN:
-                    hCurrentBrush = hBrushLightGreen;
+                    SetCurrentBrush(GetBrush(BRUSH_LIGHT_GREEN));
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     break;
                     
                 case IDC_COLOR_TEAL:
-                    hCurrentBrush = hBrushLightTeal;
+                    SetCurrentBrush(GetBrush(BRUSH_LIGHT_TEAL));
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     break;
                     
                 case IDC_COLOR_BLUE:
-                    hCurrentBrush = hBrushLightBlue;
+                    SetCurrentBrush(GetBrush(BRUSH_LIGHT_BLUE));
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     break;
                     
                 case IDC_COLOR_WHITE:
-                    hCurrentBrush = hBrushWhite;
+                    SetCurrentBrush(GetBrush(BRUSH_WHITE));
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     break;
                     
@@ -5489,16 +5479,17 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
         case WM_CLOSE:
             // Restore original text field window procedure
-            if (OriginalTextFieldProc) {
+            WNDPROC originalProc = GetOriginalTextFieldProc();
+            if (originalProc) {
                 HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
-                SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)OriginalTextFieldProc);
+                SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)originalProc);
             }
             
-            // Clean up brushes
-            if (hBrushWhite) DeleteObject(hBrushWhite);
-            if (hBrushLightGreen) DeleteObject(hBrushLightGreen);
-            if (hBrushLightBlue) DeleteObject(hBrushLightBlue);
-            if (hBrushLightTeal) DeleteObject(hBrushLightTeal);
+            // Clean up application state (including brushes)
+            ApplicationState* appState = GetApplicationState();
+            if (appState) {
+                CleanupApplicationState(appState);
+            }
             
             DestroyWindow(hDlg);
             return TRUE;
@@ -5653,16 +5644,16 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             WriteSessionEndToLogfile(L"Clean program shutdown");
             
             // Clean up cache manager
-            CleanupCacheManager(&g_cacheManager);
+            CleanupCacheManager(GetCacheManager());
             
             // Clean up ListView item data
             CleanupListViewItemData(GetDlgItem(hDlg, IDC_LIST));
             
-            // Clean up brushes
-            if (hBrushWhite) DeleteObject(hBrushWhite);
-            if (hBrushLightGreen) DeleteObject(hBrushLightGreen);
-            if (hBrushLightBlue) DeleteObject(hBrushLightBlue);
-            if (hBrushLightTeal) DeleteObject(hBrushLightTeal);
+            // Clean up application state (including brushes)
+            ApplicationState* state = GetApplicationState();
+            if (state) {
+                CleanupApplicationState(state);
+            }
             
             PostQuitMessage(0);
             return TRUE;
@@ -5745,8 +5736,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     
     // Check if command line contains YouTube URL
     if (lpCmdLine && wcslen(lpCmdLine) > 0 && IsYouTubeURL(lpCmdLine)) {
-        wcsncpy(cmdLineURL, lpCmdLine, MAX_URL_LENGTH - 1);
-        cmdLineURL[MAX_URL_LENGTH - 1] = L'\0';
+        SetCommandLineURL(lpCmdLine);
     }
     
     // Load accelerator table
