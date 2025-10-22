@@ -1087,11 +1087,19 @@ void EnhancedProgressCallback(const EnhancedProgressInfo* progress, void* userDa
     
     HWND hDlg = (HWND)userData;
     
-    // Send enhanced progress information to the main window
-    PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, progress->progressPercentage);
-    
-    if (progress->statusMessage) {
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(progress->statusMessage));
+    // Send enhanced progress information to the main window using IPC system
+    IPCContext* ipc = GetGlobalIPCContext();
+    if (ipc) {
+        SendProgressUpdate(ipc, hDlg, progress->progressPercentage);
+        if (progress->statusMessage) {
+            SendStatusUpdate(ipc, hDlg, progress->statusMessage);
+        }
+    } else {
+        // Fallback to direct PostMessage if IPC is not available
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, progress->progressPercentage);
+        if (progress->statusMessage) {
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(progress->statusMessage));
+        }
     }
     
     // Log detailed progress state

@@ -1,7 +1,12 @@
 #include "YouTubeCacher.h"
 
-// Custom window messages (should match main.c and parser.c)
+// Custom window messages - centralized definitions
+#define WM_DOWNLOAD_COMPLETE (WM_USER + 102)
 #define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
+
+// Global IPC context for the application
+static IPCContext g_ipcContext = {0};
+static BOOL g_ipcInitialized = FALSE;
 
 // Initialize thread context with critical section for thread safety
 BOOL InitializeThreadContext(ThreadContext* threadContext) {
@@ -64,6 +69,301 @@ BOOL IsCancellationRequested(const ThreadContext* threadContext) {
     return cancelled;
 }
 
+// ============================================================================
+// IPC System Implementation
+// ============================================================================
+
+// IPC Worker Thread - processes messages from the queue and sends them to target windows
+DWORD WINAPI IPCWorkerThread(LPVOID lpParam) {
+    IPCContext* context = (IPCContext*)lpParam;
+    if (!context || !context->queue) return 1;
+    
+    while (!context->shutdown) {
+        IPCMessage message;
+        
+        // Wait for messages in the queue
+        if (DequeueIPCMessage(context->queue, &message)) {
+            DWORD startTime = GetTickCount();
+            message.processedTimestamp = startTime;
+            
+            // Process the message based on type
+            switch (message.type) {
+                case IPC_MSG_PROGRESS_UPDATE:
+                    PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 3, message.data.progress.percentage);
+                    break;
+                    
+                case IPC_MSG_STATUS_UPDATE:
+                    if (message.data.status.text) {
+                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)message.data.status.text);
+                        // Don't free here - the receiving window will free it
+                        message.data.status.text = NULL; // Prevent double-free
+                    }
+                    break;
+                    
+                case IPC_MSG_TITLE_UPDATE:
+                    if (message.data.title.title) {
+                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)message.data.title.title);
+                        message.data.title.title = NULL; // Prevent double-free
+                    }
+                    break;
+                    
+                case IPC_MSG_DURATION_UPDATE:
+                    if (message.data.duration.duration) {
+                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)message.data.duration.duration);
+                        message.data.duration.duration = NULL; // Prevent double-free
+                    }
+                    break;
+                    
+                case IPC_MSG_MARQUEE_START:
+                    PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 4, 0);
+                    break;
+                    
+                case IPC_MSG_MARQUEE_STOP:
+                    PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 6, 0);
+                    break;
+                    
+                case IPC_MSG_DOWNLOAD_COMPLETE:
+                    PostMessageW(message.targetWindow, WM_DOWNLOAD_COMPLETE, 
+                               (WPARAM)message.data.completion.result, 
+                               (LPARAM)message.data.completion.context);
+                    break;
+                    
+                case IPC_MSG_DOWNLOAD_FAILED:
+                    PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0);
+                    break;
+                    
+                case IPC_MSG_OPERATION_CANCELLED:
+                    PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 8, 0);
+                    break;
+                    
+                case IPC_MSG_VIDEO_INFO_COMPLETE:
+                    PostMessageW(message.targetWindow, WM_USER + 101, 0, (LPARAM)message.data.completion.context);
+                    break;
+                    
+                case IPC_MSG_METADATA_COMPLETE:
+                    PostMessageW(message.targetWindow, WM_USER + 103, 
+                               (WPARAM)message.data.metadata.success, 
+                               (LPARAM)message.data.metadata.metadata);
+                    break;
+                    
+                default:
+                    // Unknown message type - ignore
+                    break;
+            }
+            
+            // Update performance statistics
+            if (context->enableStatistics) {
+                DWORD processingTime = GetTickCount() - startTime;
+                
+                EnterCriticalSection(&context->lock);
+                context->stats.totalMessagesProcessed++;
+                
+                // Update average processing time (rolling average)
+                if (context->stats.averageProcessingTimeMs == 0) {
+                    context->stats.averageProcessingTimeMs = processingTime;
+                } else {
+                    context->stats.averageProcessingTimeMs = 
+                        (context->stats.averageProcessingTimeMs * 9 + processingTime) / 10;
+                }
+                
+                // Update max processing time
+                if (processingTime > context->stats.maxProcessingTimeMs) {
+                    context->stats.maxProcessingTimeMs = processingTime;
+                }
+                
+                // Reset statistics if interval has passed
+                DWORD currentTime = GetTickCount();
+                if (currentTime - context->stats.lastResetTime > context->statisticsResetInterval) {
+                    context->stats.maxProcessingTimeMs = 0;
+                    context->stats.lastResetTime = currentTime;
+                }
+                
+                LeaveCriticalSection(&context->lock);
+            }
+            
+            // Clean up the message
+            FreeIPCMessage(&message);
+        } else {
+            // No messages available, wait a bit
+            Sleep(10);
+        }
+    }
+    
+    return 0;
+}
+
+// Initialize the IPC system
+BOOL InitializeIPC(IPCContext* context, size_t queueCapacity) {
+    if (!context) return FALSE;
+    
+    memset(context, 0, sizeof(IPCContext));
+    
+    // Initialize critical section
+    InitializeCriticalSection(&context->lock);
+    
+    // Create message queue
+    context->queue = CreateIPCMessageQueue(queueCapacity);
+    if (!context->queue) {
+        DeleteCriticalSection(&context->lock);
+        return FALSE;
+    }
+    
+    // Initialize performance monitoring
+    context->enableStatistics = TRUE;
+    context->statisticsResetInterval = 60000; // Reset every minute
+    context->stats.lastResetTime = GetTickCount();
+    
+    // Create worker thread
+    context->workerThread = CreateThread(NULL, 0, IPCWorkerThread, context, 0, &context->workerThreadId);
+    if (!context->workerThread) {
+        DestroyIPCMessageQueue(context->queue);
+        DeleteCriticalSection(&context->lock);
+        return FALSE;
+    }
+    
+    return TRUE;
+}
+
+// Cleanup the IPC system
+void CleanupIPC(IPCContext* context) {
+    if (!context) return;
+    
+    // Signal shutdown
+    EnterCriticalSection(&context->lock);
+    context->shutdown = TRUE;
+    LeaveCriticalSection(&context->lock);
+    
+    // Wait for worker thread to finish
+    if (context->workerThread) {
+        WaitForSingleObject(context->workerThread, 5000);
+        CloseHandle(context->workerThread);
+        context->workerThread = NULL;
+    }
+    
+    // Cleanup queue
+    if (context->queue) {
+        DestroyIPCMessageQueue(context->queue);
+        context->queue = NULL;
+    }
+    
+    DeleteCriticalSection(&context->lock);
+}
+
+// Send a generic IPC message
+BOOL SendIPCMessage(IPCContext* context, const IPCMessage* message) {
+    if (!context || !context->queue || !message) return FALSE;
+    
+    IPCMessage msgCopy = *message;
+    msgCopy.threadId = GetCurrentThreadId();
+    
+    EnterCriticalSection(&context->lock);
+    BOOL result = !context->shutdown && EnqueueIPCMessage(context->queue, &msgCopy);
+    
+    if (context->enableStatistics) {
+        if (result) {
+            context->stats.totalMessagesSent++;
+        } else {
+            context->stats.totalMessagesDropped++;
+        }
+    }
+    
+    LeaveCriticalSection(&context->lock);
+    
+    return result;
+}
+
+// Convenience functions for common message types
+BOOL SendProgressUpdate(IPCContext* context, HWND targetWindow, int percentage) {
+    IPCMessage message = {0};
+    message.type = IPC_MSG_PROGRESS_UPDATE;
+    message.targetWindow = targetWindow;
+    message.data.progress.percentage = percentage;
+    message.timestamp = GetTickCount();
+    
+    return SendIPCMessage(context, &message);
+}
+
+BOOL SendStatusUpdate(IPCContext* context, HWND targetWindow, const wchar_t* status) {
+    if (!status) return FALSE;
+    
+    IPCMessage message = {0};
+    message.type = IPC_MSG_STATUS_UPDATE;
+    message.targetWindow = targetWindow;
+    message.data.status.text = _wcsdup(status);
+    message.timestamp = GetTickCount();
+    message.autoFreeStrings = TRUE;
+    
+    return SendIPCMessage(context, &message);
+}
+
+BOOL SendTitleUpdate(IPCContext* context, HWND targetWindow, const wchar_t* title) {
+    if (!title) return FALSE;
+    
+    IPCMessage message = {0};
+    message.type = IPC_MSG_TITLE_UPDATE;
+    message.targetWindow = targetWindow;
+    message.data.title.title = _wcsdup(title);
+    message.timestamp = GetTickCount();
+    message.autoFreeStrings = TRUE;
+    
+    return SendIPCMessage(context, &message);
+}
+
+BOOL SendDurationUpdate(IPCContext* context, HWND targetWindow, const wchar_t* duration) {
+    if (!duration) return FALSE;
+    
+    IPCMessage message = {0};
+    message.type = IPC_MSG_DURATION_UPDATE;
+    message.targetWindow = targetWindow;
+    message.data.duration.duration = _wcsdup(duration);
+    message.timestamp = GetTickCount();
+    message.autoFreeStrings = TRUE;
+    
+    return SendIPCMessage(context, &message);
+}
+
+BOOL SendMarqueeControl(IPCContext* context, HWND targetWindow, BOOL start) {
+    IPCMessage message = {0};
+    message.type = start ? IPC_MSG_MARQUEE_START : IPC_MSG_MARQUEE_STOP;
+    message.targetWindow = targetWindow;
+    message.timestamp = GetTickCount();
+    
+    return SendIPCMessage(context, &message);
+}
+
+BOOL SendDownloadComplete(IPCContext* context, HWND targetWindow, void* result, void* downloadContext) {
+    IPCMessage message = {0};
+    message.type = IPC_MSG_DOWNLOAD_COMPLETE;
+    message.targetWindow = targetWindow;
+    message.data.completion.result = result;
+    message.data.completion.context = downloadContext;
+    message.timestamp = GetTickCount();
+    
+    return SendIPCMessage(context, &message);
+}
+
+BOOL SendDownloadFailed(IPCContext* context, HWND targetWindow) {
+    IPCMessage message = {0};
+    message.type = IPC_MSG_DOWNLOAD_FAILED;
+    message.targetWindow = targetWindow;
+    message.timestamp = GetTickCount();
+    
+    return SendIPCMessage(context, &message);
+}
+
+BOOL SendOperationCancelled(IPCContext* context, HWND targetWindow) {
+    IPCMessage message = {0};
+    message.type = IPC_MSG_OPERATION_CANCELLED;
+    message.targetWindow = targetWindow;
+    message.timestamp = GetTickCount();
+    
+    return SendIPCMessage(context, &message);
+}
+
+// ============================================================================
+// Legacy Progress Callback Functions (Updated to use IPC)
+// ============================================================================
+
 // Progress callback for updating progress dialog
 void SubprocessProgressCallback(int percentage, const wchar_t* status, void* userData) {
     ProgressDialog* progress = (ProgressDialog*)userData;
@@ -72,26 +372,45 @@ void SubprocessProgressCallback(int percentage, const wchar_t* status, void* use
     }
 }
 
-// Progress callback for unified download
+// Progress callback for unified download - now uses IPC system
 void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void* userData) {
     HWND hDlg = (HWND)userData;
     if (!hDlg) return;
     
-    PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage); // Progress update
-    if (status) {
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status)); // Status update
+    IPCContext* ipc = GetGlobalIPCContext();
+    if (ipc) {
+        // Use the new IPC system for better performance and reliability
+        SendProgressUpdate(ipc, hDlg, percentage);
+        if (status) {
+            SendStatusUpdate(ipc, hDlg, status);
+        }
+    } else {
+        // Fallback to direct PostMessage if IPC is not available
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
+        if (status) {
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status));
+        }
     }
 }
 
-// Progress callback for the main window (thread-safe) - Legacy function, kept for compatibility
+// Progress callback for the main window - now uses IPC system
 void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData) {
     HWND hDlg = (HWND)userData;
     if (!hDlg) return;
     
-    // Use unified download update message
-    PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage); // Progress update
-    if (status) {
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status)); // Status update
+    IPCContext* ipc = GetGlobalIPCContext();
+    if (ipc) {
+        // Use the new IPC system for better performance and reliability
+        SendProgressUpdate(ipc, hDlg, percentage);
+        if (status) {
+            SendStatusUpdate(ipc, hDlg, status);
+        }
+    } else {
+        // Fallback to direct PostMessage if IPC is not available
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
+        if (status) {
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status));
+        }
     }
 }
 
@@ -267,4 +586,317 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
     if (downloadContext->request) FreeYtDlpRequest(downloadContext->request);
     CleanupYtDlpConfig(&downloadContext->config);
     free(downloadContext);
+}
+
+// ============================================================================
+// Message Queue Implementation
+// ============================================================================
+
+// Create a new IPC message queue
+IPCMessageQueue* CreateIPCMessageQueue(size_t capacity) {
+    if (capacity == 0) capacity = 100; // Default capacity
+    
+    IPCMessageQueue* queue = (IPCMessageQueue*)malloc(sizeof(IPCMessageQueue));
+    if (!queue) return NULL;
+    
+    memset(queue, 0, sizeof(IPCMessageQueue));
+    
+    // Allocate message buffer
+    queue->messages = (IPCMessage*)malloc(sizeof(IPCMessage) * capacity);
+    if (!queue->messages) {
+        free(queue);
+        return NULL;
+    }
+    
+    queue->capacity = capacity;
+    queue->count = 0;
+    queue->head = 0;
+    queue->tail = 0;
+    
+    // Initialize synchronization objects
+    InitializeCriticalSection(&queue->lock);
+    queue->notEmpty = CreateEventW(NULL, FALSE, FALSE, NULL); // Auto-reset event
+    queue->notFull = CreateEventW(NULL, FALSE, TRUE, NULL);   // Auto-reset event, initially signaled
+    
+    if (!queue->notEmpty || !queue->notFull) {
+        if (queue->notEmpty) CloseHandle(queue->notEmpty);
+        if (queue->notFull) CloseHandle(queue->notFull);
+        DeleteCriticalSection(&queue->lock);
+        free(queue->messages);
+        free(queue);
+        return NULL;
+    }
+    
+    return queue;
+}
+
+// Destroy an IPC message queue
+void DestroyIPCMessageQueue(IPCMessageQueue* queue) {
+    if (!queue) return;
+    
+    EnterCriticalSection(&queue->lock);
+    
+    // Free any remaining messages
+    while (queue->count > 0) {
+        FreeIPCMessage(&queue->messages[queue->head]);
+        queue->head = (queue->head + 1) % queue->capacity;
+        queue->count--;
+    }
+    
+    LeaveCriticalSection(&queue->lock);
+    
+    // Cleanup synchronization objects
+    if (queue->notEmpty) CloseHandle(queue->notEmpty);
+    if (queue->notFull) CloseHandle(queue->notFull);
+    DeleteCriticalSection(&queue->lock);
+    
+    // Free memory
+    free(queue->messages);
+    free(queue);
+}
+
+// Add a message to the queue
+BOOL EnqueueIPCMessage(IPCMessageQueue* queue, const IPCMessage* message) {
+    if (!queue || !message) return FALSE;
+    
+    EnterCriticalSection(&queue->lock);
+    
+    // Check if queue is full
+    if (queue->count >= queue->capacity) {
+        LeaveCriticalSection(&queue->lock);
+        return FALSE; // Queue is full
+    }
+    
+    // Copy message to queue
+    memcpy(&queue->messages[queue->tail], message, sizeof(IPCMessage));
+    queue->tail = (queue->tail + 1) % queue->capacity;
+    queue->count++;
+    
+    // Signal that queue is not empty
+    SetEvent(queue->notEmpty);
+    
+    LeaveCriticalSection(&queue->lock);
+    
+    return TRUE;
+}
+
+// Remove a message from the queue
+BOOL DequeueIPCMessage(IPCMessageQueue* queue, IPCMessage* message) {
+    if (!queue || !message) return FALSE;
+    
+    EnterCriticalSection(&queue->lock);
+    
+    // Check if queue is empty
+    if (queue->count == 0) {
+        LeaveCriticalSection(&queue->lock);
+        
+        // Wait for messages with timeout
+        if (WaitForSingleObject(queue->notEmpty, 100) != WAIT_OBJECT_0) {
+            return FALSE; // Timeout or error
+        }
+        
+        EnterCriticalSection(&queue->lock);
+        if (queue->count == 0) {
+            LeaveCriticalSection(&queue->lock);
+            return FALSE; // Still empty
+        }
+    }
+    
+    // Copy message from queue
+    memcpy(message, &queue->messages[queue->head], sizeof(IPCMessage));
+    memset(&queue->messages[queue->head], 0, sizeof(IPCMessage)); // Clear the slot
+    queue->head = (queue->head + 1) % queue->capacity;
+    queue->count--;
+    
+    // Signal that queue is not full
+    SetEvent(queue->notFull);
+    
+    LeaveCriticalSection(&queue->lock);
+    
+    return TRUE;
+}
+
+// Free resources associated with an IPC message
+void FreeIPCMessage(IPCMessage* message) {
+    if (!message) return;
+    
+    if (message->autoFreeStrings) {
+        switch (message->type) {
+            case IPC_MSG_STATUS_UPDATE:
+                if (message->data.status.text) {
+                    free(message->data.status.text);
+                    message->data.status.text = NULL;
+                }
+                break;
+                
+            case IPC_MSG_TITLE_UPDATE:
+                if (message->data.title.title) {
+                    free(message->data.title.title);
+                    message->data.title.title = NULL;
+                }
+                break;
+                
+            case IPC_MSG_DURATION_UPDATE:
+                if (message->data.duration.duration) {
+                    free(message->data.duration.duration);
+                    message->data.duration.duration = NULL;
+                }
+                break;
+                
+            default:
+                // No strings to free for other message types
+                break;
+        }
+    }
+    
+    memset(message, 0, sizeof(IPCMessage));
+}
+
+// ============================================================================
+// Global IPC System Management
+// ============================================================================
+
+// Initialize the global IPC system
+BOOL InitializeGlobalIPC(void) {
+    if (g_ipcInitialized) return TRUE;
+    
+    if (InitializeIPC(&g_ipcContext, 200)) { // 200 message capacity
+        g_ipcInitialized = TRUE;
+        return TRUE;
+    }
+    
+    return FALSE;
+}
+
+// Cleanup the global IPC system
+void CleanupGlobalIPC(void) {
+    if (g_ipcInitialized) {
+        CleanupIPC(&g_ipcContext);
+        g_ipcInitialized = FALSE;
+    }
+}
+
+// Get the global IPC context
+IPCContext* GetGlobalIPCContext(void) {
+    return g_ipcInitialized ? &g_ipcContext : NULL;
+}
+
+// ============================================================================
+// Advanced IPC Functions
+// ============================================================================
+
+// Send a priority IPC message (higher priority messages are processed first)
+BOOL SendPriorityIPCMessage(IPCContext* context, const IPCMessage* message, DWORD priority) {
+    if (!context || !context->queue || !message) return FALSE;
+    
+    IPCMessage priorityMessage = *message;
+    priorityMessage.priority = priority;
+    priorityMessage.threadId = GetCurrentThreadId();
+    
+    EnterCriticalSection(&context->lock);
+    BOOL result = !context->shutdown && EnqueueIPCMessage(context->queue, &priorityMessage);
+    if (result && context->enableStatistics) {
+        context->stats.totalMessagesSent++;
+    }
+    LeaveCriticalSection(&context->lock);
+    
+    return result;
+}
+
+// Flush all pending messages in the IPC queue
+BOOL FlushIPCQueue(IPCContext* context) {
+    if (!context || !context->queue) return FALSE;
+    
+    EnterCriticalSection(&context->lock);
+    
+    // Wait for queue to be empty with timeout
+    DWORD startTime = GetTickCount();
+    while (context->queue->count > 0 && (GetTickCount() - startTime) < 5000) {
+        LeaveCriticalSection(&context->lock);
+        Sleep(10);
+        EnterCriticalSection(&context->lock);
+    }
+    
+    BOOL success = (context->queue->count == 0);
+    LeaveCriticalSection(&context->lock);
+    
+    return success;
+}
+
+// Get current IPC performance statistics
+void GetIPCStatistics(IPCContext* context, IPCStatistics* stats) {
+    if (!context || !stats) return;
+    
+    EnterCriticalSection(&context->lock);
+    *stats = context->stats;
+    
+    // Add current queue size as high water mark if it's higher
+    if (context->queue && context->queue->count > stats->queueHighWaterMark) {
+        stats->queueHighWaterMark = context->queue->count;
+        context->stats.queueHighWaterMark = context->queue->count;
+    }
+    
+    LeaveCriticalSection(&context->lock);
+}
+
+// Reset IPC performance statistics
+void ResetIPCStatistics(IPCContext* context) {
+    if (!context) return;
+    
+    EnterCriticalSection(&context->lock);
+    memset(&context->stats, 0, sizeof(IPCStatistics));
+    context->stats.lastResetTime = GetTickCount();
+    LeaveCriticalSection(&context->lock);
+}
+
+// Enable or disable IPC statistics collection
+BOOL SetIPCStatisticsEnabled(IPCContext* context, BOOL enabled) {
+    if (!context) return FALSE;
+    
+    EnterCriticalSection(&context->lock);
+    context->enableStatistics = enabled;
+    if (!enabled) {
+        memset(&context->stats, 0, sizeof(IPCStatistics));
+    } else {
+        context->stats.lastResetTime = GetTickCount();
+    }
+    LeaveCriticalSection(&context->lock);
+    
+    return TRUE;
+}
+
+// Send both progress and status update in a single optimized operation
+BOOL SendBatchProgressUpdate(IPCContext* context, HWND targetWindow, int percentage, const wchar_t* status) {
+    if (!context) return FALSE;
+    
+    BOOL success = TRUE;
+    
+    // Send progress update
+    success &= SendProgressUpdate(context, targetWindow, percentage);
+    
+    // Send status update if provided
+    if (status && wcslen(status) > 0) {
+        success &= SendStatusUpdate(context, targetWindow, status);
+    }
+    
+    return success;
+}
+
+// Send both title and duration update in a single optimized operation
+BOOL SendBatchMetadataUpdate(IPCContext* context, HWND targetWindow, const wchar_t* title, const wchar_t* duration) {
+    if (!context) return FALSE;
+    
+    BOOL success = TRUE;
+    
+    // Send title update if provided
+    if (title && wcslen(title) > 0) {
+        success &= SendTitleUpdate(context, targetWindow, title);
+    }
+    
+    // Send duration update if provided
+    if (duration && wcslen(duration) > 0) {
+        success &= SendDurationUpdate(context, targetWindow, duration);
+    }
+    
+    return success;
 }

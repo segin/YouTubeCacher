@@ -9,7 +9,6 @@
 
 - [x] 2. Create settings management module
 
-
   - Create settings.h header file with settings-related function prototypes
   - Implement settings.c with registry operations and configuration management
   - Move GetDefaultDownloadPath, GetDefaultYtDlpPath functions from main.c
@@ -19,8 +18,7 @@
   - Move FormatDuration utility function from main.c
   - _Requirements: 1.1, 1.2, 1.3, 4.1, 4.2, 4.3_
 
-- [-] 3. Create threading management module
-
+- [x] 3. Create threading management module
 
 
   - Create threading.h header file with thread-related structures and function prototypes
@@ -31,7 +29,8 @@
   - Move HandleDownloadCompletion function from main.c
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 4. Create yt-dlp integration module
+- [-] 4. Create yt-dlp integration module
+
   - Create ytdlp.h header file with yt-dlp related structures and function prototypes
   - Implement ytdlp.c with process execution and yt-dlp operations
   - Move all YtDlp configuration and validation functions from main.c

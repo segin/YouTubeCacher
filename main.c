@@ -1652,13 +1652,20 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
         if (GetCachedMetadata(GetCachedVideoMetadata(), &metadata)) {
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Successfully retrieved cached metadata\n");
             hasMetadata = TRUE;
-            // Update UI immediately with cached data
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting cached title to UI\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(metadata.title ? metadata.title : L"Unknown Title"));
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting cached duration to UI\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(metadata.duration ? metadata.duration : L"Unknown"));
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting 15% progress\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+            // Update UI immediately with cached data using IPC system
+            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Sending cached metadata to UI via IPC\n");
+            IPCContext* ipc = GetGlobalIPCContext();
+            if (ipc) {
+                SendBatchMetadataUpdate(ipc, hDlg, 
+                                      metadata.title ? metadata.title : L"Unknown Title",
+                                      metadata.duration ? metadata.duration : L"Unknown");
+                SendProgressUpdate(ipc, hDlg, 15);
+            } else {
+                // Fallback to direct PostMessage
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(metadata.title ? metadata.title : L"Unknown Title"));
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(metadata.duration ? metadata.duration : L"Unknown"));
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15);
+            }
         } else {
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to retrieve cached metadata\n");
         }
@@ -1670,9 +1677,14 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Need to fetch metadata from yt-dlp\n");
         // Show marquee progress while getting info
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting marquee animation\n");
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 4, 0); // Start marquee
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting 'Getting video information' status\n");
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(L"Getting video information..."));
+        IPCContext* ipc = GetGlobalIPCContext();
+        if (ipc) {
+            SendMarqueeControl(ipc, hDlg, TRUE);
+            SendStatusUpdate(ipc, hDlg, L"Getting video information...");
+        } else {
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 4, 0); // Start marquee
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(L"Getting video information..."));
+        }
         
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Calling GetVideoMetadata\n");
         if (GetVideoMetadata(context->url, &metadata)) {
@@ -1683,31 +1695,46 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
             
             // Update UI with retrieved data
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Stopping marquee animation\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 6, 0); // Stop marquee
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting retrieved title to UI\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(metadata.title ? metadata.title : L"Unknown Title"));
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting retrieved duration to UI\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(metadata.duration ? metadata.duration : L"Unknown"));
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting 15% progress after metadata\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+            IPCContext* ipc = GetGlobalIPCContext();
+            if (ipc) {
+                SendMarqueeControl(ipc, hDlg, FALSE);
+                SendBatchMetadataUpdate(ipc, hDlg, 
+                                      metadata.title ? metadata.title : L"Unknown Title",
+                                      metadata.duration ? metadata.duration : L"Unknown");
+                SendProgressUpdate(ipc, hDlg, 15);
+            } else {
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 6, 0); // Stop marquee
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(metadata.title ? metadata.title : L"Unknown Title"));
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(metadata.duration ? metadata.duration : L"Unknown"));
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+            }
         } else {
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - GetVideoMetadata FAILED\n");
             // Failed to get metadata, continue anyway
             OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Stopping marquee after failure\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 6, 0); // Stop marquee
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting unknown title after failure\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(L"Unknown Title"));
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting unknown duration after failure\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(L"Unknown"));
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting 15% progress after failure\n");
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+            IPCContext* ipc = GetGlobalIPCContext();
+            if (ipc) {
+                SendMarqueeControl(ipc, hDlg, FALSE);
+                SendBatchMetadataUpdate(ipc, hDlg, L"Unknown Title", L"Unknown");
+                SendProgressUpdate(ipc, hDlg, 15);
+            } else {
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 6, 0); // Stop marquee
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)_wcsdup(L"Unknown Title"));
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)_wcsdup(L"Unknown"));
+                PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, 15); // Progress: 15%
+            }
         }
     }
     
     // Step 2: Execute download with progress updates
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - STEP 2: Starting download process\n");
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting 'Starting download' status\n");
-    PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(L"Starting download..."));
+    IPCContext* ipc = GetGlobalIPCContext();
+    if (ipc) {
+        SendStatusUpdate(ipc, hDlg, L"Starting download...");
+    } else {
+        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(L"Starting download..."));
+    }
     
     // Create enhanced subprocess context for download with better output processing
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Creating enhanced subprocess context\n");
@@ -1716,7 +1743,12 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     if (!enhancedContext) {
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - CreateEnhancedSubprocessContext FAILED\n");
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting download failed message\n");
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        IPCContext* ipc = GetGlobalIPCContext();
+        if (ipc) {
+            SendDownloadFailed(ipc, hDlg);
+        } else {
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        }
         goto cleanup;
     }
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - CreateEnhancedSubprocessContext SUCCESS\n");
@@ -1727,7 +1759,12 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - StartEnhancedSubprocessExecution FAILED\n");
         FreeEnhancedSubprocessContext(enhancedContext);
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting download failed after subprocess start failure\n");
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        IPCContext* ipc = GetGlobalIPCContext();
+        if (ipc) {
+            SendDownloadFailed(ipc, hDlg);
+        } else {
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        }
         goto cleanup;
     }
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - StartEnhancedSubprocessExecution SUCCESS\n");
@@ -1793,7 +1830,12 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
             FreeYtDlpResult(result);
         }
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting download failed due to context allocation failure\n");
-        PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        IPCContext* ipc = GetGlobalIPCContext();
+        if (ipc) {
+            SendDownloadFailed(ipc, hDlg);
+        } else {
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0); // Download failed
+        }
     }
     
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Freeing enhanced subprocess context\n");
@@ -5114,6 +5156,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         FreeLibrary(hUser32);
     }
     
+    // Initialize the global IPC system for efficient cross-thread communication
+    if (!InitializeGlobalIPC()) {
+        MessageBoxW(NULL, L"Failed to initialize inter-process communication system.", 
+                   L"Initialization Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    
     // Check if command line contains YouTube URL
     if (lpCmdLine && wcslen(lpCmdLine) > 0 && IsYouTubeURL(lpCmdLine)) {
         SetCommandLineURL(lpCmdLine);
@@ -5141,6 +5190,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
             DispatchMessage(&msg);
         }
     }
+    
+    // Cleanup the global IPC system
+    CleanupGlobalIPC();
     
     // Cleanup error logging
     CleanupErrorLogging();
