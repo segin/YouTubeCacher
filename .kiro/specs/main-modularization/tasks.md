@@ -7,8 +7,7 @@
   - Implement thread-safe state access functions with proper synchronization
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [-] 2. Create settings management module
-
+- [x] 2. Create settings management module
 
 
   - Create settings.h header file with settings-related function prototypes
@@ -20,7 +19,10 @@
   - Move FormatDuration utility function from main.c
   - _Requirements: 1.1, 1.2, 1.3, 4.1, 4.2, 4.3_
 
-- [ ] 3. Create threading management module
+- [-] 3. Create threading management module
+
+
+
   - Create threading.h header file with thread-related structures and function prototypes
   - Implement threading.c with thread context management and synchronization
   - Move InitializeThreadContext, CleanupThreadContext functions from main.c

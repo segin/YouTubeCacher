@@ -148,6 +148,9 @@ typedef struct {
     BOOL isRunning;
 } ProcessHandle;
 
+// Include threading.h here to provide ThreadContext and ProgressCallback for structures below
+#include "threading.h"
+
 // Process options structure
 typedef struct {
     DWORD timeoutMs;
@@ -232,17 +235,7 @@ typedef struct {
     HWND hTabControl;
 } EnhancedErrorDialog;
 
-// Thread-safe subprocess execution structures
-typedef struct {
-    HANDLE hThread;
-    DWORD threadId;
-    BOOL isRunning;
-    BOOL cancelRequested;
-    CRITICAL_SECTION criticalSection;
-} ThreadContext;
-
-// Progress callback function type
-typedef void (*ProgressCallback)(int percentage, const wchar_t* status, void* userData);
+// Thread-safe subprocess execution structures are now defined in threading.h
 
 // Subprocess execution context for multithreading
 typedef struct {
@@ -278,6 +271,9 @@ typedef struct NonBlockingDownloadContext {
     wchar_t url[MAX_URL_LENGTH];
     SubprocessContext* context;
 } NonBlockingDownloadContext;
+
+// Threading module function prototypes (defined after type definitions)
+void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 
 // Function prototypes
 void DebugOutput(const wchar_t* message);
@@ -507,7 +503,7 @@ BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata*
 
 // Unified download functions
 DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam);
-void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void* userData);
+// UnifiedDownloadProgressCallback is now defined in threading.h
 BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url);
 
 // Progress parsing functions
@@ -518,7 +514,7 @@ void FreeProgressInfo(ProgressInfo* progress);
 void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status);
 void ShowMainProgressBar(HWND hDlg, BOOL show);
 void SetProgressBarMarquee(HWND hDlg, BOOL enable);
-void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData);
+// MainWindowProgressCallback is now defined in threading.h
 
 // Multithreaded subprocess execution functions
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
@@ -536,13 +532,9 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
 
 // Non-blocking download functions
 BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow);
-void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
+// HandleDownloadCompletion is now defined in threading.h
 
-// Thread-safe helper functions
-BOOL InitializeThreadContext(ThreadContext* threadContext);
-void CleanupThreadContext(ThreadContext* threadContext);
-BOOL SetCancellationFlag(ThreadContext* threadContext);
-BOOL IsCancellationRequested(const ThreadContext* threadContext);
+// Thread-safe helper functions are now defined in threading.h
 
 // Worker thread function
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam);
