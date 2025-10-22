@@ -91,9 +91,7 @@
 
 
 
-// Custom window messages
-#define WM_DOWNLOAD_COMPLETE (WM_USER + 102)
-#define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
+// Custom window messages moved to ytdlp.h
 
 // UnifiedDownloadContext moved to YouTubeCacher.h
 
@@ -113,16 +111,7 @@
 
 // GetVideoInfoThread moved to ytdlp.c
 
-// Synchronous version of the video info function (renamed from original)
-// Structure for concurrent video info retrieval
-typedef struct {
-    YtDlpConfig* config;
-    YtDlpRequest* request;
-    YtDlpResult* result;
-    HANDLE hThread;
-    DWORD threadId;
-    BOOL completed;
-} VideoInfoThread;
+// VideoInfoThread moved to ytdlp.h
 
 // VideoInfoWorkerThread moved to ytdlp.c
 

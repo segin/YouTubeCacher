@@ -1317,15 +1317,7 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
     return TRUE;
 }
 
-// Structure for concurrent video info retrieval
-typedef struct {
-    YtDlpConfig* config;
-    YtDlpRequest* request;
-    YtDlpResult* result;
-    HANDLE hThread;
-    DWORD threadId;
-    BOOL completed;
-} VideoInfoThread;
+// VideoInfoThread moved to ytdlp.h
 
 // Thread function for getting video info
 DWORD WINAPI VideoInfoWorkerThread(LPVOID lpParam) {
@@ -2599,3 +2591,7 @@ BOOL InitializeYtDlpSystem(HWND hMainWindow) {
     FreeValidationInfo(&validationInfo);
     return TRUE;
 }
+
+// FormatDuration is in settings.c
+
+// CreateDownloadDirectoryIfNeeded, GetDefaultDownloadPath, and GetDefaultYtDlpPath are in settings.c

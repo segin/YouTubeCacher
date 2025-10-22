@@ -19,6 +19,16 @@ typedef struct {
     DWORD threadId;
 } VideoInfoThreadData;
 
+// Structure for concurrent video info retrieval
+typedef struct {
+    YtDlpConfig* config;
+    YtDlpRequest* request;
+    YtDlpResult* result;
+    HANDLE hThread;
+    DWORD threadId;
+    BOOL completed;
+} VideoInfoThread;
+
 // YtDlp configuration and validation functions
 BOOL InitializeYtDlpConfig(YtDlpConfig* config);
 void CleanupYtDlpConfig(YtDlpConfig* config);
