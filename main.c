@@ -166,66 +166,9 @@ YtDlpResult* GetSubprocessResult(SubprocessContext* context) {
 
 // StartUnifiedDownload moved to ytdlp.c
 
-// Thread function for non-blocking download
-DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
-    OutputDebugStringW(L"YouTubeCacher: NonBlockingDownloadThread started\n");
-    
-    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lpParam;
-    if (!downloadContext) {
-        OutputDebugStringW(L"YouTubeCacher: Invalid downloadContext\n");
-        return 1;
-    }
-    
-    // Execute the download using multithreaded approach with progress
-    YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&downloadContext->config, downloadContext->request, 
-                                                          downloadContext->parentWindow, L"Downloading Video");
-    
-    // Post completion message to main window with result
-    PostMessageW(downloadContext->parentWindow, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
-    
-    return 0;
-}
+// NonBlockingDownloadThread moved to ytdlp.c
 
-// Start non-blocking download operation
-BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow) {
-    if (!config || !request || !parentWindow) return FALSE;
-    
-    // Create download context
-    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)malloc(sizeof(NonBlockingDownloadContext));
-    if (!downloadContext) return FALSE;
-    
-    // Copy configuration and request data
-    memcpy(&downloadContext->config, config, sizeof(YtDlpConfig));
-    downloadContext->request = request; // Transfer ownership
-    downloadContext->parentWindow = parentWindow;
-    
-    // Copy temp directory and URL for cleanup
-    if (request->tempDir) {
-        wcscpy(downloadContext->tempDir, request->tempDir);
-    }
-    if (request->url) {
-        wcscpy(downloadContext->url, request->url);
-    }
-    
-    // Set progress bar to indeterminate (marquee) mode before starting download
-    HWND hProgressBar = GetDlgItem(parentWindow, IDC_PROGRESS_BAR);
-    if (hProgressBar) {
-        SetWindowLongW(hProgressBar, GWL_STYLE, 
-            GetWindowLongW(hProgressBar, GWL_STYLE) | PBS_MARQUEE);
-        SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50); // 50ms animation speed
-    }
-    
-    // Create and start the download thread
-    HANDLE hThread = CreateThread(NULL, 0, NonBlockingDownloadThread, downloadContext, 0, NULL);
-    if (!hThread) {
-        free(downloadContext);
-        return FALSE;
-    }
-    
-    // Don't wait for thread - it will notify us via message when complete
-    CloseHandle(hThread);
-    return TRUE;
-}
+// StartNonBlockingDownload moved to ytdlp.c
 
 // HandleDownloadCompletion moved to threading.c
 
@@ -240,19 +183,7 @@ typedef struct {
     DWORD threadId;
 } VideoInfoThreadData;
 
-// Thread function for getting video info without blocking UI
-DWORD WINAPI GetVideoInfoThread(LPVOID lpParam) {
-    VideoInfoThreadData* data = (VideoInfoThreadData*)lpParam;
-    if (!data) return 1;
-    
-    // Get video title and duration using the existing synchronous function
-    data->success = GetVideoTitleAndDurationSync(data->url, data->title, 512, data->duration, 64);
-    
-    // Notify main thread that we're done
-    PostMessageW(data->hDlg, WM_USER + 101, 0, (LPARAM)data);
-    
-    return 0;
-}
+// GetVideoInfoThread moved to ytdlp.c
 
 // Synchronous version of the video info function (renamed from original)
 // Structure for concurrent video info retrieval
@@ -265,190 +196,11 @@ typedef struct {
     BOOL completed;
 } VideoInfoThread;
 
-// Thread function for getting video info
-DWORD WINAPI VideoInfoWorkerThread(LPVOID lpParam) {
-    VideoInfoThread* threadInfo = (VideoInfoThread*)lpParam;
-    if (!threadInfo || !threadInfo->config || !threadInfo->request) {
-        return 1;
-    }
-    
-    threadInfo->result = ExecuteYtDlpRequest(threadInfo->config, threadInfo->request);
-    threadInfo->completed = TRUE;
-    return 0;
-}
+// VideoInfoWorkerThread moved to ytdlp.c
 
-BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
-    if (!url || !title || !duration || titleSize == 0 || durationSize == 0) return FALSE;
-    
-    // Initialize output strings
-    title[0] = L'\0';
-    duration[0] = L'\0';
-    
-    // Initialize YtDlp configuration
-    YtDlpConfig config = {0};
-    if (!InitializeYtDlpConfig(&config)) {
-        return FALSE;
-    }
-    
-    // Validate yt-dlp installation
-    ValidationInfo validationInfo = {0};
-    if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
-        FreeValidationInfo(&validationInfo);
-        CleanupYtDlpConfig(&config);
-        return FALSE;
-    }
-    FreeValidationInfo(&validationInfo);
-    
-    BOOL success = FALSE;
-    
-    // Create temporary directory for operations
-    wchar_t tempDir[MAX_EXTENDED_PATH];
-    if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
-        CleanupYtDlpConfig(&config);
-        return FALSE;
-    }
-    
-    // Create requests for both title and duration
-    YtDlpRequest* titleRequest = CreateYtDlpRequest(YTDLP_OP_GET_TITLE, url, NULL);
-    YtDlpRequest* durationRequest = CreateYtDlpRequest(YTDLP_OP_GET_DURATION, url, NULL);
-    
-    if (!titleRequest || !durationRequest) {
-        if (titleRequest) FreeYtDlpRequest(titleRequest);
-        if (durationRequest) FreeYtDlpRequest(durationRequest);
-        CleanupTempDirectory(tempDir);
-        CleanupYtDlpConfig(&config);
-        return FALSE;
-    }
-    
-    titleRequest->tempDir = _wcsdup(tempDir);
-    durationRequest->tempDir = _wcsdup(tempDir);
-    
-    // Create thread info structures
-    VideoInfoThread titleThread = {0};
-    VideoInfoThread durationThread = {0};
-    
-    titleThread.config = &config;
-    titleThread.request = titleRequest;
-    
-    durationThread.config = &config;
-    durationThread.request = durationRequest;
-    
-    // Start both threads concurrently
-    titleThread.hThread = CreateThread(NULL, 0, VideoInfoWorkerThread, &titleThread, 0, &titleThread.threadId);
-    durationThread.hThread = CreateThread(NULL, 0, VideoInfoWorkerThread, &durationThread, 0, &durationThread.threadId);
-    
-    if (titleThread.hThread && durationThread.hThread) {
-        // Wait for both threads to complete (with timeout)
-        HANDLE threads[2] = {titleThread.hThread, durationThread.hThread};
-        DWORD waitResult = WaitForMultipleObjects(2, threads, TRUE, 30000); // 30 second timeout
-        
-        if (waitResult == WAIT_OBJECT_0) {
-            // Both threads completed successfully
-            
-            // Process title result
-            if (titleThread.result && titleThread.result->success && titleThread.result->output) {
-                wchar_t* cleanTitle = titleThread.result->output;
-                
-                // Remove trailing newlines and whitespace
-                size_t len = wcslen(cleanTitle);
-                while (len > 0 && (cleanTitle[len-1] == L'\n' || cleanTitle[len-1] == L'\r' || cleanTitle[len-1] == L' ')) {
-                    cleanTitle[len-1] = L'\0';
-                    len--;
-                }
-                
-                wcsncpy(title, cleanTitle, titleSize - 1);
-                title[titleSize - 1] = L'\0';
-                success = TRUE;
-            }
-            
-            // Process duration result
-            if (durationThread.result && durationThread.result->success && durationThread.result->output) {
-                wchar_t* cleanDuration = durationThread.result->output;
-                
-                // Remove trailing newlines and whitespace
-                size_t len = wcslen(cleanDuration);
-                while (len > 0 && (cleanDuration[len-1] == L'\n' || cleanDuration[len-1] == L'\r' || cleanDuration[len-1] == L' ')) {
-                    cleanDuration[len-1] = L'\0';
-                    len--;
-                }
-                
-                wcsncpy(duration, cleanDuration, durationSize - 1);
-                duration[durationSize - 1] = L'\0';
-                
-                // Format the duration properly
-                FormatDuration(duration, durationSize);
-                
-                // If we got duration but not title, still consider it a partial success
-                if (!success && wcslen(duration) > 0) {
-                    success = TRUE;
-                }
-            }
-        } else {
-            // Timeout or error - terminate threads
-            if (titleThread.hThread) {
-                TerminateThread(titleThread.hThread, 1);
-            }
-            if (durationThread.hThread) {
-                TerminateThread(durationThread.hThread, 1);
-            }
-        }
-    }
-    
-    // Cleanup threads
-    if (titleThread.hThread) {
-        CloseHandle(titleThread.hThread);
-    }
-    if (durationThread.hThread) {
-        CloseHandle(durationThread.hThread);
-    }
-    
-    // Cleanup results
-    if (titleThread.result) FreeYtDlpResult(titleThread.result);
-    if (durationThread.result) FreeYtDlpResult(durationThread.result);
-    
-    // Cleanup requests
-    FreeYtDlpRequest(titleRequest);
-    FreeYtDlpRequest(durationRequest);
-    
-    // Cleanup
-    CleanupTempDirectory(tempDir);
-    CleanupYtDlpConfig(&config);
-    
-    return success;
-}
+// GetVideoTitleAndDurationSync moved to ytdlp.c
 
-// Threaded version that doesn't block the UI
-BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
-    UNREFERENCED_PARAMETER(title);      // Not used in threaded version
-    UNREFERENCED_PARAMETER(titleSize);  // Not used in threaded version
-    UNREFERENCED_PARAMETER(duration);   // Not used in threaded version
-    UNREFERENCED_PARAMETER(durationSize); // Not used in threaded version
-    
-    if (!hDlg || !url) return FALSE;
-    
-    // Create thread data structure
-    VideoInfoThreadData* data = (VideoInfoThreadData*)malloc(sizeof(VideoInfoThreadData));
-    if (!data) return FALSE;
-    
-    // Initialize thread data
-    data->hDlg = hDlg;
-    wcsncpy(data->url, url, MAX_URL_LENGTH - 1);
-    data->url[MAX_URL_LENGTH - 1] = L'\0';
-    data->title[0] = L'\0';
-    data->duration[0] = L'\0';
-    data->success = FALSE;
-    
-    // Create thread to get video info
-    data->hThread = CreateThread(NULL, 0, GetVideoInfoThread, data, 0, &data->threadId);
-    if (!data->hThread) {
-        free(data);
-        return FALSE;
-    }
-    
-    // Don't wait for completion - let the thread notify us when done
-    // The thread will send WM_USER + 101 message when complete
-    return TRUE; // Return TRUE to indicate thread started successfully
-}
+// GetVideoTitleAndDuration moved to ytdlp.c
 
 // Update the video info UI fields with title and duration
 void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration) {
