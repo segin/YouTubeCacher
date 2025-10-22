@@ -6,7 +6,6 @@
 
 
 
-
   - Create appstate.h header file with ApplicationState structure and function prototypes
   - Implement appstate.c with state initialization, cleanup, and accessor functions
   - Move all global variables from main.c into the ApplicationState structure

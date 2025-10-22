@@ -1,10 +1,4 @@
-#include "parser.h"
 #include "YouTubeCacher.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <wchar.h>
-#include <wctype.h>
 
 // External debug output function from main.c
 extern void DebugOutput(const wchar_t* message);

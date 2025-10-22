@@ -59,6 +59,8 @@ This project follows a modular C/Windows application structure with clear separa
 4. **Type Safety**: Proper extern declarations and function prototypes
 5. **Maintainability**: Constants can be changed in one location
 6. **Unicode Support**: All code uses Unicode (UTF-16) APIs and TCHAR types for proper internationalization
+7. **Master Header Inclusion**: The only header file included by `.c` files is `YouTubeCacher.h`. This master header includes all other necessary headers
+8. **Version Control Discipline**: Always run `git status`, `git commit` and `git push` after every development step. Use `git diff` when `git status` shows additional staged changes
 
 ## Build Process
 

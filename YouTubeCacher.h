@@ -2,8 +2,22 @@
 #define YOUTUBECACHER_H
 
 #include <windows.h>
+#include <stdio.h>
+#include <string.h>
+#include <wchar.h>
+#include <wctype.h>
+#include <stdlib.h>
+#include <commdlg.h>
+#include <shlobj.h>
+#include <commctrl.h>
+#include <knownfolders.h>
+#include <tlhelp32.h>
+#include <psapi.h>
+#include <shlwapi.h>
+#include <stdint.h>
 #include "resource.h"
 #include "cache.h"
+#include "base64.h"
 
 // Application constants
 #define APP_NAME            L"YouTube Cacher"
@@ -471,6 +485,9 @@ typedef struct {
     BOOL isValid;
 } CachedVideoMetadata;
 
+// Include appstate.h after type definitions to avoid circular dependencies
+#include "appstate.h"
+
 // Video metadata functions
 BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata);
 BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata);
@@ -553,87 +570,7 @@ BOOL MigrateYtDlpConfiguration(YtDlpConfig* config);
 BOOL SetupDefaultYtDlpConfiguration(YtDlpConfig* config);
 void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInfo);
 
-// Application state structure containing all global variables
-typedef struct {
-    // Command line state
-    wchar_t cmdLineURL[1024];  // MAX_URL_LENGTH
-    
-    // UI state flags
-    BOOL isDownloading;
-    BOOL programmaticChange;
-    BOOL manualPaste;
-    
-    // Configuration state
-    BOOL enableDebug;
-    BOOL enableLogfile;
-    BOOL enableAutopaste;
-    
-    // UI resources (brushes for text field colors)
-    HBRUSH hBrushWhite;
-    HBRUSH hBrushLightGreen;
-    HBRUSH hBrushLightBlue;
-    HBRUSH hBrushLightTeal;
-    HBRUSH hCurrentBrush;
-    
-    // Cache and metadata
-    CacheManager* cacheManager;
-    CachedVideoMetadata* cachedVideoMetadata;
-    
-    // Original window procedures for subclassing
-    WNDPROC originalTextFieldProc;
-    
-    // Thread synchronization
-    CRITICAL_SECTION stateLock;
-    BOOL isInitialized;
-} ApplicationState;
 
-// State management functions
-BOOL InitializeApplicationState(ApplicationState* state);
-void CleanupApplicationState(ApplicationState* state);
-ApplicationState* GetApplicationState(void);
-
-// Thread-safe state access functions
-BOOL SetDownloadingState(BOOL isDownloading);
-BOOL GetDownloadingState(void);
-void SetProgrammaticChangeFlag(BOOL flag);
-BOOL GetProgrammaticChangeFlag(void);
-void SetManualPasteFlag(BOOL flag);
-BOOL GetManualPasteFlag(void);
-
-// Configuration state functions
-void SetDebugState(BOOL enableDebug, BOOL enableLogfile);
-void GetDebugState(BOOL* enableDebug, BOOL* enableLogfile);
-void SetAutopasteState(BOOL enableAutopaste);
-BOOL GetAutopasteState(void);
-
-// UI resource access functions
-HBRUSH GetBrush(int brushType);
-void SetCurrentBrush(HBRUSH brush);
-HBRUSH GetCurrentBrush(void);
-
-// Window procedure access functions
-void SetOriginalTextFieldProc(WNDPROC proc);
-WNDPROC GetOriginalTextFieldProc(void);
-
-// Command line URL functions
-void SetCommandLineURL(const wchar_t* url);
-const wchar_t* GetCommandLineURL(void);
-
-// Cache and metadata access functions
-CacheManager* GetCacheManager(void);
-CachedVideoMetadata* GetCachedVideoMetadata(void);
-
-// State change notification
-typedef void (*StateChangeCallback)(const char* stateType, void* newValue, void* userData);
-void RegisterStateChangeCallback(StateChangeCallback callback, void* userData);
-void UnregisterStateChangeCallback(StateChangeCallback callback);
-void NotifyStateChange(const char* stateType, void* newValue);
-
-// Brush type constants
-#define BRUSH_WHITE         0
-#define BRUSH_LIGHT_GREEN   1
-#define BRUSH_LIGHT_BLUE    2
-#define BRUSH_LIGHT_TEAL    3
 
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"

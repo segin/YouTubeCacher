@@ -1,15 +1,4 @@
 #include "YouTubeCacher.h"
-#include <stdio.h>
-#include <string.h>
-#include <wchar.h>
-#include <wctype.h>
-#include <stdlib.h>
-#include <commdlg.h>
-#include <shlobj.h>
-#include <commctrl.h>
-#include <knownfolders.h>
-#include <tlhelp32.h>
-#include <psapi.h>
 
 // MinGW32 provides _wcsdup and _wcsicmp, no custom implementation needed
 

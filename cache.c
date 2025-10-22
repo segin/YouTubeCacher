@@ -1,12 +1,4 @@
-#include "cache.h"
 #include "YouTubeCacher.h"
-#include "base64.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <wchar.h>
-#include <shlwapi.h>
-#include <commctrl.h>
 
 // Initialize the cache manager
 BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) {

@@ -1,5 +1,4 @@
-#include "uri.h"
-#include <wchar.h>
+#include "YouTubeCacher.h"
 
 BOOL IsYouTubeURL(const wchar_t* url) {
     if (url == NULL) {

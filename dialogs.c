@@ -1,10 +1,4 @@
 #include "YouTubeCacher.h"
-#include <commctrl.h>
-#include <commdlg.h>
-#include <shlobj.h>
-#include <string.h>
-#include <wchar.h>
-#include <stdio.h>
 
 // Define _countof if not available
 #ifndef _countof
