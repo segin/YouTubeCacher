@@ -146,61 +146,7 @@ void UpdateDebugControlVisibility(HWND hDlg) {
 
 // CreateYtDlpRequest and FreeYtDlpRequest moved to ytdlp.c
 
-BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize) {
-    (void)config; // Unused parameter
-    
-    // Get system temp directory
-    DWORD result = GetTempPathW((DWORD)tempDirSize, tempDir);
-    if (result == 0 || result >= tempDirSize) {
-        // Fallback to user's local app data if GetTempPath fails
-        PWSTR localAppDataW = NULL;
-        HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
-        if (SUCCEEDED(hr) && localAppDataW) {
-            swprintf(tempDir, tempDirSize, L"%ls\\Temp", localAppDataW);
-            CoTaskMemFree(localAppDataW);
-        } else {
-            // Ultimate fallback to current directory
-            wcscpy(tempDir, L".");
-        }
-    }
-    
-    // Validate that we're not trying to use a system directory
-    if (wcsstr(tempDir, L"\\Windows\\") != NULL || 
-        wcsstr(tempDir, L"\\System32\\") != NULL ||
-        wcsstr(tempDir, L"\\SysWOW64\\") != NULL) {
-        // Force fallback to user's local app data
-        PWSTR localAppDataW = NULL;
-        HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
-        if (SUCCEEDED(hr) && localAppDataW) {
-            swprintf(tempDir, tempDirSize, L"%ls\\YouTubeCacher\\Temp", localAppDataW);
-            CoTaskMemFree(localAppDataW);
-        } else {
-            wcscpy(tempDir, L".\\temp");
-        }
-    }
-    
-    // Append unique subdirectory name
-    wchar_t uniqueName[64];
-    swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
-    
-    if (wcslen(tempDir) + wcslen(uniqueName) + 2 >= tempDirSize) {
-        return FALSE;
-    }
-    
-    wcscat(tempDir, L"\\");
-    wcscat(tempDir, uniqueName);
-    
-    // Create the directory (and parent directories if needed)
-    wchar_t parentDir[MAX_EXTENDED_PATH];
-    wcscpy(parentDir, tempDir);
-    wchar_t* lastSlash = wcsrchr(parentDir, L'\\');
-    if (lastSlash) {
-        *lastSlash = L'\0';
-        CreateDirectoryW(parentDir, NULL); // Create parent if it doesn't exist
-    }
-    
-    return CreateDirectoryW(tempDir, NULL);
-}
+// CreateTempDirectory moved to ytdlp.c
 
 BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
     // Try user's local app data first (safer than system temp)
