@@ -560,5 +560,6 @@ void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInf
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"
 #include "parser.h"
+#include "ytdlp.h"
 
 #endif // YOUTUBECACHER_H
