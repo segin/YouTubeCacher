@@ -1,18 +1,16 @@
 # Implementation Plan
 
-- [-] 1. Create application state management module
+- [x] 1. Create application state management module
 
-
-
-
-
-  - Create appstate.h header file with ApplicationState structure and function prototypes
   - Implement appstate.c with state initialization, cleanup, and accessor functions
   - Move all global variables from main.c into the ApplicationState structure
   - Implement thread-safe state access functions with proper synchronization
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 2. Create settings management module
+- [-] 2. Create settings management module
+
+
+
   - Create settings.h header file with settings-related function prototypes
   - Implement settings.c with registry operations and configuration management
   - Move GetDefaultDownloadPath, GetDefaultYtDlpPath functions from main.c

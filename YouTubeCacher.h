@@ -283,7 +283,6 @@ typedef struct NonBlockingDownloadContext {
 void DebugOutput(const wchar_t* message);
 void WriteSessionStartToLogfile(void);
 void WriteSessionEndToLogfile(const wchar_t* reason);
-void FormatDuration(wchar_t* duration, size_t bufferSize);
 void InstallYtDlpWithWinget(HWND hParent);
 void CheckClipboardForYouTubeURL(HWND hDlg);
 void ResizeControls(HWND hDlg);
@@ -293,15 +292,8 @@ void ForceVisualStylesActivation(void);
 HWND CreateThemedDialog(HINSTANCE hInstance, LPCWSTR lpTemplate, HWND hWndParent, DLGPROC lpDialogFunc);
 LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 BOOL RegisterMainWindowClass(HINSTANCE hInstance);
-void GetDefaultDownloadPath(wchar_t* path, size_t pathSize);
-void GetDefaultYtDlpPath(wchar_t* path, size_t pathSize);
-BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path);
 BOOL ValidateYtDlpExecutable(const wchar_t* path);
 LRESULT CALLBACK TextFieldSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bufferSize);
-BOOL SaveSettingToRegistry(const wchar_t* valueName, const wchar_t* value);
-void LoadSettings(HWND hDlg);
-void SaveSettings(HWND hDlg);
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
@@ -487,6 +479,7 @@ typedef struct {
 
 // Include appstate.h after type definitions to avoid circular dependencies
 #include "appstate.h"
+#include "settings.h"
 
 // Video metadata functions
 BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata);
