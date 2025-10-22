@@ -121,142 +121,11 @@ void UpdateDebugControlVisibility(HWND hDlg) {
     ShowWindow(GetDlgItem(hDlg, IDC_COLOR_WHITE), showState);
 }
 
-// Function to install yt-dlp using winget
-void InstallYtDlpWithWinget(HWND hParent) {
-    DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - Starting yt-dlp installation");
-    
-    // Create process to run winget install yt-dlp
-    STARTUPINFOW si = {0};
-    PROCESS_INFORMATION pi = {0};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_SHOW; // Show the command window so user can see progress
-    
-    wchar_t cmdLine[] = L"winget install yt-dlp";
-    
-    // Create the process
-    BOOL processCreated = CreateProcessW(
-        NULL,           // No module name (use command line)
-        cmdLine,        // Command line
-        NULL,           // Process handle not inheritable
-        NULL,           // Thread handle not inheritable
-        FALSE,          // Set handle inheritance to FALSE
-        0,              // No creation flags
-        NULL,           // Use parent's environment block
-        NULL,           // Use parent's starting directory
-        &si,            // Pointer to STARTUPINFO structure
-        &pi             // Pointer to PROCESS_INFORMATION structure
-    );
-    
-    if (!processCreated) {
-        DWORD error = GetLastError();
-        wchar_t debugMsg[256];
-        swprintf(debugMsg, 256, L"YouTubeCacher: InstallYtDlpWithWinget - Failed to create winget process, error: %lu", error);
-        DebugOutput(debugMsg);
-        
-        // Create unified warning dialog for WinGet not available
-        static wchar_t details[512];
-        swprintf(details, 512, L"Process creation failed with error code: %lu\r\n\r\n"
-                              L"winget is the Windows Package Manager that should be available on:\r\n"
-                              L"- Windows 10 version 1809 and later\r\n"
-                              L"- Windows 11 (all versions)\r\n\r\n"
-                              L"winget is typically installed automatically when an admin user first logs in to modern Windows systems.",
-                              error);
-        
-        static wchar_t diagnostics[256];
-        wcscpy(diagnostics, L"The system was unable to execute the 'winget install yt-dlp' command. "
-                           L"This indicates winget may not be installed, not in PATH, or access is restricted.");
-        
-        static wchar_t solutions[512];
-        wcscpy(solutions, L"Manual yt-dlp Installation:\r\n"
-                         L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\r\n"
-                         L"2. Download the latest yt-dlp.exe\r\n"
-                         L"3. Place it in a folder in your PATH or configure the path in File > Settings\r\n\r\n"
-                         L"Alternative - Install winget:\r\n"
-                         L"- Download MSIX bundle from: https://github.com/microsoft/winget-cli/releases\r\n"
-                         L"- Install the .msixbundle file (requires sideloading enabled)");
-        
-        UnifiedDialogConfig config = {0};
-        config.dialogType = UNIFIED_DIALOG_WARNING;
-        config.title = L"winget Not Available";
-        config.message = L"Could not run 'winget install yt-dlp'. winget may not be installed or available on this system.";
-        config.details = details;
-        config.tab1_name = L"Details";
-        config.tab2_content = diagnostics;
-        config.tab2_name = L"Diagnostics";
-        config.tab3_content = solutions;
-        config.tab3_name = L"Solutions";
-        config.showDetailsButton = TRUE;
-        config.showCopyButton = TRUE;
-        
-        ShowUnifiedDialog(hParent, &config);
-        return;
-    }
-    
-    DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - WinGet process started successfully");
-    
-    // Show simple informational dialog about installation progress using unified dialog
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_INFO;
-    config.title = L"Installing yt-dlp";
-    config.message = L"winget is installing yt-dlp. Please wait for the installation to complete.\r\n\r\n"
-                    L"A command window will show the installation progress. "
-                    L"After installation completes, you may need to restart YouTubeCacher or update the yt-dlp path in File > Settings.";
-    config.details = L"The winget package manager is downloading and installing yt-dlp automatically. "
-                    L"This process may take a few minutes depending on your internet connection.";
-    config.tab1_name = L"Details";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    ShowUnifiedDialog(hParent, &config);
-    
-    // Don't wait for the process - let it run independently
-    // Close handles to avoid resource leaks
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-}
+// InstallYtDlpWithWinget moved to ytdlp.c
 
 
 
-// Function to validate that yt-dlp executable exists and is accessible
-BOOL ValidateYtDlpExecutable(const wchar_t* path) {
-    // Check if path is empty
-    if (!path || wcslen(path) == 0) {
-        return FALSE;
-    }
-    
-    // Check if file exists
-    DWORD attributes = GetFileAttributesW(path);
-    if (attributes == INVALID_FILE_ATTRIBUTES) {
-        return FALSE;
-    }
-    
-    // Check if it's a file (not a directory)
-    if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
-        return FALSE;
-    }
-    
-    // Check if it's an executable file (has .exe, .cmd, .bat, .py, or .ps1 extension)
-    const wchar_t* ext = wcsrchr(path, L'.');
-    if (ext != NULL) {
-        // Convert extension to lowercase for comparison
-        wchar_t lowerExt[10];
-        wcscpy(lowerExt, ext);
-        for (int i = 0; lowerExt[i]; i++) {
-            lowerExt[i] = towlower(lowerExt[i]);
-        }
-        
-        if (wcscmp(lowerExt, L".exe") == 0 ||
-            wcscmp(lowerExt, L".cmd") == 0 ||
-            wcscmp(lowerExt, L".bat") == 0 ||
-            wcscmp(lowerExt, L".py") == 0 ||
-            wcscmp(lowerExt, L".ps1") == 0) {
-            return TRUE;
-        }
-    }
-    
-    return FALSE;
-}
+// ValidateYtDlpExecutable moved to ytdlp.c
 
 
 
@@ -267,111 +136,15 @@ BOOL ValidateYtDlpExecutable(const wchar_t* path) {
 // Stub implementations for YtDlp Manager system functions
 // These are placeholders for the actual implementations from tasks 1-7
 
-BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
-    if (!config) return FALSE;
-    
-    // Initialize with default values
-    memset(config, 0, sizeof(YtDlpConfig));
-    
-    // Load yt-dlp path from registry or use default
-    if (!LoadSettingFromRegistry(REG_YTDLP_PATH, config->ytDlpPath, MAX_EXTENDED_PATH)) {
-        GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
-    }
-    
-    // Load custom yt-dlp arguments from registry
-    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
-        // Use empty default if not found in registry
-        config->defaultArgs[0] = L'\0';
-    }
-    
-    // Set default timeout
-    config->timeoutSeconds = 300; // 5 minutes
-    config->tempDirStrategy = TEMP_DIR_SYSTEM;
-    config->enableVerboseLogging = FALSE;
-    config->autoRetryOnFailure = FALSE;
-    
-    return TRUE;
-}
+// InitializeYtDlpConfig moved to ytdlp.c
 
-void CleanupYtDlpConfig(YtDlpConfig* config) {
-    // Placeholder - no dynamic memory to clean up in current implementation
-    (void)config;
-}
+// CleanupYtDlpConfig moved to ytdlp.c
 
-BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info) {
-    if (!path || !info) return FALSE;
-    
-    // Initialize validation info
-    memset(info, 0, sizeof(ValidationInfo));
-    
-    // Use existing validation function
-    if (ValidateYtDlpExecutable(path)) {
-        info->result = VALIDATION_OK;
-        info->version = _wcsdup(L"Unknown version");
-        info->errorDetails = NULL;
-        info->suggestions = NULL;
-        return TRUE;
-    } else {
-        info->result = VALIDATION_NOT_FOUND;
-        info->version = NULL;
-        info->errorDetails = _wcsdup(L"yt-dlp executable not found or invalid");
-        info->suggestions = _wcsdup(L"Please check the path in File > Settings and ensure yt-dlp is properly installed");
-        return FALSE;
-    }
-}
+// ValidateYtDlpComprehensive moved to ytdlp.c
 
-void FreeValidationInfo(ValidationInfo* info) {
-    if (!info) return;
-    
-    if (info->version) {
-        free(info->version);
-        info->version = NULL;
-    }
-    if (info->errorDetails) {
-        free(info->errorDetails);
-        info->errorDetails = NULL;
-    }
-    if (info->suggestions) {
-        free(info->suggestions);
-        info->suggestions = NULL;
-    }
-}
+// FreeValidationInfo moved to ytdlp.c
 
-YtDlpRequest* CreateYtDlpRequest(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath) {
-    YtDlpRequest* request = (YtDlpRequest*)malloc(sizeof(YtDlpRequest));
-    if (!request) return NULL;
-    
-    memset(request, 0, sizeof(YtDlpRequest));
-    request->operation = operation;
-    
-    if (url) {
-        request->url = _wcsdup(url);
-    }
-    if (outputPath) {
-        request->outputPath = _wcsdup(outputPath);
-    }
-    
-    return request;
-}
-
-void FreeYtDlpRequest(YtDlpRequest* request) {
-    if (!request) return;
-    
-    if (request->url) {
-        free(request->url);
-    }
-    if (request->outputPath) {
-        free(request->outputPath);
-    }
-    if (request->tempDir) {
-        free(request->tempDir);
-    }
-    if (request->customArgs) {
-        free(request->customArgs);
-    }
-    
-    free(request);
-}
+// CreateYtDlpRequest and FreeYtDlpRequest moved to ytdlp.c
 
 BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize) {
     (void)config; // Unused parameter

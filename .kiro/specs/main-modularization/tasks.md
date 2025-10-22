@@ -20,7 +20,6 @@
 
 - [x] 3. Create threading management module
 
-
   - Create threading.h header file with thread-related structures and function prototypes
   - Implement threading.c with thread context management and synchronization
   - Move InitializeThreadContext, CleanupThreadContext functions from main.c
@@ -29,7 +28,12 @@
   - Move HandleDownloadCompletion function from main.c
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [-] 4. Create yt-dlp integration module
+- [x] 4. Create yt-dlp integration module
+
+
+
+
+
 
   - Create ytdlp.h header file with yt-dlp related structures and function prototypes
   - Implement ytdlp.c with process execution and yt-dlp operations
