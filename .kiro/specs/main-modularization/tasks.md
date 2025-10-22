@@ -36,6 +36,8 @@
 
 
 
+
+
   - Create ytdlp.h header file with yt-dlp related structures and function prototypes
   - Implement ytdlp.c with process execution and yt-dlp operations
   - Move all YtDlp configuration and validation functions from main.c

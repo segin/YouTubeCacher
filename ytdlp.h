@@ -19,6 +19,7 @@ BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t tit
 BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url);
 BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow);
+BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata);
 
 // Process management
 BOOL StartSubprocessExecution(SubprocessContext* context);
@@ -68,12 +69,28 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata);
 BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata);
 void FreeVideoMetadata(VideoMetadata* metadata);
 
+// Cached metadata functions
+void InitializeCachedMetadata(CachedVideoMetadata* cached);
+void FreeCachedMetadata(CachedVideoMetadata* cached);
+BOOL IsCachedMetadataValid(const CachedVideoMetadata* cached, const wchar_t* url);
+void StoreCachedMetadata(CachedVideoMetadata* cached, const wchar_t* url, const VideoMetadata* metadata);
+BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadata);
+
+// Progress parsing functions
+void FreeProgressInfo(ProgressInfo* progress);
+BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress);
+
+// Configuration management functions
+BOOL LoadYtDlpConfig(YtDlpConfig* config);
+BOOL SaveYtDlpConfig(const YtDlpConfig* config);
+
 // Worker thread functions
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam);
 DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam);
 DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam);
 DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
 DWORD WINAPI VideoInfoWorkerThread(LPVOID lpParam);
+DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam);
 
 // Multithreaded execution
 YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 

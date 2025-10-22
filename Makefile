@@ -1,7 +1,7 @@
 # Makefile for native Windows C program
 
 # Source files
-SOURCES = main.c uri.c dialogs.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c
+SOURCES = main.c uri.c dialogs.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object directories

@@ -967,6 +967,356 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     
     return success;
 }
+
+// Cached metadata functions
+
+// Initialize cached metadata structure
+void InitializeCachedMetadata(CachedVideoMetadata* cached) {
+    if (!cached) return;
+    
+    memset(cached, 0, sizeof(CachedVideoMetadata));
+    cached->isValid = FALSE;
+}
+
+// Free cached metadata structure
+void FreeCachedMetadata(CachedVideoMetadata* cached) {
+    if (!cached) return;
+    
+    if (cached->url) {
+        free(cached->url);
+        cached->url = NULL;
+    }
+    
+    FreeVideoMetadata(&cached->metadata);
+    cached->isValid = FALSE;
+}
+
+// Check if cached metadata is valid for the given URL
+BOOL IsCachedMetadataValid(const CachedVideoMetadata* cached, const wchar_t* url) {
+    if (!cached || !url || !cached->isValid || !cached->url) {
+        return FALSE;
+    }
+    
+    return (wcscmp(cached->url, url) == 0);
+}
+
+// Store metadata in cache
+void StoreCachedMetadata(CachedVideoMetadata* cached, const wchar_t* url, const VideoMetadata* metadata) {
+    if (!cached || !url || !metadata) return;
+    
+    // Free existing data
+    FreeCachedMetadata(cached);
+    
+    // Store new data
+    cached->url = _wcsdup(url);
+    
+    // Copy metadata
+    if (metadata->title) {
+        cached->metadata.title = _wcsdup(metadata->title);
+    }
+    if (metadata->duration) {
+        cached->metadata.duration = _wcsdup(metadata->duration);
+    }
+    if (metadata->id) {
+        cached->metadata.id = _wcsdup(metadata->id);
+    }
+    cached->metadata.success = metadata->success;
+    
+    cached->isValid = TRUE;
+}
+
+// Get cached metadata
+BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadata) {
+    if (!cached || !metadata || !cached->isValid) {
+        return FALSE;
+    }
+    
+    // Initialize output metadata
+    memset(metadata, 0, sizeof(VideoMetadata));
+    
+    // Copy cached data
+    if (cached->metadata.title) {
+        metadata->title = _wcsdup(cached->metadata.title);
+    }
+    if (cached->metadata.duration) {
+        metadata->duration = _wcsdup(cached->metadata.duration);
+    }
+    if (cached->metadata.id) {
+        metadata->id = _wcsdup(cached->metadata.id);
+    }
+    metadata->success = cached->metadata.success;
+    
+    return TRUE;
+}
+
+// Progress parsing functions
+
+// Free progress info structure
+void FreeProgressInfo(ProgressInfo* progress) {
+    if (!progress) return;
+    
+    if (progress->status) {
+        free(progress->status);
+        progress->status = NULL;
+    }
+    if (progress->speed) {
+        free(progress->speed);
+        progress->speed = NULL;
+    }
+    if (progress->eta) {
+        free(progress->eta);
+        progress->eta = NULL;
+    }
+}
+
+// Parse yt-dlp progress output (pipe-delimited machine format)
+// Expected format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
+// Example: 5562368|104857600|1290000.0|77
+BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
+    if (!line || !progress) return FALSE;
+    
+    // Initialize progress info
+    memset(progress, 0, sizeof(ProgressInfo));
+    
+    // Check for pipe-delimited progress format (downloaded|total|speed|eta)
+    const wchar_t* firstPipe = wcschr(line, L'|');
+    if (firstPipe) {
+        // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
+        const wchar_t* dataStart = line;
+        if (wcsstr(line, L"download:") == line) {
+            dataStart = line + 9; // Skip "download:" prefix
+        }
+        
+        // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
+        wchar_t* lineCopy = _wcsdup(dataStart);
+        if (!lineCopy) return FALSE;
+        
+        wchar_t* context = NULL;
+        wchar_t* token = wcstok(lineCopy, L"|", &context);
+        int tokenIndex = 0;
+        
+        long long downloadedBytes = 0;
+        long long totalBytes = 0;
+        double speedBytesPerSec = 0.0;
+        long long etaSeconds = 0;
+        
+        while (token && tokenIndex < 4) {
+            switch (tokenIndex) {
+                case 0: { // Downloaded bytes
+                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                        downloadedBytes = wcstoll(token, NULL, 10);
+                        progress->downloadedBytes = downloadedBytes;
+                    }
+                    break;
+                }
+                case 1: { // Total bytes
+                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                        totalBytes = wcstoll(token, NULL, 10);
+                        progress->totalBytes = totalBytes;
+                    }
+                    break;
+                }
+                case 2: { // Speed in bytes per second (can be decimal)
+                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                        speedBytesPerSec = wcstod(token, NULL);
+                        if (speedBytesPerSec > 0) {
+                            // Convert to human-readable format for display
+                            wchar_t speedStr[64];
+                            if (speedBytesPerSec >= 1024 * 1024 * 1024) {
+                                swprintf(speedStr, 64, L"%.1f GB/s", speedBytesPerSec / (1024.0 * 1024.0 * 1024.0));
+                            } else if (speedBytesPerSec >= 1024 * 1024) {
+                                swprintf(speedStr, 64, L"%.1f MB/s", speedBytesPerSec / (1024.0 * 1024.0));
+                            } else if (speedBytesPerSec >= 1024) {
+                                swprintf(speedStr, 64, L"%.1f KB/s", speedBytesPerSec / 1024.0);
+                            } else {
+                                swprintf(speedStr, 64, L"%.0f B/s", speedBytesPerSec);
+                            }
+                            progress->speed = _wcsdup(speedStr);
+                        }
+                    }
+                    break;
+                }
+                case 3: { // ETA in seconds
+                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                        etaSeconds = wcstoll(token, NULL, 10);
+                        if (etaSeconds > 0) {
+                            // Convert seconds to human-readable format
+                            wchar_t etaStr[32];
+                            if (etaSeconds >= 3600) {
+                                int hours = (int)(etaSeconds / 3600);
+                                int minutes = (int)((etaSeconds % 3600) / 60);
+                                int seconds = (int)(etaSeconds % 60);
+                                swprintf(etaStr, 32, L"%d:%02d:%02d", hours, minutes, seconds);
+                            } else if (etaSeconds >= 60) {
+                                int minutes = (int)(etaSeconds / 60);
+                                int seconds = (int)(etaSeconds % 60);
+                                swprintf(etaStr, 32, L"%d:%02d", minutes, seconds);
+                            } else {
+                                swprintf(etaStr, 32, L"%llds", etaSeconds);
+                            }
+                            progress->eta = _wcsdup(etaStr);
+                        }
+                    }
+                    break;
+                }
+            }
+            token = wcstok(NULL, L"|", &context);
+            tokenIndex++;
+        }
+        
+        free(lineCopy);
+        
+        // Calculate percentage ourselves from the raw data
+        if (totalBytes > 0 && downloadedBytes >= 0) {
+            progress->percentage = (int)((downloadedBytes * 100) / totalBytes);
+            if (progress->percentage > 100) progress->percentage = 100;
+        } else {
+            // No total size available - use marquee mode (indicated by -1)
+            progress->percentage = -1;
+        }
+        
+        // Build comprehensive status message
+        wchar_t statusMsg[256];
+        if (downloadedBytes > 0 && totalBytes > 0) {
+            // Convert bytes to human-readable format
+            wchar_t downloadedStr[32], totalStr[32];
+            
+            if (totalBytes >= 1024 * 1024 * 1024) {
+                swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+                swprintf(totalStr, 32, L"%.1f GB", totalBytes / (1024.0 * 1024.0 * 1024.0));
+            } else if (totalBytes >= 1024 * 1024) {
+                swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
+                swprintf(totalStr, 32, L"%.1f MB", totalBytes / (1024.0 * 1024.0));
+            } else if (totalBytes >= 1024) {
+                swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
+                swprintf(totalStr, 32, L"%.1f KB", totalBytes / 1024.0);
+            } else {
+                swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
+                swprintf(totalStr, 32, L"%lld B", totalBytes);
+            }
+            
+            if (progress->speed && progress->eta) {
+                swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls (ETA: %ls)", 
+                        downloadedStr, totalStr, progress->speed, progress->eta);
+            } else if (progress->speed) {
+                swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls", 
+                        downloadedStr, totalStr, progress->speed);
+            } else {
+                swprintf(statusMsg, 256, L"Downloading %ls of %ls (%d%%)", downloadedStr, totalStr, progress->percentage);
+            }
+        } else if (downloadedBytes > 0) {
+            // We have downloaded bytes but no total - show downloaded amount with speed if available
+            wchar_t downloadedStr[32];
+            if (downloadedBytes >= 1024 * 1024 * 1024) {
+                swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024 * 1024) {
+                swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024) {
+                swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
+            } else {
+                swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
+            }
+            
+            if (progress->speed) {
+                swprintf(statusMsg, 256, L"Downloaded %ls at %ls", downloadedStr, progress->speed);
+            } else {
+                swprintf(statusMsg, 256, L"Downloaded %ls", downloadedStr);
+            }
+        } else if (progress->speed) {
+            swprintf(statusMsg, 256, L"Downloading at %ls", progress->speed);
+        } else {
+            wcscpy(statusMsg, L"Downloading");
+        }
+        
+        progress->status = _wcsdup(statusMsg);
+        
+        // Check for completion
+        if (progress->percentage >= 100 || (totalBytes > 0 && downloadedBytes >= totalBytes)) {
+            progress->isComplete = TRUE;
+            if (progress->status) {
+                free(progress->status);
+                progress->status = _wcsdup(L"Download complete");
+            }
+        }
+        
+        return TRUE;
+    }
+    
+    // Fallback: Look for old format [download] lines for compatibility
+    if (wcsstr(line, L"[download]") == NULL) {
+        return FALSE;
+    }
+    
+    // Look for percentage in format like "50.0%"
+    const wchar_t* percentPos = wcsstr(line, L"%");
+    if (percentPos) {
+        // Go backwards to find the start of the number
+        const wchar_t* start = percentPos - 1;
+        while (start > line && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
+            start--;
+        }
+        start++; // Move to first digit
+        
+        if (start < percentPos) {
+            double percent = wcstod(start, NULL);
+            progress->percentage = (int)percent;
+        }
+    }
+    
+    // Look for speed (pattern like "at 1.23MiB/s")
+    const wchar_t* atPos = wcsstr(line, L" at ");
+    if (atPos) {
+        const wchar_t* speedStart = atPos + 4; // Skip " at "
+        const wchar_t* speedEnd = wcsstr(speedStart, L" ETA");
+        if (!speedEnd) speedEnd = speedStart + wcslen(speedStart);
+        
+        if (speedEnd > speedStart) {
+            size_t speedLen = speedEnd - speedStart;
+            progress->speed = (wchar_t*)malloc((speedLen + 1) * sizeof(wchar_t));
+            if (progress->speed) {
+                wcsncpy(progress->speed, speedStart, speedLen);
+                progress->speed[speedLen] = L'\0';
+            }
+        }
+    }
+    
+    // Look for ETA (pattern like "ETA 01:17")
+    const wchar_t* etaPos = wcsstr(line, L" ETA ");
+    if (etaPos) {
+        const wchar_t* etaStart = etaPos + 5; // Skip " ETA "
+        const wchar_t* etaEnd = etaStart;
+        while (*etaEnd && *etaEnd != L' ' && *etaEnd != L'\n' && *etaEnd != L'\r') {
+            etaEnd++;
+        }
+        
+        if (etaEnd > etaStart) {
+            size_t etaLen = etaEnd - etaStart;
+            progress->eta = (wchar_t*)malloc((etaLen + 1) * sizeof(wchar_t));
+            if (progress->eta) {
+                wcsncpy(progress->eta, etaStart, etaLen);
+                progress->eta[etaLen] = L'\0';
+            }
+        }
+    }
+    
+    // Set status
+    progress->status = _wcsdup(L"Downloading");
+    
+    // Check for completion
+    if (wcsstr(line, L"100%") || wcsstr(line, L"has already been downloaded")) {
+        progress->percentage = 100;
+        progress->isComplete = TRUE;
+        if (progress->status) {
+            free(progress->status);
+            progress->status = _wcsdup(L"Download complete");
+        }
+    } else {
+        progress->isComplete = (progress->percentage >= 100);
+    }
+    
+    return TRUE;
+}
+
 // Structure for concurrent video info retrieval
 typedef struct {
     YtDlpConfig* config;
@@ -1185,7 +1535,166 @@ BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, siz
     // Don't wait for completion - let the thread notify us when done
     // The thread will send WM_USER + 101 message when complete
     return TRUE; // Return TRUE to indicate thread started successfully
-}//
+}
+
+// Non-blocking Get Info worker thread
+DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam) {
+    GetInfoContext* context = (GetInfoContext*)lpParam;
+    if (!context) return 1;
+    
+    VideoMetadata* metadata = (VideoMetadata*)malloc(sizeof(VideoMetadata));
+    if (!metadata) {
+        free(context);
+        return 1;
+    }
+    
+    BOOL success = GetVideoMetadata(context->url, metadata);
+    
+    // Send result back to main thread (metadata will be freed by the main thread)
+    PostMessageW(context->hDialog, WM_USER + 103, (WPARAM)success, (LPARAM)metadata);
+    
+    free(context);
+    return 0;
+}
+
+// Start non-blocking Get Info operation
+BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata) {
+    if (!hDlg || !url || !cachedMetadata) return FALSE;
+    
+    GetInfoContext* context = (GetInfoContext*)malloc(sizeof(GetInfoContext));
+    if (!context) return FALSE;
+    
+    context->hDialog = hDlg;
+    wcscpy(context->url, url);
+    context->cachedMetadata = cachedMetadata;
+    
+    HANDLE hThread = CreateThread(NULL, 0, GetInfoWorkerThread, context, 0, NULL);
+    if (!hThread) {
+        free(context);
+        return FALSE;
+    }
+    
+    CloseHandle(hThread);
+    return TRUE;
+}
+
+// Configuration management functions
+
+BOOL LoadYtDlpConfig(YtDlpConfig* config) {
+    if (!config) return FALSE;
+    
+    // Initialize with default values first
+    memset(config, 0, sizeof(YtDlpConfig));
+    
+    // Load yt-dlp path from registry
+    if (!LoadSettingFromRegistry(REG_YTDLP_PATH, config->ytDlpPath, MAX_EXTENDED_PATH)) {
+        // No path in registry, use default
+        GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
+    }
+    
+    // Load default temporary directory
+    wchar_t tempBuffer[MAX_EXTENDED_PATH];
+    if (LoadSettingFromRegistry(L"DefaultTempDir", tempBuffer, MAX_EXTENDED_PATH)) {
+        wcscpy(config->defaultTempDir, tempBuffer);
+    } else {
+        // Use system temp directory as default
+        DWORD result = GetTempPathW(MAX_EXTENDED_PATH, config->defaultTempDir);
+        if (result == 0 || result >= MAX_EXTENDED_PATH) {
+            wcscpy(config->defaultTempDir, L"C:\\Temp\\");
+        }
+    }
+    
+    // Load custom yt-dlp arguments
+    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
+        config->defaultArgs[0] = L'\0';
+    }
+    
+    // Load timeout setting (stored as string in registry)
+    wchar_t timeoutStr[32];
+    if (LoadSettingFromRegistry(L"TimeoutSeconds", timeoutStr, 32)) {
+        config->timeoutSeconds = (DWORD)wcstoul(timeoutStr, NULL, 10);
+        if (config->timeoutSeconds == 0) {
+            config->timeoutSeconds = 300; // Default 5 minutes
+        }
+    } else {
+        config->timeoutSeconds = 300; // Default 5 minutes
+    }
+    
+    // Load boolean settings
+    wchar_t boolBuffer[16];
+    if (LoadSettingFromRegistry(L"EnableVerboseLogging", boolBuffer, 16)) {
+        config->enableVerboseLogging = (wcscmp(boolBuffer, L"1") == 0);
+    } else {
+        config->enableVerboseLogging = FALSE;
+    }
+    
+    if (LoadSettingFromRegistry(L"AutoRetryOnFailure", boolBuffer, 16)) {
+        config->autoRetryOnFailure = (wcscmp(boolBuffer, L"1") == 0);
+    } else {
+        config->autoRetryOnFailure = FALSE;
+    }
+    
+    // Load temp directory strategy
+    wchar_t strategyStr[32];
+    if (LoadSettingFromRegistry(L"TempDirStrategy", strategyStr, 32)) {
+        config->tempDirStrategy = (TempDirStrategy)wcstoul(strategyStr, NULL, 10);
+        if (config->tempDirStrategy > TEMP_DIR_APPDATA) {
+            config->tempDirStrategy = TEMP_DIR_SYSTEM; // Default
+        }
+    } else {
+        config->tempDirStrategy = TEMP_DIR_SYSTEM;
+    }
+    
+    return TRUE;
+}
+
+BOOL SaveYtDlpConfig(const YtDlpConfig* config) {
+    if (!config) return FALSE;
+    
+    BOOL allSuccess = TRUE;
+    
+    // Save yt-dlp path
+    if (!SaveSettingToRegistry(REG_YTDLP_PATH, config->ytDlpPath)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save default temporary directory
+    if (!SaveSettingToRegistry(L"DefaultTempDir", config->defaultTempDir)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save custom yt-dlp arguments
+    if (!SaveSettingToRegistry(REG_CUSTOM_ARGS, config->defaultArgs)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save timeout setting
+    wchar_t timeoutStr[32];
+    swprintf(timeoutStr, 32, L"%lu", config->timeoutSeconds);
+    if (!SaveSettingToRegistry(L"TimeoutSeconds", timeoutStr)) {
+        allSuccess = FALSE;
+    }
+    
+    // Save boolean settings
+    if (!SaveSettingToRegistry(L"EnableVerboseLogging", config->enableVerboseLogging ? L"1" : L"0")) {
+        allSuccess = FALSE;
+    }
+    
+    if (!SaveSettingToRegistry(L"AutoRetryOnFailure", config->autoRetryOnFailure ? L"1" : L"0")) {
+        allSuccess = FALSE;
+    }
+    
+    // Save temp directory strategy
+    wchar_t strategyStr[32];
+    swprintf(strategyStr, 32, L"%d", (int)config->tempDirStrategy);
+    if (!SaveSettingToRegistry(L"TempDirStrategy", strategyStr)) {
+        allSuccess = FALSE;
+    }
+    
+    return allSuccess;
+}
+
+//
 // Start unified download process
 BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Entry");

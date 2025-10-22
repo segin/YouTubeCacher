@@ -272,6 +272,15 @@ typedef struct NonBlockingDownloadContext {
     SubprocessContext* context;
 } NonBlockingDownloadContext;
 
+// Structure for unified download context
+typedef struct {
+    HWND hDialog;
+    wchar_t url[MAX_URL_LENGTH];
+    YtDlpConfig config;
+    YtDlpRequest* request;
+    wchar_t tempDir[MAX_EXTENDED_PATH];
+} UnifiedDownloadContext;
+
 // Threading module function prototypes (defined after type definitions)
 void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 
@@ -561,5 +570,6 @@ void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInf
 #include "uri.h"
 #include "parser.h"
 #include "ytdlp.h"
+#include "log.h"
 
 #endif // YOUTUBECACHER_H
