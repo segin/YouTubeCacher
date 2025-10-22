@@ -41,11 +41,7 @@
 #define BASE_DEFAULT_WIDTH       550
 #define BASE_DEFAULT_HEIGHT      450
 
-// Function to calculate minimum window dimensions based on DPI and content
-void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX, double dpiScaleY);
-
-// Function to calculate optimal default window dimensions based on DPI and content
-void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dpiScaleX, double dpiScaleY);
+// Window sizing functions are now in ui.h
 
 // Layout constants
 #define BUTTON_PADDING      80
@@ -289,19 +285,9 @@ void DebugOutput(const wchar_t* message);
 void WriteSessionStartToLogfile(void);
 void WriteSessionEndToLogfile(const wchar_t* reason);
 void InstallYtDlpWithWinget(HWND hParent);
-void CheckClipboardForYouTubeURL(HWND hDlg);
-void ResizeControls(HWND hDlg);
-void ApplyModernThemeToDialog(HWND hDlg);
-void ApplyDelayedTheming(HWND hDlg);
-void ForceVisualStylesActivation(void);
-HWND CreateThemedDialog(HINSTANCE hInstance, LPCWSTR lpTemplate, HWND hWndParent, DLGPROC lpDialogFunc);
 LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 BOOL RegisterMainWindowClass(HINSTANCE hInstance);
 BOOL ValidateYtDlpExecutable(const wchar_t* path);
-LRESULT CALLBACK TextFieldSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 // YtDlp management function prototypes
@@ -470,10 +456,6 @@ typedef struct {
 BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
-void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration);
-
-// UI control functions
-void SetDownloadUIState(HWND hDlg, BOOL isDownloading);
 
 // Cached video metadata structure
 typedef struct {
@@ -519,10 +501,6 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url);
 BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress);
 void FreeProgressInfo(ProgressInfo* progress);
 
-// Main window progress bar functions
-void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status);
-void ShowMainProgressBar(HWND hDlg, BOOL show);
-void SetProgressBarMarquee(HWND hDlg, BOOL enable);
 // MainWindowProgressCallback is now defined in threading.h
 
 // Multithreaded subprocess execution functions
@@ -571,5 +549,6 @@ void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInf
 #include "parser.h"
 #include "ytdlp.h"
 #include "log.h"
+#include "ui.h"
 
 #endif // YOUTUBECACHER_H

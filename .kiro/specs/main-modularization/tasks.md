@@ -48,7 +48,10 @@
   - Move InstallYtDlpWithWinget function from main.c
   - _Requirements: 1.1, 1.2, 1.3, 4.1, 4.2, 4.3_
 
-- [ ] 5. Create UI management module
+- [-] 5. Create UI management module
+
+
+
   - Create ui.h header file with UI-related function prototypes
   - Implement ui.c with all dialog procedures and UI management functions
   - Move DialogProc, SettingsDialogProc, ProgressDialogProc from main.c

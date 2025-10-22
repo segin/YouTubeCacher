@@ -6,6 +6,18 @@
 
 // Custom message for download completion
 #define WM_DOWNLOAD_COMPLETE (WM_USER + 102)
+#define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
+
+// Structure for passing data to the video info thread
+typedef struct {
+    HWND hDlg;
+    wchar_t url[MAX_URL_LENGTH];
+    wchar_t title[512];
+    wchar_t duration[64];
+    BOOL success;
+    HANDLE hThread;
+    DWORD threadId;
+} VideoInfoThreadData;
 
 // YtDlp configuration and validation functions
 BOOL InitializeYtDlpConfig(YtDlpConfig* config);
@@ -27,6 +39,7 @@ BOOL IsSubprocessRunning(const SubprocessContext* context);
 BOOL CancelSubprocessExecution(SubprocessContext* context);
 BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs);
 void FreeSubprocessContext(SubprocessContext* context);
+YtDlpResult* GetSubprocessResult(SubprocessContext* context);
 
 // Temporary directory management
 BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize);
@@ -83,6 +96,12 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress);
 // Configuration management functions
 BOOL LoadYtDlpConfig(YtDlpConfig* config);
 BOOL SaveYtDlpConfig(const YtDlpConfig* config);
+BOOL TestYtDlpFunctionality(const wchar_t* path);
+BOOL ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo);
+BOOL MigrateYtDlpConfiguration(YtDlpConfig* config);
+BOOL SetupDefaultYtDlpConfiguration(YtDlpConfig* config);
+void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInfo);
+BOOL InitializeYtDlpSystem(HWND hMainWindow);
 
 // Worker thread functions
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam);
