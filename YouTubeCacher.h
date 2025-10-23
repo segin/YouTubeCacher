@@ -144,8 +144,26 @@ typedef struct {
     BOOL isRunning;
 } ProcessHandle;
 
-// Include threading.h here to provide ThreadContext and ProgressCallback for structures below
+// Forward declarations and basic structures needed by modules
+// Video metadata structure
+typedef struct {
+    wchar_t* title;
+    wchar_t* duration;
+    wchar_t* id;
+    BOOL success;
+} VideoMetadata;
+
+// Cached video metadata structure
+typedef struct {
+    wchar_t* url;
+    VideoMetadata metadata;
+    BOOL isValid;
+} CachedVideoMetadata;
+
+// Include module headers after basic type definitions
 #include "threading.h"
+#include "appstate.h"
+#include "settings.h"
 
 // Process options structure
 typedef struct {
@@ -277,46 +295,17 @@ typedef struct {
     wchar_t tempDir[MAX_EXTENDED_PATH];
 } UnifiedDownloadContext;
 
-// Threading module function prototypes (defined after type definitions)
-void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
-
-// Function prototypes
+// Main application function prototypes (not moved to modules)
 void DebugOutput(const wchar_t* message);
 void WriteSessionStartToLogfile(void);
 void WriteSessionEndToLogfile(const wchar_t* reason);
-void InstallYtDlpWithWinget(HWND hParent);
 LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 BOOL RegisterMainWindowClass(HINSTANCE hInstance);
-BOOL ValidateYtDlpExecutable(const wchar_t* path);
 INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
-// YtDlp management function prototypes
-BOOL InitializeYtDlpConfig(YtDlpConfig* config);
-void CleanupYtDlpConfig(YtDlpConfig* config);
-ValidationInfo* ValidateYtDlpInstallation(const YtDlpConfig* config);
-void FreeValidationInfo(ValidationInfo* info);
+// YtDlp function prototypes are now in ytdlp.h
 
-// Enhanced validation functions
-BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info);
-BOOL TestYtDlpFunctionality(const wchar_t* path);
-BOOL DetectPythonRuntime(wchar_t* pythonPath, size_t pathSize);
-BOOL GetYtDlpVersion(const wchar_t* path, wchar_t* version, size_t versionSize);
-BOOL CheckYtDlpCompatibility(const wchar_t* version);
-BOOL ParseValidationError(DWORD errorCode, const wchar_t* output, ValidationInfo* info);
-BOOL TestYtDlpWithUrl(const wchar_t* path, ValidationInfo* info);
-
-// YtDlp request/result management
-YtDlpRequest* CreateYtDlpRequest(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath);
-void FreeYtDlpRequest(YtDlpRequest* request);
-YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* request);
-void FreeYtDlpResult(YtDlpResult* result);
-
-// Process management functions
-ProcessHandle* CreateYtDlpProcess(const wchar_t* commandLine, const ProcessOptions* options);
-BOOL WaitForProcessCompletion(ProcessHandle* handle, DWORD timeoutMs);
-BOOL TerminateProcessSafely(ProcessHandle* handle);
-void CleanupProcessHandle(ProcessHandle* handle);
-wchar_t* ReadProcessOutput(ProcessHandle* handle);
+// Process management function prototypes are now in ytdlp.h
 
 // Process status structure for detailed monitoring
 typedef struct {
@@ -327,67 +316,7 @@ typedef struct {
     DWORD memoryUsage;
 } ProcessStatus;
 
-// Process timeout and cancellation support functions
-BOOL ExecuteYtDlpWithTimeout(const wchar_t* commandLine, const ProcessOptions* options, 
-                            DWORD timeoutMs, BOOL* cancelFlag, wchar_t** output, DWORD* exitCode);
-BOOL IsProcessHung(ProcessHandle* handle, DWORD responseTimeoutMs);
-BOOL KillAllYtDlpProcesses(void);
-
-// Enhanced process monitoring functions
-BOOL GetProcessStatus(ProcessHandle* handle, ProcessStatus* status);
-typedef void (*ProcessStatusCallback)(const ProcessStatus* status, void* userData);
-BOOL ExecuteYtDlpWithAdvancedMonitoring(const wchar_t* commandLine, const ProcessOptions* options,
-                                       DWORD timeoutMs, BOOL* cancelFlag, 
-                                       ProcessStatusCallback statusCallback, void* callbackUserData,
-                                       DWORD statusUpdateIntervalMs, wchar_t** output, DWORD* exitCode);
-
-// Cancellation flag utility functions
-BOOL* CreateCancellationFlag(void);
-void SignalCancellation(BOOL* cancelFlag);
-BOOL IsCancelled(const BOOL* cancelFlag);
-void FreeCancellationFlag(BOOL* cancelFlag);
-
-// Error analysis functions
-ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result);
-void FreeErrorAnalysis(ErrorAnalysis* analysis);
-BOOL GenerateDiagnosticReport(const YtDlpRequest* request, const YtDlpResult* result, 
-                             const YtDlpConfig* config, wchar_t* report, size_t reportSize);
-
-// Temporary directory management
-BOOL CreateYtDlpTempDir(wchar_t* tempPath, size_t pathSize, TempDirStrategy strategy);
-BOOL ValidateTempDirAccess(const wchar_t* tempPath);
-BOOL CleanupYtDlpTempDir(const wchar_t* tempPath);
-BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize);
-BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize);
-BOOL CleanupTempDirectory(const wchar_t* tempDir);
-
-// YtDlp command line construction with temp directory integration
-BOOL BuildYtDlpCommandLine(const YtDlpRequest* request, const YtDlpConfig* config, 
-                          wchar_t* commandLine, size_t commandLineSize);
-BOOL EnsureTempDirForOperation(YtDlpRequest* request, const YtDlpConfig* config);
-BOOL AddTempDirToArgs(const wchar_t* tempDir, wchar_t* args, size_t argsSize);
-BOOL HandleTempDirFailure(HWND hParent, const YtDlpConfig* config);
-
-// Progress dialog functions
-ProgressDialog* CreateProgressDialog(HWND parent, const wchar_t* title);
-void UpdateProgressDialog(ProgressDialog* dialog, int progress, const wchar_t* status);
-BOOL IsProgressDialogCancelled(const ProgressDialog* dialog);
-void DestroyProgressDialog(ProgressDialog* dialog);
-
-// Context management functions
-YtDlpContext* CreateYtDlpContext(void);
-BOOL InitializeYtDlpContext(YtDlpContext* context, const YtDlpConfig* config);
-void CleanupYtDlpContext(YtDlpContext* context);
-void FreeYtDlpContext(YtDlpContext* context);
-
-// Command line argument management function prototypes
-BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
-                             const YtDlpConfig* config, wchar_t* args, size_t argsSize);
-BOOL GetOptimizedArgsForInfo(wchar_t* args, size_t argsSize);
-BOOL GetOptimizedArgsForDownload(const wchar_t* outputPath, wchar_t* args, size_t argsSize);
-BOOL GetFallbackArgs(YtDlpOperation operation, wchar_t* args, size_t argsSize);
-BOOL ValidateYtDlpArguments(const wchar_t* args);
-BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
+// YtDlp function prototypes moved to ytdlp.h
 
 // Registry constants for custom arguments
 #define REG_CUSTOM_ARGS     L"CustomYtDlpArgs"
@@ -395,12 +324,15 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
 #define REG_ENABLE_LOGFILE  L"EnableLogfile"
 #define REG_ENABLE_AUTOPASTE L"EnableAutopaste"
 
-// Enhanced error dialog functions
+// Enhanced error dialog function prototypes moved to ui.h
+
+// Enhanced error dialog functions (still in YouTubeCacher.h for now)
 EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message, 
                                               const wchar_t* details, const wchar_t* diagnostics, 
                                               const wchar_t* solutions, ErrorType errorType);
 INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog);
 void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog);
+INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 // Unified dialog function - single entry point for all dialog types
 INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config);
@@ -415,22 +347,12 @@ INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpReques
 INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo);
 INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation);
 INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode);
-
-// Additional convenience functions for common scenarios
 INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation);
 INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details);
 INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
 INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
-
-// Video metadata structure
-typedef struct {
-    wchar_t* title;
-    wchar_t* duration;
-    wchar_t* id;
-    BOOL success;
-} VideoMetadata;
 
 // Progress information structure
 typedef struct {
@@ -452,79 +374,18 @@ typedef struct {
     BOOL isComplete;
 } HeapProgressData;
 
-// Video information retrieval functions
-BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
-BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
-DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
+// Video information retrieval function prototypes moved to ytdlp.h
 
-// Cached video metadata structure
-typedef struct {
-    wchar_t* url;
-    VideoMetadata metadata;
-    BOOL isValid;
-} CachedVideoMetadata;
+// Module headers are now included above after basic type definitions
 
-// Include appstate.h after type definitions to avoid circular dependencies
-#include "appstate.h"
-#include "settings.h"
-
-// Video metadata functions
-BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata);
-BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata);
-void FreeVideoMetadata(VideoMetadata* metadata);
-
-// Cached metadata functions
-void InitializeCachedMetadata(CachedVideoMetadata* cached);
-void FreeCachedMetadata(CachedVideoMetadata* cached);
-BOOL IsCachedMetadataValid(const CachedVideoMetadata* cached, const wchar_t* url);
-void StoreCachedMetadata(CachedVideoMetadata* cached, const wchar_t* url, const VideoMetadata* metadata);
-BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadata);
-
-// Non-blocking Get Info functions
+// GetInfoContext structure for non-blocking info retrieval
 typedef struct {
     HWND hDialog;
     wchar_t url[MAX_URL_LENGTH];
     CachedVideoMetadata* cachedMetadata;
 } GetInfoContext;
 
-
-
-DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam);
-BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata);
-
-// Unified download functions
-DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam);
-// UnifiedDownloadProgressCallback is now defined in threading.h
-BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url);
-
-// Progress parsing functions
-BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress);
-void FreeProgressInfo(ProgressInfo* progress);
-
-// MainWindowProgressCallback is now defined in threading.h
-
-// Multithreaded subprocess execution functions
-SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
-                                          ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow);
-BOOL StartSubprocessExecution(SubprocessContext* context);
-BOOL IsSubprocessRunning(const SubprocessContext* context);
-BOOL CancelSubprocessExecution(SubprocessContext* context);
-BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs);
-YtDlpResult* GetSubprocessResult(SubprocessContext* context);
-void FreeSubprocessContext(SubprocessContext* context);
-
-// Convenience function for simple multithreaded execution with progress dialog
-YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
-                                             HWND parentWindow, const wchar_t* operationTitle);
-
-// Non-blocking download functions
-BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow);
-// HandleDownloadCompletion is now defined in threading.h
-
-// Thread-safe helper functions are now defined in threading.h
-
-// Worker thread function
-DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam);
+// Video metadata and download function prototypes moved to ytdlp.h
 
 // Error logging functions
 BOOL InitializeErrorLogging(void);
@@ -533,22 +394,15 @@ void LogWarning(const wchar_t* category, const wchar_t* message);
 void LogInfo(const wchar_t* category, const wchar_t* message);
 void CleanupErrorLogging(void);
 
-// Startup validation and configuration management functions
-BOOL InitializeYtDlpSystem(HWND hMainWindow);
-BOOL LoadYtDlpConfig(YtDlpConfig* config);
-BOOL SaveYtDlpConfig(const YtDlpConfig* config);
-BOOL ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo);
-BOOL MigrateYtDlpConfiguration(YtDlpConfig* config);
-BOOL SetupDefaultYtDlpConfiguration(YtDlpConfig* config);
-void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInfo);
+// Configuration management function prototypes moved to ytdlp.h
 
 
 
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"
 #include "parser.h"
-#include "ytdlp.h"
 #include "log.h"
+#include "ytdlp.h"
 #include "ui.h"
 
 #endif // YOUTUBECACHER_H

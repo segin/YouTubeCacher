@@ -1,7 +1,7 @@
 # Makefile for native Windows C program
 
 # Source files
-SOURCES = main.c uri.c dialogs.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c ui.c
+SOURCES = main.c uri.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c ui.c dialogs.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object directories
@@ -130,6 +130,23 @@ run32: debug32
 
 run64: debug64
 	./$(TARGET64)
+
+# Dependency tracking for incremental compilation
+# Each source file depends on its corresponding header and YouTubeCacher.h
+$(OBJ32_DIR)/main.o $(OBJ64_DIR)/main.o: main.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h uri.h parser.h log.h cache.h base64.h resource.h
+$(OBJ32_DIR)/appstate.o $(OBJ64_DIR)/appstate.o: appstate.c appstate.h cache.h
+$(OBJ32_DIR)/settings.o $(OBJ64_DIR)/settings.o: settings.c settings.h appstate.h
+$(OBJ32_DIR)/threading.o $(OBJ64_DIR)/threading.o: threading.c threading.h appstate.h
+$(OBJ32_DIR)/ytdlp.o $(OBJ64_DIR)/ytdlp.o: ytdlp.c ytdlp.h appstate.h settings.h threading.h
+$(OBJ32_DIR)/ui.o $(OBJ64_DIR)/ui.o: ui.c ui.h appstate.h settings.h threading.h resource.h
+$(OBJ32_DIR)/uri.o $(OBJ64_DIR)/uri.o: uri.c uri.h
+$(OBJ32_DIR)/cache.o $(OBJ64_DIR)/cache.o: cache.c cache.h
+$(OBJ32_DIR)/base64.o $(OBJ64_DIR)/base64.o: base64.c base64.h
+$(OBJ32_DIR)/parser.o $(OBJ64_DIR)/parser.o: parser.c parser.h
+$(OBJ32_DIR)/log.o $(OBJ64_DIR)/log.o: log.c log.h
+
+# Resource file dependencies
+$(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o: YouTubeCacher.rc resource.h
 
 # Phony targets
 .PHONY: all debug debug32 debug64 release release32 release64 clean clean32 clean64 clean-objects run run32 run64

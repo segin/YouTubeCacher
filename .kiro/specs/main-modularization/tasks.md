@@ -30,14 +30,6 @@
 
 - [x] 4. Create yt-dlp integration module
 
-
-
-
-
-
-
-
-
   - Create ytdlp.h header file with yt-dlp related structures and function prototypes
   - Implement ytdlp.c with process execution and yt-dlp operations
   - Move all YtDlp configuration and validation functions from main.c
@@ -48,9 +40,7 @@
   - Move InstallYtDlpWithWinget function from main.c
   - _Requirements: 1.1, 1.2, 1.3, 4.1, 4.2, 4.3_
 
-- [-] 5. Create UI management module
-
-
+- [x] 5. Create UI management module
 
   - Create ui.h header file with UI-related function prototypes
   - Implement ui.c with all dialog procedures and UI management functions
@@ -62,13 +52,17 @@
   - _Requirements: 1.1, 1.2, 1.3, 4.1, 4.2, 4.3_
 
 - [ ] 6. Update main header file and build system
+
+
+
+
   - Update YouTubeCacher.h to include new module headers
   - Remove function prototypes that are now in module-specific headers
   - Update Makefile to include new source files and dependencies
   - Add proper dependency tracking for incremental compilation
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 7. Refactor main.c to use modular structure
+- [x] 7. Refactor main.c to use modular structure
   - Update main.c to use the new modular interfaces
   - Replace direct global variable access with state management functions
   - Update function calls to use appropriate module interfaces

@@ -42,23 +42,26 @@ void InstallYtDlpWithWinget(HWND hParent) {
                               L"winget is typically installed automatically when an admin user first logs in to modern Windows systems.",
                               error);
         
-        static wchar_t diagnostics[256];
-        wcscpy(diagnostics, L"The system was unable to execute the 'winget install yt-dlp' command. "
-                           L"This indicates winget may not be installed, not in PATH, or access is restricted.");
+        static wchar_t diagnostics[512];
+        wcscpy(diagnostics, L"The system was unable to execute the 'winget install yt-dlp' command. This could be due to:\r\n\r\n"
+                           L"• Running Windows 10 version older than 1809\r\n"
+                           L"• Running Windows 8.1 or earlier\r\n"
+                           L"• winget not properly initialized (rare on supported systems)\r\n\r\n"
+                           L"winget is an integral part of Windows and cannot be installed separately on older versions.");
         
         static wchar_t solutions[512];
         wcscpy(solutions, L"Manual yt-dlp Installation:\r\n"
                          L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\r\n"
                          L"2. Download the latest yt-dlp.exe\r\n"
-                         L"3. Place it in a folder in your PATH or configure the path in File > Settings\r\n\r\n"
-                         L"Alternative - Install winget:\r\n"
-                         L"- Download MSIX bundle from: https://github.com/microsoft/winget-cli/releases\r\n"
-                         L"- Install the .msixbundle file (requires sideloading enabled)");
+                         L"3. Place it in a folder in your PATH, or\r\n"
+                         L"4. Place it anywhere and configure the path in File > Settings\r\n\r\n"
+                         L"Alternative Solution:\r\n"
+                         L"• Update to Windows 10 (version 1809+) or Windows 11 to get winget support");
         
         UnifiedDialogConfig config = {0};
         config.dialogType = UNIFIED_DIALOG_WARNING;
         config.title = L"winget Not Available";
-        config.message = L"Could not run 'winget install yt-dlp'. winget may not be installed or available on this system.";
+        config.message = L"Could not run 'winget install yt-dlp'. winget is only available on Windows 10 (version 1809+) and Windows 11. Older Windows versions do not support winget and cannot have it installed separately.";
         config.details = details;
         config.tab1_name = L"Details";
         config.tab2_content = diagnostics;
