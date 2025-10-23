@@ -39,8 +39,16 @@ BOOL InitializeApplicationState(ApplicationState* state) {
     state->hBrushLightTeal = CreateSolidBrush(COLOR_LIGHT_TEAL);
     state->hCurrentBrush = state->hBrushWhite;  // Default to white
     
-    // Initialize cache and metadata pointers to NULL
-    state->cacheManager = NULL;
+    // Allocate and initialize cache manager
+    state->cacheManager = (CacheManager*)malloc(sizeof(CacheManager));
+    if (state->cacheManager) {
+        memset(state->cacheManager, 0, sizeof(CacheManager));
+        DebugOutput(L"YouTubeCacher: InitializeApplicationState - Cache manager allocated");
+    } else {
+        DebugOutput(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate cache manager");
+    }
+    
+    // Initialize metadata pointer to NULL
     state->cachedVideoMetadata = NULL;
     
     // Initialize window procedure pointer
@@ -81,8 +89,16 @@ void CleanupApplicationState(ApplicationState* state) {
     }
     state->hCurrentBrush = NULL;
     
-    // Note: Cache manager and cached video metadata cleanup should be handled
-    // by their respective modules when they are implemented
+    // Clean up cache manager
+    if (state->cacheManager) {
+        DebugOutput(L"YouTubeCacher: CleanupApplicationState - Cleaning up cache manager");
+        CleanupCacheManager(state->cacheManager);
+        free(state->cacheManager);
+        state->cacheManager = NULL;
+    }
+    
+    // Note: Cached video metadata cleanup should be handled
+    // by its respective module when it is implemented
     
     // Mark as uninitialized
     state->isInitialized = FALSE;

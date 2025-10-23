@@ -2,34 +2,34 @@
 
 // Initialize the cache manager
 BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) {
-    OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - ENTRY\n");
+    DebugOutput(L"YouTubeCacher: InitializeCacheManager - ENTRY");
     
     if (!manager || !downloadPath) {
-        OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - NULL parameters\n");
+        DebugOutput(L"YouTubeCacher: InitializeCacheManager - NULL parameters");
         return FALSE;
     }
     
     wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - downloadPath: %ls\n", downloadPath);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - downloadPath: %ls", downloadPath);
+    DebugOutput(debugMsg);
     
     memset(manager, 0, sizeof(CacheManager));
     
     // Initialize critical section for thread safety
     InitializeCriticalSection(&manager->lock);
-    OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - Critical section initialized\n");
+    DebugOutput(L"YouTubeCacher: InitializeCacheManager - Critical section initialized");
     
     // Build cache file path
     swprintf(manager->cacheFilePath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, CACHE_FILE_NAME);
-    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - cacheFilePath: %ls\n", manager->cacheFilePath);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - cacheFilePath: %ls", manager->cacheFilePath);
+    DebugOutput(debugMsg);
     
     // Load existing cache from file
-    OutputDebugStringW(L"YouTubeCacher: InitializeCacheManager - Loading cache from file\n");
+    DebugOutput(L"YouTubeCacher: InitializeCacheManager - Loading cache from file");
     LoadCacheFromFile(manager);
     
-    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - SUCCESS, loaded %d entries\n", manager->totalEntries);
-    OutputDebugStringW(debugMsg);
+    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - SUCCESS, loaded %d entries", manager->totalEntries);
+    DebugOutput(debugMsg);
     
     return TRUE;
 }
@@ -78,39 +78,82 @@ void FreeCacheEntry(CacheEntry* entry) {
 
 // Load cache from file
 BOOL LoadCacheFromFile(CacheManager* manager) {
-    if (!manager) return FALSE;
+    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ENTRY");
+    
+    if (!manager) {
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: NULL manager");
+        return FALSE;
+    }
+    
+    wchar_t debugMsg[1024];
+    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Attempting to open: %ls", manager->cacheFilePath);
+    DebugOutput(debugMsg);
     
     FILE* file = _wfopen(manager->cacheFilePath, L"r,ccs=UTF-8");
     if (!file) {
+        DWORD error = GetLastError();
+        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - File doesn't exist or can't be opened (error %lu): %ls", 
+                error, manager->cacheFilePath);
+        DebugOutput(debugMsg);
         // File doesn't exist yet, that's okay
         return TRUE;
     }
+    
+    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File opened successfully");
     
     wchar_t line[MAX_CACHE_LINE_LENGTH];
     wchar_t version[32];
     
     // Read and verify version header
-    if (!fgetws(version, 32, file) || wcsncmp(version, L"CACHE_VERSION=", 14) != 0) {
+    if (!fgetws(version, 32, file)) {
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to read version header");
         fclose(file);
         return FALSE;
     }
     
+    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Read version header: %ls", version);
+    DebugOutput(debugMsg);
+    
+    if (wcsncmp(version, L"CACHE_VERSION=", 14) != 0) {
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Invalid version header format");
+        fclose(file);
+        return FALSE;
+    }
+    
+    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Version header validated");
+    
     EnterCriticalSection(&manager->lock);
+    
+    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Starting to read cache entries");
+    int lineCount = 0;
     
     // Read cache entries
     while (fgetws(line, MAX_CACHE_LINE_LENGTH, file)) {
+        lineCount++;
+        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Reading line %d: %.100ls%ls", 
+                lineCount, line, wcslen(line) > 100 ? L"..." : L"");
+        DebugOutput(debugMsg);
         // Remove newline
         wchar_t* newline = wcschr(line, L'\n');
         if (newline) *newline = L'\0';
         
         // Skip empty lines
-        if (wcslen(line) == 0) continue;
+        if (wcslen(line) == 0) {
+            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Skipping empty line");
+            continue;
+        }
         
         // Parse cache entry line format:
         // VIDEO_ID|TITLE|DURATION|MAIN_FILE|SUBTITLE_COUNT|SUBTITLE1|SUBTITLE2|...
         wchar_t* context = NULL;
         wchar_t* token = wcstok(line, L"|", &context);
-        if (!token) continue;
+        if (!token) {
+            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: No video ID token found");
+            continue;
+        }
+        
+        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Parsing entry for video ID: %ls", token);
+        DebugOutput(debugMsg);
         
         CacheEntry* entry = (CacheEntry*)malloc(sizeof(CacheEntry));
         if (!entry) continue;
@@ -126,11 +169,11 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             entry->title = Base64DecodeWide(token);
             if (entry->title) {
                 wchar_t debugMsg[1024];
-                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Decoded title: %ls (length: %zu)\n", 
+                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Decoded title: %ls (length: %zu)", 
                         entry->title, wcslen(entry->title));
-                OutputDebugStringW(debugMsg);
+                DebugOutput(debugMsg);
             } else {
-                OutputDebugStringW(L"YouTubeCacher: LoadCacheFromFile - ERROR: Base64DecodeWide returned NULL\n");
+                DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Base64DecodeWide returned NULL");
             }
         }
         
@@ -191,34 +234,64 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             entry->next = manager->entries;
             manager->entries = entry;
             manager->totalEntries++;
-            OutputDebugStringW(L"YouTubeCacher: LoadCacheFromFile - Entry validated and added\n");
+            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Entry validated and added");
         } else {
-            OutputDebugStringW(L"YouTubeCacher: LoadCacheFromFile - Entry validation FAILED, freeing entry\n");
+            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Entry validation FAILED, freeing entry");
             FreeCacheEntry(entry);
         }
     }
     
     LeaveCriticalSection(&manager->lock);
     fclose(file);
+    
+    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - COMPLETE: Processed %d lines, loaded %d entries", 
+            lineCount, manager->totalEntries);
+    DebugOutput(debugMsg);
+    
     return TRUE;
 }
 
 // Save cache to file
 BOOL SaveCacheToFile(CacheManager* manager) {
-    if (!manager) return FALSE;
+    DebugOutput(L"YouTubeCacher: SaveCacheToFile - ENTRY");
+    
+    if (!manager) {
+        DebugOutput(L"YouTubeCacher: SaveCacheToFile - ERROR: NULL manager");
+        return FALSE;
+    }
+    
+    wchar_t debugMsg[1024];
+    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Attempting to save to: %ls", manager->cacheFilePath);
+    DebugOutput(debugMsg);
     
     FILE* file = _wfopen(manager->cacheFilePath, L"w,ccs=UTF-8");
-    if (!file) return FALSE;
+    if (!file) {
+        DWORD error = GetLastError();
+        swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - ERROR: Failed to open file for writing (error %lu): %ls", 
+                error, manager->cacheFilePath);
+        DebugOutput(debugMsg);
+        return FALSE;
+    }
+    
+    DebugOutput(L"YouTubeCacher: SaveCacheToFile - File opened for writing");
     
     // Write version header
     fwprintf(file, L"CACHE_VERSION=%ls\n", CACHE_VERSION);
     
     EnterCriticalSection(&manager->lock);
     
+    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Writing %d entries", manager->totalEntries);
+    DebugOutput(debugMsg);
+    
     // Write each cache entry
     CacheEntry* current = manager->entries;
+    int entryCount = 0;
     while (current) {
+        entryCount++;
         if (ValidateCacheEntry(current)) {
+            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Writing entry %d: %ls", 
+                    entryCount, current->videoId ? current->videoId : L"NULL");
+            DebugOutput(debugMsg);
             // Encode title as base64 to handle all Unicode characters safely
             wchar_t* encodedTitle = current->title ? Base64EncodeWide(current->title) : NULL;
             
@@ -241,12 +314,20 @@ BOOL SaveCacheToFile(CacheManager* manager) {
             }
             
             fwprintf(file, L"\n");
+        } else {
+            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Skipping invalid entry %d: %ls", 
+                    entryCount, current->videoId ? current->videoId : L"NULL");
+            DebugOutput(debugMsg);
         }
         current = current->next;
     }
     
     LeaveCriticalSection(&manager->lock);
     fclose(file);
+    
+    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - COMPLETE: Wrote %d entries to file", entryCount);
+    DebugOutput(debugMsg);
+    
     return TRUE;
 }
 
@@ -257,11 +338,11 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     if (!manager || !videoId || !mainVideoFile) return FALSE;
     
     // Debug logging
-    OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - Starting\n");
+    DebugOutput(L"YouTubeCacher: AddCacheEntry - Starting");
     if (title) {
         wchar_t debugMsg[1024];
-        swprintf(debugMsg, 1024, L"YouTubeCacher: AddCacheEntry - Title: %ls (length: %zu)\n", title, wcslen(title));
-        OutputDebugStringW(debugMsg);
+        swprintf(debugMsg, 1024, L"YouTubeCacher: AddCacheEntry - Title: %ls (length: %zu)", title, wcslen(title));
+        DebugOutput(debugMsg);
     }
     
     EnterCriticalSection(&manager->lock);
@@ -308,15 +389,15 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     
     LeaveCriticalSection(&manager->lock);
     
-    OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - Entry added to memory, saving to file\n");
+    DebugOutput(L"YouTubeCacher: AddCacheEntry - Entry added to memory, saving to file");
     
     // Save to file
     BOOL saveResult = SaveCacheToFile(manager);
     
     if (saveResult) {
-        OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - Successfully saved to file\n");
+        DebugOutput(L"YouTubeCacher: AddCacheEntry - Successfully saved to file");
     } else {
-        OutputDebugStringW(L"YouTubeCacher: AddCacheEntry - ERROR: Failed to save to file\n");
+        DebugOutput(L"YouTubeCacher: AddCacheEntry - ERROR: Failed to save to file");
     }
     
     return TRUE;

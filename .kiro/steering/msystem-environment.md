@@ -10,20 +10,12 @@ When executing shell commands, ensure the MSYSTEM environment variable is set to
 
 ## Command Execution Protocol
 
-Before executing any shell commands:
-
-1. Check the current value of MSYSTEM environment variable
-2. If MSYSTEM is not set to `MINGW32`, then set `MSYSTEM=MINGW32`
-
-This ensures all development tools, compilers, and libraries are available from the MINGW32 toolchain, providing consistent behavior across all command executions.
-
-## Implementation
+Before executing any shell commands, unconditionally set the MSYSTEM environment variable to `MINGW32`:
 
 ```bash
-# Check current MSYSTEM
-if [ "$MSYSTEM" != "MINGW32" ]; then
-    export MSYSTEM=MINGW32
-fi
+export MSYSTEM=MINGW32
 ```
+
+This ensures all development tools, compilers, and libraries are available from the MINGW32 toolchain, providing consistent behavior across all command executions. The setting is done unconditionally without checking the current value to guarantee the correct environment.
 
 This steering rule applies to all command executions to maintain environment consistency.

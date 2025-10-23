@@ -51,13 +51,9 @@
   - Move CheckClipboardForYouTubeURL function from main.c
   - _Requirements: 1.1, 1.2, 1.3, 4.1, 4.2, 4.3_
 
-- [ ] 6. Update main header file and build system
+- [x] 6. Update main header file and build system
 
 
-
-
-
-  - Update YouTubeCacher.h to include new module headers
   - Remove function prototypes that are now in module-specific headers
   - Update Makefile to include new source files and dependencies
   - Add proper dependency tracking for incremental compilation
