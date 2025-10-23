@@ -43,9 +43,10 @@ BOOL InitializeApplicationState(ApplicationState* state) {
     state->cacheManager = (CacheManager*)malloc(sizeof(CacheManager));
     if (state->cacheManager) {
         memset(state->cacheManager, 0, sizeof(CacheManager));
-        DebugOutput(L"YouTubeCacher: InitializeApplicationState - Cache manager allocated");
+        // Note: Debug output deferred until logging system is initialized
     } else {
-        DebugOutput(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate cache manager");
+        // Critical error - use direct output since logging may not be ready
+        OutputDebugStringW(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate cache manager");
     }
     
     // Initialize metadata pointer to NULL
@@ -91,7 +92,8 @@ void CleanupApplicationState(ApplicationState* state) {
     
     // Clean up cache manager
     if (state->cacheManager) {
-        DebugOutput(L"YouTubeCacher: CleanupApplicationState - Cleaning up cache manager");
+        // Use direct debug output since logging system may be shutting down
+        OutputDebugStringW(L"YouTubeCacher: CleanupApplicationState - Cleaning up cache manager");
         CleanupCacheManager(state->cacheManager);
         free(state->cacheManager);
         state->cacheManager = NULL;

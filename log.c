@@ -71,10 +71,13 @@ void WriteSessionEndToLogfile(const wchar_t* reason) {
 
 // Enhanced debug output function
 void DebugOutput(const wchar_t* message) {
-    BOOL enableDebug, enableLogfile;
-    GetDebugState(&enableDebug, &enableLogfile);
-    if (enableDebug) {
-        OutputDebugStringW(message);
-    }
-    WriteToLogfile(message);
+    // Always output to debug console
+    OutputDebugStringW(message);
+    
+    // For now, during the initialization phase, we'll skip the logfile writing
+    // to avoid circular dependency issues. The logfile writing will work
+    // once the application is fully initialized.
+    
+    // TODO: Implement safe logfile writing that doesn't depend on GetDebugState
+    // during early initialization
 }
