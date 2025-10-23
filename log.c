@@ -74,10 +74,11 @@ void DebugOutput(const wchar_t* message) {
     // Always output to debug console
     OutputDebugStringW(message);
     
-    // For now, during the initialization phase, we'll skip the logfile writing
-    // to avoid circular dependency issues. The logfile writing will work
-    // once the application is fully initialized.
+    // Now we can safely check debug state without circular dependency
+    BOOL enableDebug, enableLogfile;
+    GetDebugState(&enableDebug, &enableLogfile);
     
-    // TODO: Implement safe logfile writing that doesn't depend on GetDebugState
-    // during early initialization
+    if (enableLogfile) {
+        WriteToLogfile(message);
+    }
 }

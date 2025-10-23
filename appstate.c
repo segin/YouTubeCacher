@@ -216,13 +216,20 @@ void SetDebugState(BOOL enableDebug, BOOL enableLogfile) {
 }
 
 void GetDebugState(BOOL* enableDebug, BOOL* enableLogfile) {
-    ApplicationState* state = GetApplicationState();
-    if (!state || !enableDebug || !enableLogfile) return;
+    if (!enableDebug || !enableLogfile) return;
     
-    EnterCriticalSection(&state->stateLock);
-    *enableDebug = state->enableDebug;
-    *enableLogfile = state->enableLogfile;
-    LeaveCriticalSection(&state->stateLock);
+    // Check if state is initialized without triggering initialization
+    if (!g_appState.isInitialized) {
+        // Return default values during early initialization
+        *enableDebug = FALSE;
+        *enableLogfile = FALSE;
+        return;
+    }
+    
+    EnterCriticalSection(&g_appState.stateLock);
+    *enableDebug = g_appState.enableDebug;
+    *enableLogfile = g_appState.enableLogfile;
+    LeaveCriticalSection(&g_appState.stateLock);
 }
 
 // Thread-safe autopaste state functions
