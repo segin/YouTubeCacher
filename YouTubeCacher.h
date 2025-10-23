@@ -161,9 +161,9 @@ typedef struct {
 } CachedVideoMetadata;
 
 // Include module headers after basic type definitions
-#include "threading.h"
 #include "appstate.h"
 #include "settings.h"
+#include "threading.h"
 
 // Process options structure
 typedef struct {
@@ -303,9 +303,11 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 BOOL RegisterMainWindowClass(HINSTANCE hInstance);
 INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
-// YtDlp function prototypes are now in ytdlp.h
+// Download completion handling (used across modules)
+void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 
-// Process management function prototypes are now in ytdlp.h
+// YtDlp function prototypes moved to ytdlp.h
+// Process management function prototypes moved to ytdlp.h
 
 // Process status structure for detailed monitoring
 typedef struct {
@@ -326,33 +328,7 @@ typedef struct {
 
 // Enhanced error dialog function prototypes moved to ui.h
 
-// Enhanced error dialog functions (still in YouTubeCacher.h for now)
-EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message, 
-                                              const wchar_t* details, const wchar_t* diagnostics, 
-                                              const wchar_t* solutions, ErrorType errorType);
-INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog);
-void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog);
-INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-
-// Unified dialog function - single entry point for all dialog types
-INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config);
-BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog);
-void ResizeErrorDialog(HWND hDlg, BOOL expanded);
-void InitializeErrorDialogTabs(HWND hTabControl);
-void InitializeSuccessDialogTabs(HWND hTabControl);
-void ShowErrorDialogTab(HWND hDlg, int tabIndex);
-
-// Convenience functions for common error scenarios
-INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpRequest* request);
-INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo);
-INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation);
-INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode);
-INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation);
-INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details);
-INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
-INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
-INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
-INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+// Enhanced error dialog functions moved to ui.h
 
 // Progress information structure
 typedef struct {
@@ -387,12 +363,7 @@ typedef struct {
 
 // Video metadata and download function prototypes moved to ytdlp.h
 
-// Error logging functions
-BOOL InitializeErrorLogging(void);
-void LogError(const wchar_t* category, const wchar_t* message, const wchar_t* details);
-void LogWarning(const wchar_t* category, const wchar_t* message);
-void LogInfo(const wchar_t* category, const wchar_t* message);
-void CleanupErrorLogging(void);
+// Error logging functions moved to ui.h
 
 // Configuration management function prototypes moved to ytdlp.h
 

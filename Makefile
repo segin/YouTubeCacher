@@ -139,6 +139,7 @@ $(OBJ32_DIR)/settings.o $(OBJ64_DIR)/settings.o: settings.c settings.h appstate.
 $(OBJ32_DIR)/threading.o $(OBJ64_DIR)/threading.o: threading.c threading.h appstate.h
 $(OBJ32_DIR)/ytdlp.o $(OBJ64_DIR)/ytdlp.o: ytdlp.c ytdlp.h appstate.h settings.h threading.h
 $(OBJ32_DIR)/ui.o $(OBJ64_DIR)/ui.o: ui.c ui.h appstate.h settings.h threading.h resource.h
+$(OBJ32_DIR)/dialogs.o $(OBJ64_DIR)/dialogs.o: dialogs.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h resource.h
 $(OBJ32_DIR)/uri.o $(OBJ64_DIR)/uri.o: uri.c uri.h
 $(OBJ32_DIR)/cache.o $(OBJ64_DIR)/cache.o: cache.c cache.h
 $(OBJ32_DIR)/base64.o $(OBJ64_DIR)/base64.o: base64.c base64.h

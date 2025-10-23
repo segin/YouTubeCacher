@@ -30,4 +30,39 @@ void SetProgressBarMarquee(HWND hDlg, BOOL enable);
 void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX, double dpiScaleY);
 void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dpiScaleX, double dpiScaleY);
 
+// Enhanced error dialog functions
+EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message, 
+                                              const wchar_t* details, const wchar_t* diagnostics, 
+                                              const wchar_t* solutions, ErrorType errorType);
+INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog);
+void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog);
+INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+
+// Unified dialog function - single entry point for all dialog types
+INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config);
+BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog);
+void ResizeErrorDialog(HWND hDlg, BOOL expanded);
+void InitializeErrorDialogTabs(HWND hTabControl);
+void InitializeSuccessDialogTabs(HWND hTabControl);
+void ShowErrorDialogTab(HWND hDlg, int tabIndex);
+
+// Convenience functions for common error scenarios
+INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpRequest* request);
+INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo);
+INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation);
+INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode);
+INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation);
+INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details);
+INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
+INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+
+// Error logging functions
+BOOL InitializeErrorLogging(void);
+void LogError(const wchar_t* category, const wchar_t* message, const wchar_t* details);
+void LogWarning(const wchar_t* category, const wchar_t* message);
+void LogInfo(const wchar_t* category, const wchar_t* message);
+void CleanupErrorLogging(void);
+
 #endif // UI_H

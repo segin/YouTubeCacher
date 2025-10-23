@@ -153,6 +153,7 @@ void SubprocessProgressCallback(int percentage, const wchar_t* status, void* use
 void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void* userData);
 void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData);
 
-// HandleDownloadCompletion function declaration is in YouTubeCacher.h after type definitions
+// Forward declaration for download completion handling (defined in YouTubeCacher.h after type definitions)
+// void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 
 #endif // THREADING_H
