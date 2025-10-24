@@ -139,3 +139,20 @@ BEGIN
     PUSHBUTTON      "Copy", IDC_SUCCESS_COPY_BTN, 357, 318, 75, 23
     DEFPUSHBUTTON   "OK", IDC_SUCCESS_OK_BTN, 438, 318, 75, 23
 END
+
+// About Dialog - Dynamic HiDPI-aware layout (positions set by code)
+IDD_ABOUT_DIALOG DIALOGEX 0, 0, 320, 280
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About YouTube Cacher"
+FONT 9, "Segoe UI"
+BEGIN
+    ICON            "", IDC_ABOUT_ICON, 144, 20, 32, 32
+    LTEXT           "YouTube Cacher", IDC_ABOUT_TITLE, 0, 60, 320, 18, SS_CENTER
+    LTEXT           "0.0.1", IDC_ABOUT_VERSION, 0, 82, 320, 14, SS_CENTER
+    LTEXT           "A YouTube downloader frontend to youtube-dl and yt-dlp.", IDC_ABOUT_DESCRIPTION, 20, 110, 280, 28, SS_CENTER | SS_WORDELLIPSIS
+    CONTROL         "<a href=""https://github.com/segin/YouTubeCacher"">YouTube Cacher on GitHub</a>", IDC_ABOUT_GITHUB_LINK, "SysLink", WS_TABSTOP, 0, 150, 320, 14, SS_CENTER
+    LTEXT           "Copyright © 2025 Kirn Gill II <segin2005@gmail.com>", IDC_ABOUT_COPYRIGHT, 20, 180, 280, 14, SS_CENTER
+    LTEXT           "This program comes with no warranty.", IDC_ABOUT_WARRANTY, 20, 200, 280, 14, SS_CENTER
+    CONTROL         "<a href=""https://mit-license.org/"">See the MIT License for details.</a>", IDC_ABOUT_LICENSE_LINK, "SysLink", WS_TABSTOP, 0, 220, 320, 14, SS_CENTER
+    DEFPUSHBUTTON   "Close", IDC_ABOUT_CLOSE, 135, 250, 50, 20
+END

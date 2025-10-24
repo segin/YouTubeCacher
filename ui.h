@@ -57,6 +57,7 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
 INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
+void ShowAboutDialog(HWND parent);
 
 // Error logging functions
 BOOL InitializeErrorLogging(void);

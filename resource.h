@@ -80,6 +80,18 @@
 
 // Success Dialog
 #define IDD_SUCCESS_DIALOG     106
+
+// About Dialog
+#define IDD_ABOUT_DIALOG       107
+#define IDC_ABOUT_ICON         1058
+#define IDC_ABOUT_TITLE        1059
+#define IDC_ABOUT_VERSION      1060
+#define IDC_ABOUT_DESCRIPTION  1061
+#define IDC_ABOUT_GITHUB_LINK  1062
+#define IDC_ABOUT_COPYRIGHT    1063
+#define IDC_ABOUT_WARRANTY     1064
+#define IDC_ABOUT_LICENSE_LINK 1065
+#define IDC_ABOUT_CLOSE        1066
 #define IDC_SUCCESS_ICON       1046
 #define IDC_SUCCESS_MESSAGE    1047
 #define IDC_SUCCESS_DETAILS_BTN 1048

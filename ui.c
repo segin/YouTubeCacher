@@ -1158,7 +1158,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     return TRUE;
                     
                 case ID_HELP_ABOUT:
-                    // TODO: Implement about dialog
+                    ShowAboutDialog(hDlg);
                     return TRUE;
                     
                 case IDC_TEXT_FIELD:
