@@ -1496,101 +1496,208 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 SendDlgItemMessageW(hDlg, IDC_ABOUT_ICON, STM_SETICON, (WPARAM)hIcon, 0);
             }
             
-            // Set version from header - this will now show 0.0.1
+            // Set version from header
             SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, APP_VERSION);
             
-            // Center the SysLink controls manually since SS_CENTER doesn't work with SysLink
-            HWND hGitHubLink = GetDlgItem(hDlg, IDC_ABOUT_GITHUB_LINK);
-            HWND hLicenseLink = GetDlgItem(hDlg, IDC_ABOUT_LICENSE_LINK);
+            // === DYNAMIC LAYOUT CALCULATION ===
+            // Using Microsoft UI Guidelines (Windows 98/2000/XP era) + GNOME font sizing
             
-            if (hGitHubLink) {
-                // Get dialog width
-                RECT dialogRect;
-                GetClientRect(hDlg, &dialogRect);
-                int dialogWidth = dialogRect.right - dialogRect.left;
-                
-                // Get text size for GitHub link
-                HDC hdc = GetDC(hGitHubLink);
-                if (hdc) {
-                    HFONT hFont = (HFONT)SendMessageW(hGitHubLink, WM_GETFONT, 0, 0);
-                    HFONT hOldFont = NULL;
-                    if (hFont) hOldFont = (HFONT)SelectObject(hdc, hFont);
-                    
-                    SIZE textSize;
-                    GetTextExtentPoint32W(hdc, L"YouTube Cacher on GitHub", 24, &textSize);
-                    
-                    // Center the control
-                    int x = (dialogWidth - textSize.cx) / 2;
-                    SetWindowPos(hGitHubLink, NULL, x, 125, textSize.cx + 10, 16, SWP_NOZORDER);
-                    
-                    if (hOldFont) SelectObject(hdc, hOldFont);
-                    ReleaseDC(hGitHubLink, hdc);
-                }
-            }
+            // Get DPI for scaling calculations
+            int dpi = GetDpiForWindowSafe(hDlg);
             
-            if (hLicenseLink) {
-                // Get dialog width
-                RECT dialogRect;
-                GetClientRect(hDlg, &dialogRect);
-                int dialogWidth = dialogRect.right - dialogRect.left;
-                
-                // Get text size for license link
-                HDC hdc = GetDC(hLicenseLink);
-                if (hdc) {
-                    HFONT hFont = (HFONT)SendMessageW(hLicenseLink, WM_GETFONT, 0, 0);
-                    HFONT hOldFont = NULL;
-                    if (hFont) hOldFont = (HFONT)SelectObject(hdc, hFont);
-                    
-                    SIZE textSize;
-                    GetTextExtentPoint32W(hdc, L"See the MIT License for details.", 32, &textSize);
-                    
-                    // Center the control
-                    int x = (dialogWidth - textSize.cx) / 2;
-                    SetWindowPos(hLicenseLink, NULL, x, 180, textSize.cx + 10, 14, SWP_NOZORDER);
-                    
-                    if (hOldFont) SelectObject(hdc, hOldFont);
-                    ReleaseDC(hLicenseLink, hdc);
-                }
-            }
+            // Microsoft UI Guidelines - convert DLU to pixels at current DPI
+            // 1 DLU horizontal = (dialog_base_unit_x / 4) pixels
+            // 1 DLU vertical = (dialog_base_unit_y / 8) pixels
+            // Standard dialog base units at 96 DPI: 6x13 for "MS Shell Dlg"
+            int baseUnitX = MulDiv(6, dpi, 96);  // ~6px at 96 DPI
+            int baseUnitY = MulDiv(13, dpi, 96); // ~13px at 96 DPI
             
-            // Get base font for creating variants
+            // Microsoft spacing standards in DLU converted to pixels
+            int dialogMargin = MulDiv(7 * baseUnitX, 1, 4);      // 7 DLU = ~11px margin
+            int controlSpacing = MulDiv(4 * baseUnitX, 1, 4);    // 4 DLU = ~6px between controls
+            int groupSpacing = MulDiv(7 * baseUnitX, 1, 4);      // 7 DLU = ~11px between groups
+            int iconSize = ScaleForDpi(32, dpi);                 // Standard icon size
+            int buttonHeight = MulDiv(14 * baseUnitY, 1, 8);     // 14 DLU = ~23px button height
+            int bottomPadding = ScaleForDpi(8, dpi);             // Requested 8px bottom padding
+            
+            // Get device context for text measurements
+            HDC hdc = GetDC(hDlg);
+            if (!hdc) return TRUE;
+            
+            // === FONT CREATION (GNOME-style sizing) ===
             HFONT hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
-            if (hBaseFont) {
-                LOGFONTW lf;
-                if (GetObjectW(hBaseFont, sizeof(lf), &lf)) {
-                    // Create larger, bold font for title
-                    LOGFONTW titleLf = lf;
-                    titleLf.lfHeight = (titleLf.lfHeight * 4) / 3; // Make larger
-                    titleLf.lfWeight = FW_BOLD;
-                    HFONT hTitleFont = CreateFontIndirectW(&titleLf);
-                    if (hTitleFont) {
-                        HWND hTitle = GetDlgItem(hDlg, IDC_ABOUT_TITLE);
-                        if (hTitle) {
-                            SendMessageW(hTitle, WM_SETFONT, (WPARAM)hTitleFont, TRUE);
-                        }
-                        SetPropW(hDlg, L"TitleFont", hTitleFont);
+            HFONT hTitleFont = NULL, hSmallFont = NULL;
+            LOGFONTW baseLf;
+            
+            if (hBaseFont && GetObjectW(hBaseFont, sizeof(baseLf), &baseLf)) {
+                // Title font: 133% size (4/3 ratio), bold - GNOME style
+                LOGFONTW titleLf = baseLf;
+                titleLf.lfHeight = (titleLf.lfHeight * 4) / 3;
+                titleLf.lfWeight = FW_BOLD;
+                hTitleFont = CreateFontIndirectW(&titleLf);
+                
+                // Small font: 75% size (3/4 ratio) - GNOME style  
+                LOGFONTW smallLf = baseLf;
+                smallLf.lfHeight = (smallLf.lfHeight * 3) / 4;
+                hSmallFont = CreateFontIndirectW(&smallLf);
+            }
+            
+            // === TEXT MEASUREMENT PHASE ===
+            // Measure all text elements to determine required dialog width
+            
+            struct {
+                const wchar_t* text;
+                HFONT font;
+                SIZE size;
+                int controlId;
+            } textElements[] = {
+                {L"YouTube Cacher", hTitleFont, {0}, IDC_ABOUT_TITLE},
+                {APP_VERSION, hBaseFont, {0}, IDC_ABOUT_VERSION}, 
+                {L"A YouTube downloader frontend to youtube-dl and yt-dlp.", hBaseFont, {0}, IDC_ABOUT_DESCRIPTION},
+                {L"YouTube Cacher on GitHub", hBaseFont, {0}, IDC_ABOUT_GITHUB_LINK},
+                {L"Copyright © 2025 Kirn Gill II <segin2005@gmail.com>", hSmallFont, {0}, IDC_ABOUT_COPYRIGHT},
+                {L"This program comes with absolutely no warranty.", hSmallFont, {0}, IDC_ABOUT_WARRANTY},
+                {L"See the MIT License for details.", hSmallFont, {0}, IDC_ABOUT_LICENSE_LINK}
+            };
+            
+            int maxTextWidth = 0;
+            for (int i = 0; i < 7; i++) {
+                HFONT hOldFont = NULL;
+                if (textElements[i].font) {
+                    hOldFont = (HFONT)SelectObject(hdc, textElements[i].font);
+                }
+                
+                GetTextExtentPoint32W(hdc, textElements[i].text, (int)wcslen(textElements[i].text), &textElements[i].size);
+                
+                if (textElements[i].size.cx > maxTextWidth) {
+                    maxTextWidth = textElements[i].size.cx;
+                }
+                
+                if (hOldFont) {
+                    SelectObject(hdc, hOldFont);
+                }
+            }
+            
+            // === DIALOG WIDTH CALCULATION ===
+            // Width = left margin + max text width + right margin
+            // Minimum width to accommodate icon and reasonable spacing
+            int minDialogWidth = ScaleForDpi(320, dpi);
+            int calculatedWidth = (2 * dialogMargin) + maxTextWidth;
+            int dialogWidth = max(minDialogWidth, calculatedWidth);
+            
+            // === VERTICAL LAYOUT CALCULATION ===
+            int currentY = dialogMargin;
+            
+            // 1. Icon positioning (centered horizontally)
+            int iconX = (dialogWidth - iconSize) / 2;
+            int iconY = currentY;
+            currentY += iconSize + controlSpacing;
+            
+            // 2. Title positioning (centered, with title font height)
+            int titleY = currentY;
+            int titleHeight = textElements[0].size.cy;
+            currentY += titleHeight + controlSpacing;
+            
+            // 3. Version positioning (centered, with base font height)  
+            int versionY = currentY;
+            int versionHeight = textElements[1].size.cy;
+            currentY += versionHeight + groupSpacing; // Group spacing after version
+            
+            // 4. Description positioning (centered)
+            int descY = currentY;
+            int descHeight = textElements[2].size.cy;
+            currentY += descHeight + controlSpacing;
+            
+            // 5. GitHub link positioning (centered)
+            int githubY = currentY;
+            int githubHeight = textElements[3].size.cy;
+            currentY += githubHeight + groupSpacing; // Group spacing before copyright section
+            
+            // 6. Copyright positioning (centered, small font)
+            int copyrightY = currentY;
+            int copyrightHeight = textElements[4].size.cy;
+            currentY += copyrightHeight + controlSpacing;
+            
+            // 7. Warranty positioning (centered, small font)
+            int warrantyY = currentY;
+            int warrantyHeight = textElements[5].size.cy;
+            currentY += warrantyHeight + controlSpacing;
+            
+            // 8. License link positioning (centered, small font)
+            int licenseY = currentY;
+            int licenseHeight = textElements[6].size.cy;
+            currentY += licenseHeight + groupSpacing; // Group spacing before button
+            
+            // 9. Button positioning (centered)
+            int buttonWidth = ScaleForDpi(75, dpi); // Microsoft minimum button width
+            int buttonX = (dialogWidth - buttonWidth) / 2;
+            int buttonY = currentY;
+            currentY += buttonHeight + bottomPadding; // 8px bottom padding as requested
+            
+            // === DIALOG HEIGHT CALCULATION ===
+            int dialogHeight = currentY;
+            
+            // === APPLY LAYOUT ===
+            // Resize dialog to calculated dimensions
+            RECT windowRect;
+            GetWindowRect(hDlg, &windowRect);
+            
+            // Calculate window frame size
+            RECT clientRect;
+            GetClientRect(hDlg, &clientRect);
+            int frameWidth = (windowRect.right - windowRect.left) - (clientRect.right - clientRect.left);
+            int frameHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
+            
+            // Center dialog on screen
+            int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+            int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+            int windowX = (screenWidth - dialogWidth - frameWidth) / 2;
+            int windowY = (screenHeight - dialogHeight - frameHeight) / 2;
+            
+            SetWindowPos(hDlg, NULL, windowX, windowY, 
+                        dialogWidth + frameWidth, dialogHeight + frameHeight, 
+                        SWP_NOZORDER | SWP_NOACTIVATE);
+            
+            // Position all controls
+            SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_ICON), NULL, 
+                        iconX, iconY, iconSize, iconSize, SWP_NOZORDER);
+            
+            // Center each text element horizontally
+            for (int i = 0; i < 7; i++) {
+                HWND hControl = GetDlgItem(hDlg, textElements[i].controlId);
+                if (hControl) {
+                    int textX = (dialogWidth - textElements[i].size.cx) / 2;
+                    int textY;
+                    
+                    switch (i) {
+                        case 0: textY = titleY; break;      // Title
+                        case 1: textY = versionY; break;    // Version  
+                        case 2: textY = descY; break;       // Description
+                        case 3: textY = githubY; break;     // GitHub link
+                        case 4: textY = copyrightY; break;  // Copyright
+                        case 5: textY = warrantyY; break;   // Warranty
+                        case 6: textY = licenseY; break;    // License link
                     }
                     
-                    // Create smaller font for copyright and license text (GNOME style)
-                    LOGFONTW smallLf = lf;
-                    smallLf.lfHeight = (smallLf.lfHeight * 3) / 4; // Make smaller
-                    HFONT hSmallFont = CreateFontIndirectW(&smallLf);
-                    if (hSmallFont) {
-                        HWND hCopyright = GetDlgItem(hDlg, IDC_ABOUT_COPYRIGHT);
-                        HWND hLicense = GetDlgItem(hDlg, IDC_ABOUT_LICENSE_LINK);
-                        if (hCopyright) {
-                            SendMessageW(hCopyright, WM_SETFONT, (WPARAM)hSmallFont, TRUE);
-                        }
-                        if (hLicense) {
-                            SendMessageW(hLicense, WM_SETFONT, (WPARAM)hSmallFont, TRUE);
-                        }
-                        SetPropW(hDlg, L"SmallFont", hSmallFont);
+                    SetWindowPos(hControl, NULL, textX, textY, 
+                                textElements[i].size.cx, textElements[i].size.cy, SWP_NOZORDER);
+                    
+                    // Apply fonts
+                    if (textElements[i].font) {
+                        SendMessageW(hControl, WM_SETFONT, (WPARAM)textElements[i].font, TRUE);
                     }
                 }
             }
             
-
+            // Position Close button
+            SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_CLOSE), NULL,
+                        buttonX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
             
+            // Store fonts for cleanup
+            if (hTitleFont) SetPropW(hDlg, L"TitleFont", hTitleFont);
+            if (hSmallFont) SetPropW(hDlg, L"SmallFont", hSmallFont);
+            
+            ReleaseDC(hDlg, hdc);
             return TRUE;
         }
         
