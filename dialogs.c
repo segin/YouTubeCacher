@@ -1499,24 +1499,97 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             // Set version from header - this will now show 0.0.1
             SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, APP_VERSION);
             
-            // Create larger, bold font for title
-            HWND hTitle = GetDlgItem(hDlg, IDC_ABOUT_TITLE);
-            if (hTitle) {
-                HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
-                if (hFont) {
-                    LOGFONTW lf;
-                    if (GetObjectW(hFont, sizeof(lf), &lf)) {
-                        lf.lfHeight = (lf.lfHeight * 4) / 3; // Make larger
-                        lf.lfWeight = FW_BOLD;
-                        HFONT hNewFont = CreateFontIndirectW(&lf);
-                        if (hNewFont) {
-                            SendMessageW(hTitle, WM_SETFONT, (WPARAM)hNewFont, TRUE);
-                            // Store font handle for cleanup
-                            SetPropW(hDlg, L"TitleFont", hNewFont);
+            // Center the SysLink controls manually since SS_CENTER doesn't work with SysLink
+            HWND hGitHubLink = GetDlgItem(hDlg, IDC_ABOUT_GITHUB_LINK);
+            HWND hLicenseLink = GetDlgItem(hDlg, IDC_ABOUT_LICENSE_LINK);
+            
+            if (hGitHubLink) {
+                // Get dialog width
+                RECT dialogRect;
+                GetClientRect(hDlg, &dialogRect);
+                int dialogWidth = dialogRect.right - dialogRect.left;
+                
+                // Get text size for GitHub link
+                HDC hdc = GetDC(hGitHubLink);
+                if (hdc) {
+                    HFONT hFont = (HFONT)SendMessageW(hGitHubLink, WM_GETFONT, 0, 0);
+                    HFONT hOldFont = NULL;
+                    if (hFont) hOldFont = (HFONT)SelectObject(hdc, hFont);
+                    
+                    SIZE textSize;
+                    GetTextExtentPoint32W(hdc, L"YouTube Cacher on GitHub", 24, &textSize);
+                    
+                    // Center the control
+                    int x = (dialogWidth - textSize.cx) / 2;
+                    SetWindowPos(hGitHubLink, NULL, x, 125, textSize.cx + 10, 16, SWP_NOZORDER);
+                    
+                    if (hOldFont) SelectObject(hdc, hOldFont);
+                    ReleaseDC(hGitHubLink, hdc);
+                }
+            }
+            
+            if (hLicenseLink) {
+                // Get dialog width
+                RECT dialogRect;
+                GetClientRect(hDlg, &dialogRect);
+                int dialogWidth = dialogRect.right - dialogRect.left;
+                
+                // Get text size for license link
+                HDC hdc = GetDC(hLicenseLink);
+                if (hdc) {
+                    HFONT hFont = (HFONT)SendMessageW(hLicenseLink, WM_GETFONT, 0, 0);
+                    HFONT hOldFont = NULL;
+                    if (hFont) hOldFont = (HFONT)SelectObject(hdc, hFont);
+                    
+                    SIZE textSize;
+                    GetTextExtentPoint32W(hdc, L"See the MIT License for details.", 32, &textSize);
+                    
+                    // Center the control
+                    int x = (dialogWidth - textSize.cx) / 2;
+                    SetWindowPos(hLicenseLink, NULL, x, 180, textSize.cx + 10, 14, SWP_NOZORDER);
+                    
+                    if (hOldFont) SelectObject(hdc, hOldFont);
+                    ReleaseDC(hLicenseLink, hdc);
+                }
+            }
+            
+            // Get base font for creating variants
+            HFONT hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+            if (hBaseFont) {
+                LOGFONTW lf;
+                if (GetObjectW(hBaseFont, sizeof(lf), &lf)) {
+                    // Create larger, bold font for title
+                    LOGFONTW titleLf = lf;
+                    titleLf.lfHeight = (titleLf.lfHeight * 4) / 3; // Make larger
+                    titleLf.lfWeight = FW_BOLD;
+                    HFONT hTitleFont = CreateFontIndirectW(&titleLf);
+                    if (hTitleFont) {
+                        HWND hTitle = GetDlgItem(hDlg, IDC_ABOUT_TITLE);
+                        if (hTitle) {
+                            SendMessageW(hTitle, WM_SETFONT, (WPARAM)hTitleFont, TRUE);
                         }
+                        SetPropW(hDlg, L"TitleFont", hTitleFont);
+                    }
+                    
+                    // Create smaller font for copyright and license text (GNOME style)
+                    LOGFONTW smallLf = lf;
+                    smallLf.lfHeight = (smallLf.lfHeight * 3) / 4; // Make smaller
+                    HFONT hSmallFont = CreateFontIndirectW(&smallLf);
+                    if (hSmallFont) {
+                        HWND hCopyright = GetDlgItem(hDlg, IDC_ABOUT_COPYRIGHT);
+                        HWND hLicense = GetDlgItem(hDlg, IDC_ABOUT_LICENSE_LINK);
+                        if (hCopyright) {
+                            SendMessageW(hCopyright, WM_SETFONT, (WPARAM)hSmallFont, TRUE);
+                        }
+                        if (hLicense) {
+                            SendMessageW(hLicense, WM_SETFONT, (WPARAM)hSmallFont, TRUE);
+                        }
+                        SetPropW(hDlg, L"SmallFont", hSmallFont);
                     }
                 }
             }
+            
+
             
             return TRUE;
         }
@@ -1534,7 +1607,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         case WM_NOTIFY: {
             LPNMHDR pnmh = (LPNMHDR)lParam;
             if (pnmh->code == NM_CLICK || pnmh->code == NM_RETURN) {
-                // Handle SysLink clicks
+                // Handle SysLink clicks for both GitHub and MIT License links
                 if (pnmh->idFrom == IDC_ABOUT_GITHUB_LINK || pnmh->idFrom == IDC_ABOUT_LICENSE_LINK) {
                     PNMLINK pNMLink = (PNMLINK)lParam;
                     ShellExecuteW(hDlg, L"open", pNMLink->item.szUrl, NULL, NULL, SW_SHOWNORMAL);
@@ -1544,11 +1617,17 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         }
         
         case WM_DESTROY: {
-            // Clean up custom font
+            // Clean up custom fonts
             HFONT hTitleFont = (HFONT)GetPropW(hDlg, L"TitleFont");
             if (hTitleFont) {
                 DeleteObject(hTitleFont);
                 RemovePropW(hDlg, L"TitleFont");
+            }
+            
+            HFONT hSmallFont = (HFONT)GetPropW(hDlg, L"SmallFont");
+            if (hSmallFont) {
+                DeleteObject(hSmallFont);
+                RemovePropW(hDlg, L"SmallFont");
             }
             break;
         }
