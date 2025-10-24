@@ -954,31 +954,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             // Initialize brushes for text field colors (created on-demand in ApplicationState)
             SetCurrentBrush(GetBrush(BRUSH_WHITE));
                
-            // Initialize cache manager
-            wchar_t downloadPath[MAX_EXTENDED_PATH];
-            if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
-                GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
-            }
-            
-            // Initialize ListView with columns
+            // Initialize ListView with columns first
             HWND hListView = GetDlgItem(hDlg, IDC_LIST);
             InitializeCacheListView(hListView);
-            
-            if (InitializeCacheManager(GetCacheManager(), downloadPath)) {
-                // Scan for existing videos in download folder
-                ScanDownloadFolderForVideos(GetCacheManager(), downloadPath);
-                
-                // Refresh the UI with cached videos
-                RefreshCacheList(hListView, GetCacheManager());
-                UpdateCacheListStatus(hDlg, GetCacheManager());
-            } else {
-                // Initialize dialog controls with defaults if cache fails
-                SetDlgItemTextW(hDlg, IDC_LABEL2, L"Status: Cache initialization failed");
-                SetDlgItemTextW(hDlg, IDC_LABEL3, L"Items: 0");
-            }
-            
-            // Initialize cached video metadata
-            InitializeCachedMetadata(GetCachedVideoMetadata());
             
             // Load debug settings from registry
             wchar_t buffer[MAX_EXTENDED_PATH];
@@ -1000,6 +978,28 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
             // Write session start marker to logfile if logging is enabled
             WriteSessionStartToLogfile();
+            
+            // Now initialize cache manager after logging is enabled
+            wchar_t downloadPath[MAX_EXTENDED_PATH];
+            if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+                GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+            }
+            
+            if (InitializeCacheManager(GetCacheManager(), downloadPath)) {
+                // Scan for existing videos in download folder
+                ScanDownloadFolderForVideos(GetCacheManager(), downloadPath);
+                
+                // Refresh the UI with cached videos
+                RefreshCacheList(hListView, GetCacheManager());
+                UpdateCacheListStatus(hDlg, GetCacheManager());
+            } else {
+                // Initialize dialog controls with defaults if cache fails
+                SetDlgItemTextW(hDlg, IDC_LABEL2, L"Status: Cache initialization failed");
+                SetDlgItemTextW(hDlg, IDC_LABEL3, L"Items: 0");
+            }
+            
+            // Initialize cached video metadata
+            InitializeCachedMetadata(GetCachedVideoMetadata());
             
             // Update debug control visibility
             UpdateDebugControlVisibility(hDlg);
