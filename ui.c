@@ -1263,12 +1263,24 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     SetProgressBarMarquee(hDlg, TRUE);
                     UpdateMainProgressBar(hDlg, -1, L"Getting video information...");
                     
-                    // Start non-blocking Get Info operation
-                    if (!StartNonBlockingGetInfo(hDlg, url, GetCachedVideoMetadata())) {
+                    // Start non-blocking Get Info operation with enhanced error reporting
+                    OperationResult* result = StartNonBlockingGetInfoEx(hDlg, url, GetCachedVideoMetadata());
+                    if (!result || !result->success) {
                         // Failed to start operation
                         SetProgressBarMarquee(hDlg, FALSE);
                         UpdateMainProgressBar(hDlg, 0, L"Failed to start operation");
-                        ShowWarningMessage(hDlg, L"Operation Failed", L"Could not start video information retrieval. Please try again.");
+                        
+                        if (result && result->errorInfo) {
+                            // Show detailed error information
+                            ShowDetailedError(hDlg, result->errorInfo);
+                        } else {
+                            // Fallback to generic error
+                            ShowWarningMessage(hDlg, L"Operation Failed", L"Could not start video information retrieval. Please try again.");
+                        }
+                    }
+                    
+                    if (result) {
+                        FreeOperationResult(result);
                     }
                     
                     break;
@@ -1585,6 +1597,75 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 free(data);
             }
+            return TRUE;
+        }
+        
+        case WM_USER + 103: {
+            // Handle enhanced metadata retrieval completion with detailed error reporting
+            BOOL success = (BOOL)wParam;
+            VideoMetadata* metadata = (VideoMetadata*)lParam;
+            
+            // Stop progress animation
+            SetProgressBarMarquee(hDlg, FALSE);
+            
+            if (success && metadata && metadata->success) {
+                UpdateMainProgressBar(hDlg, 90, L"Updating interface...");
+                
+                // Update the UI with the retrieved information
+                UpdateVideoInfoUI(hDlg, metadata->title, metadata->duration);
+                
+                UpdateMainProgressBar(hDlg, 100, L"Video information retrieved successfully");
+            } else {
+                UpdateMainProgressBar(hDlg, 0, L"Failed to retrieve video information");
+                
+                // Clear any existing video info
+                UpdateVideoInfoUI(hDlg, L"", L"");
+                
+                // Create detailed error information based on what we know
+                DetailedErrorInfo* errorInfo = NULL;
+                
+                if (!metadata) {
+                    errorInfo = CreateDetailedErrorInfo(
+                        ERROR_TYPE_MEMORY_ALLOCATION, 0,
+                        L"Video Information Retrieval", L"Metadata structure is NULL");
+                } else {
+                    // Try to determine the specific error type
+                    ErrorType errorType = ERROR_TYPE_YTDLP_EXECUTION;
+                    wchar_t contextBuffer[512];
+                    
+                    // Get the URL from the edit control for context
+                    HWND hEdit = GetDlgItem(hDlg, IDC_TEXT_FIELD);
+                    wchar_t url[MAX_URL_LENGTH];
+                    GetWindowTextW(hEdit, url, MAX_URL_LENGTH);
+                    
+                    swprintf(contextBuffer, 512, L"URL: %ls", url);
+                    
+                    // Check if it's a URL validation issue
+                    if (!IsYouTubeURL(url)) {
+                        errorType = ERROR_TYPE_URL_INVALID;
+                    }
+                    
+                    errorInfo = CreateDetailedErrorInfo(
+                        errorType, 1, // Exit code 1 for general yt-dlp failure
+                        L"Video Information Retrieval", contextBuffer);
+                }
+                
+                if (errorInfo) {
+                    ShowDetailedError(hDlg, errorInfo);
+                    FreeDetailedErrorInfo(errorInfo);
+                } else {
+                    // Fallback to generic error
+                    ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
+                        L"Could not retrieve video information. Please try again.");
+                }
+            }
+            
+            // Cleanup metadata (it was allocated by the worker thread)
+            if (metadata) {
+                FreeVideoMetadata(metadata);
+                free(metadata);
+            }
+            
             return TRUE;
         }
         

@@ -666,6 +666,141 @@ void FreeYtDlpResult(YtDlpResult* result) {
     free(result);
 }
 
+// Enhanced error handling functions
+
+DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode, 
+                                          const wchar_t* operation, const wchar_t* context) {
+    DetailedErrorInfo* errorInfo = (DetailedErrorInfo*)malloc(sizeof(DetailedErrorInfo));
+    if (!errorInfo) return NULL;
+    
+    memset(errorInfo, 0, sizeof(DetailedErrorInfo));
+    errorInfo->errorType = errorType;
+    errorInfo->errorCode = errorCode;
+    
+    // Copy operation string
+    if (operation) {
+        errorInfo->operation = _wcsdup(operation);
+    }
+    
+    // Copy context string
+    if (context) {
+        errorInfo->context = _wcsdup(context);
+    }
+    
+    // Generate detailed error information based on error type and code
+    wchar_t detailsBuffer[1024];
+    wchar_t diagnosticsBuffer[1024];
+    wchar_t solutionsBuffer[1024];
+    
+    switch (errorType) {
+        case ERROR_TYPE_MEMORY_ALLOCATION:
+            swprintf(detailsBuffer, 1024, L"Memory allocation failed (Error Code: %lu). The system may be low on available memory.", errorCode);
+            swprintf(diagnosticsBuffer, 1024, L"GetLastError(): %lu\nOperation: %ls\nContext: %ls", 
+                    errorCode, operation ? operation : L"Unknown", context ? context : L"None");
+            wcscpy(solutionsBuffer, L"• Close other applications to free memory\n• Restart the application\n• Check available system memory");
+            break;
+            
+        case ERROR_TYPE_THREAD_CREATION:
+            swprintf(detailsBuffer, 1024, L"Failed to create worker thread (Error Code: %lu). The system may have reached thread limits.", errorCode);
+            swprintf(diagnosticsBuffer, 1024, L"CreateThread() failed\nGetLastError(): %lu\nOperation: %ls\nContext: %ls", 
+                    errorCode, operation ? operation : L"Unknown", context ? context : L"None");
+            wcscpy(solutionsBuffer, L"• Close other applications to reduce thread usage\n• Restart the application\n• Check system resources");
+            break;
+            
+        case ERROR_TYPE_YTDLP_NOT_FOUND:
+            swprintf(detailsBuffer, 1024, L"yt-dlp executable not found or not accessible (Error Code: %lu).", errorCode);
+            swprintf(diagnosticsBuffer, 1024, L"File access failed\nGetLastError(): %lu\nOperation: %ls\nExpected path: %ls", 
+                    errorCode, operation ? operation : L"Unknown", context ? context : L"Not specified");
+            wcscpy(solutionsBuffer, L"• Install yt-dlp using File > Install yt-dlp\n• Check yt-dlp path in File > Settings\n• Verify yt-dlp is in system PATH");
+            break;
+            
+        case ERROR_TYPE_YTDLP_EXECUTION:
+            swprintf(detailsBuffer, 1024, L"yt-dlp execution failed (Exit Code: %lu). The video may be unavailable or the URL invalid.", errorCode);
+            swprintf(diagnosticsBuffer, 1024, L"Process exit code: %lu\nOperation: %ls\nURL: %ls", 
+                    errorCode, operation ? operation : L"Unknown", context ? context : L"Not provided");
+            wcscpy(solutionsBuffer, L"• Verify the URL is correct and accessible\n• Check internet connection\n• Try a different video URL\n• Update yt-dlp to latest version");
+            break;
+            
+        case ERROR_TYPE_INVALID_PARAMETERS:
+            swprintf(detailsBuffer, 1024, L"Invalid parameters provided to operation (Error Code: %lu).", errorCode);
+            swprintf(diagnosticsBuffer, 1024, L"Parameter validation failed\nError Code: %lu\nOperation: %ls\nContext: %ls", 
+                    errorCode, operation ? operation : L"Unknown", context ? context : L"None");
+            wcscpy(solutionsBuffer, L"• Check that all required fields are filled\n• Verify URL format is correct\n• Contact support if issue persists");
+            break;
+            
+        case ERROR_TYPE_NETWORK:
+            swprintf(detailsBuffer, 1024, L"Network connectivity issue (Error Code: %lu). Unable to reach the video source.", errorCode);
+            swprintf(diagnosticsBuffer, 1024, L"Network error\nError Code: %lu\nOperation: %ls\nURL: %ls", 
+                    errorCode, operation ? operation : L"Unknown", context ? context : L"Not provided");
+            wcscpy(solutionsBuffer, L"• Check internet connection\n• Verify firewall settings\n• Try again later\n• Check if the website is accessible");
+            break;
+            
+        default:
+            swprintf(detailsBuffer, 1024, L"An unexpected error occurred (Error Code: %lu).", errorCode);
+            swprintf(diagnosticsBuffer, 1024, L"Unknown error type: %d\nError Code: %lu\nOperation: %ls\nContext: %ls", 
+                    errorType, errorCode, operation ? operation : L"Unknown", context ? context : L"None");
+            wcscpy(solutionsBuffer, L"• Try the operation again\n• Restart the application\n• Check the application logs\n• Contact support with error details");
+            break;
+    }
+    
+    errorInfo->details = _wcsdup(detailsBuffer);
+    errorInfo->diagnostics = _wcsdup(diagnosticsBuffer);
+    errorInfo->solutions = _wcsdup(solutionsBuffer);
+    
+    return errorInfo;
+}
+
+void FreeDetailedErrorInfo(DetailedErrorInfo* errorInfo) {
+    if (!errorInfo) return;
+    
+    if (errorInfo->operation) free(errorInfo->operation);
+    if (errorInfo->details) free(errorInfo->details);
+    if (errorInfo->diagnostics) free(errorInfo->diagnostics);
+    if (errorInfo->solutions) free(errorInfo->solutions);
+    if (errorInfo->context) free(errorInfo->context);
+    
+    free(errorInfo);
+}
+
+OperationResult* CreateOperationResult(BOOL success, DetailedErrorInfo* errorInfo) {
+    OperationResult* result = (OperationResult*)malloc(sizeof(OperationResult));
+    if (!result) return NULL;
+    
+    result->success = success;
+    result->errorInfo = errorInfo;
+    
+    return result;
+}
+
+void FreeOperationResult(OperationResult* result) {
+    if (!result) return;
+    
+    if (result->errorInfo) {
+        FreeDetailedErrorInfo(result->errorInfo);
+    }
+    
+    free(result);
+}
+
+void ShowDetailedError(HWND parent, const DetailedErrorInfo* errorInfo) {
+    if (!errorInfo) return;
+    
+    // Create enhanced error dialog with detailed information
+    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
+        L"Operation Failed",
+        errorInfo->details ? errorInfo->details : L"An error occurred during the operation.",
+        errorInfo->details ? errorInfo->details : L"No additional details available.",
+        errorInfo->diagnostics ? errorInfo->diagnostics : L"No diagnostic information available.",
+        errorInfo->solutions ? errorInfo->solutions : L"No specific solutions available.",
+        errorInfo->errorType
+    );
+    
+    if (dialog) {
+        ShowEnhancedErrorDialog(parent, dialog);
+        FreeEnhancedErrorDialog(dialog);
+    }
+}
+
 ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result) {
     if (!result || result->success) return NULL;
     
@@ -919,20 +1054,30 @@ BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metada
 // Uses --get-title --get-duration together for faster, simpler parsing
 // Output format: First line = title, Second line = duration
 BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
-    if (!url || !metadata) return FALSE;
+    if (!url || !metadata) {
+        DebugOutput(L"GetVideoMetadata: Invalid parameters - URL or metadata is NULL");
+        return FALSE;
+    }
     
     // Initialize metadata
     memset(metadata, 0, sizeof(VideoMetadata));
     
+    wchar_t logBuffer[512];
+    swprintf(logBuffer, 512, L"GetVideoMetadata: Processing URL: %ls", url);
+    DebugOutput(logBuffer);
+    
     // Initialize config
     YtDlpConfig config;
     if (!InitializeYtDlpConfig(&config)) {
+        DebugOutput(L"GetVideoMetadata: Failed to initialize yt-dlp configuration");
         return FALSE;
     }
     
     // Create request for getting title and duration together
     YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_TITLE_DURATION, url, NULL);
     if (!request) {
+        DebugOutput(L"GetVideoMetadata: Failed to create yt-dlp request");
+        CleanupYtDlpConfig(&config);
         return FALSE;
     }
     
@@ -940,27 +1085,64 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     YtDlpResult* result = ExecuteYtDlpRequest(&config, request);
     
     BOOL success = FALSE;
-    if (result && result->success && result->output) {
-        // Parse the output - first line is title, second line is duration
-        wchar_t* output = _wcsdup(result->output);
-        if (output) {
-            wchar_t* context = NULL;
-            wchar_t* line = wcstok(output, L"\n", &context);
-            if (line) {
-                // First line is title
-                metadata->title = _wcsdup(line);
-                
-                // Second line is duration
-                line = wcstok(NULL, L"\n", &context);
-                if (line) {
-                    metadata->duration = _wcsdup(line);
-                }
-            }
-            free(output);
+    if (result) {
+        if (result->success && result->output) {
+            swprintf(logBuffer, 512, L"GetVideoMetadata: yt-dlp execution successful, parsing output (length: %zu)", 
+                    wcslen(result->output));
+            DebugOutput(logBuffer);
             
-            metadata->success = (metadata->title != NULL);
-            success = metadata->success;
+            // Parse the output - first line is title, second line is duration
+            wchar_t* output = _wcsdup(result->output);
+            if (output) {
+                wchar_t* context = NULL;
+                wchar_t* line = wcstok(output, L"\n", &context);
+                if (line) {
+                    // First line is title
+                    metadata->title = _wcsdup(line);
+                    swprintf(logBuffer, 512, L"GetVideoMetadata: Extracted title: %ls", metadata->title);
+                    DebugOutput(logBuffer);
+                    
+                    // Second line is duration
+                    line = wcstok(NULL, L"\n", &context);
+                    if (line) {
+                        metadata->duration = _wcsdup(line);
+                        swprintf(logBuffer, 512, L"GetVideoMetadata: Extracted duration: %ls", metadata->duration);
+                        DebugOutput(logBuffer);
+                    } else {
+                        DebugOutput(L"GetVideoMetadata: Warning - No duration found in output");
+                    }
+                } else {
+                    DebugOutput(L"GetVideoMetadata: Error - No lines found in yt-dlp output");
+                }
+                free(output);
+                
+                metadata->success = (metadata->title != NULL);
+                success = metadata->success;
+            } else {
+                DebugOutput(L"GetVideoMetadata: Failed to duplicate output string");
+            }
+        } else {
+            // Log detailed error information
+            if (!result->success) {
+                swprintf(logBuffer, 512, L"GetVideoMetadata: yt-dlp execution failed with exit code: %lu", result->exitCode);
+                DebugOutput(logBuffer);
+                
+                if (result->errorMessage) {
+                    swprintf(logBuffer, 512, L"GetVideoMetadata: yt-dlp error message: %ls", result->errorMessage);
+                    DebugOutput(logBuffer);
+                }
+            } else {
+                DebugOutput(L"GetVideoMetadata: yt-dlp succeeded but produced no output");
+            }
         }
+    } else {
+        DebugOutput(L"GetVideoMetadata: ExecuteYtDlpRequest returned NULL result");
+    }
+    
+    if (success) {
+        DebugOutput(L"GetVideoMetadata: Successfully retrieved video metadata");
+    } else {
+        DebugOutput(L"GetVideoMetadata: Failed to retrieve video metadata");
     }
     
     // Cleanup
@@ -1530,38 +1712,104 @@ DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam) {
     
     VideoMetadata* metadata = (VideoMetadata*)malloc(sizeof(VideoMetadata));
     if (!metadata) {
+        // Log memory allocation failure
+        DebugOutput(L"GetInfoWorkerThread: Failed to allocate VideoMetadata structure");
+        
+        // Send failure notification with NULL metadata to indicate memory error
+        PostMessageW(context->hDialog, WM_USER + 103, (WPARAM)FALSE, (LPARAM)NULL);
         free(context);
         return 1;
     }
     
+    // Log the operation start
+    wchar_t logBuffer[512];
+    swprintf(logBuffer, 512, L"GetInfoWorkerThread: Starting metadata retrieval for URL: %ls", context->url);
+    DebugOutput(logBuffer);
+    
     BOOL success = GetVideoMetadata(context->url, metadata);
+    
+    if (success) {
+        swprintf(logBuffer, 512, L"GetInfoWorkerThread: Successfully retrieved metadata - Title: %ls, Duration: %ls", 
+                metadata->title ? metadata->title : L"(null)", 
+                metadata->duration ? metadata->duration : L"(null)");
+        DebugOutput(logBuffer);
+    } else {
+        swprintf(logBuffer, 512, L"GetInfoWorkerThread: Failed to retrieve metadata for URL: %ls", context->url);
+        DebugOutput(logBuffer);
+    }
     
     // Send result back to main thread (metadata will be freed by the main thread)
     PostMessageW(context->hDialog, WM_USER + 103, (WPARAM)success, (LPARAM)metadata);
     
     free(context);
-    return 0;
+    return success ? 0 : 1;
 }
 
-// Start non-blocking Get Info operation
-BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata) {
-    if (!hDlg || !url || !cachedMetadata) return FALSE;
+// Enhanced version with detailed error reporting
+OperationResult* StartNonBlockingGetInfoEx(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata) {
+    // Validate parameters
+    if (!hDlg) {
+        DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
+            ERROR_TYPE_INVALID_PARAMETERS, 0, 
+            L"StartNonBlockingGetInfoEx", L"Parent window handle is NULL");
+        return CreateOperationResult(FALSE, errorInfo);
+    }
     
+    if (!url || wcslen(url) == 0) {
+        DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
+            ERROR_TYPE_INVALID_PARAMETERS, 0, 
+            L"StartNonBlockingGetInfoEx", L"URL is NULL or empty");
+        return CreateOperationResult(FALSE, errorInfo);
+    }
+    
+    if (!cachedMetadata) {
+        DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
+            ERROR_TYPE_INVALID_PARAMETERS, 0, 
+            L"StartNonBlockingGetInfoEx", L"Cached metadata pointer is NULL");
+        return CreateOperationResult(FALSE, errorInfo);
+    }
+    
+    // Allocate context
     GetInfoContext* context = (GetInfoContext*)malloc(sizeof(GetInfoContext));
-    if (!context) return FALSE;
+    if (!context) {
+        DWORD errorCode = GetLastError();
+        DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
+            ERROR_TYPE_MEMORY_ALLOCATION, errorCode, 
+            L"StartNonBlockingGetInfoEx", L"Failed to allocate GetInfoContext");
+        return CreateOperationResult(FALSE, errorInfo);
+    }
     
     context->hDialog = hDlg;
     wcscpy(context->url, url);
     context->cachedMetadata = cachedMetadata;
     
+    // Create worker thread
     HANDLE hThread = CreateThread(NULL, 0, GetInfoWorkerThread, context, 0, NULL);
     if (!hThread) {
+        DWORD errorCode = GetLastError();
         free(context);
-        return FALSE;
+        
+        wchar_t contextBuffer[512];
+        swprintf(contextBuffer, 512, L"URL: %ls", url);
+        
+        DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
+            ERROR_TYPE_THREAD_CREATION, errorCode, 
+            L"StartNonBlockingGetInfoEx", contextBuffer);
+        return CreateOperationResult(FALSE, errorInfo);
     }
     
     CloseHandle(hThread);
-    return TRUE;
+    return CreateOperationResult(TRUE, NULL);
+}
+
+// Legacy function for backward compatibility
+BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata) {
+    OperationResult* result = StartNonBlockingGetInfoEx(hDlg, url, cachedMetadata);
+    if (!result) return FALSE;
+    
+    BOOL success = result->success;
+    FreeOperationResult(result);
+    return success;
 }
 
 // Configuration management functions

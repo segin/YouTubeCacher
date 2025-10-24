@@ -64,6 +64,17 @@ void FreeYtDlpRequest(YtDlpRequest* request);
 YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* request);
 void FreeYtDlpResult(YtDlpResult* result);
 
+// Enhanced error handling
+DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode, 
+                                          const wchar_t* operation, const wchar_t* context);
+void FreeDetailedErrorInfo(DetailedErrorInfo* errorInfo);
+OperationResult* CreateOperationResult(BOOL success, DetailedErrorInfo* errorInfo);
+void FreeOperationResult(OperationResult* result);
+void ShowDetailedError(HWND parent, const DetailedErrorInfo* errorInfo);
+
+// Enhanced operation functions
+OperationResult* StartNonBlockingGetInfoEx(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata);
+
 // Command line argument construction
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize);

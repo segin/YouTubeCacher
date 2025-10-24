@@ -93,8 +93,30 @@ typedef enum {
     ERROR_TYPE_DEPENDENCIES,
     ERROR_TYPE_URL_INVALID,
     ERROR_TYPE_DISK_SPACE,
+    ERROR_TYPE_MEMORY_ALLOCATION,
+    ERROR_TYPE_THREAD_CREATION,
+    ERROR_TYPE_YTDLP_NOT_FOUND,
+    ERROR_TYPE_YTDLP_EXECUTION,
+    ERROR_TYPE_INVALID_PARAMETERS,
     ERROR_TYPE_UNKNOWN
 } ErrorType;
+
+// Detailed error information structure
+typedef struct {
+    ErrorType errorType;
+    DWORD errorCode;           // Windows error code or custom error code
+    wchar_t* operation;        // What operation was being performed
+    wchar_t* details;          // Detailed error description
+    wchar_t* diagnostics;      // Technical diagnostic information
+    wchar_t* solutions;        // Suggested solutions
+    wchar_t* context;          // Additional context (URL, file path, etc.)
+} DetailedErrorInfo;
+
+// Operation result structure
+typedef struct {
+    BOOL success;
+    DetailedErrorInfo* errorInfo;  // NULL if success is TRUE
+} OperationResult;
 
 // YtDlp configuration structure
 typedef struct {
