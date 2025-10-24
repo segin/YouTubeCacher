@@ -456,9 +456,8 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     // Height = content + group spacing + button height + dialog margin
     int collapsedHeight = buttonY + buttonHeight + margin;
     
-    // Win32 minimum dialog height should accommodate all elements
-    int minCollapsedHeight = ScaleForDpi(isSuccessDialog ? 180 : 150, dpi); // Increased minimum heights
-    collapsedHeight = max(collapsedHeight, minCollapsedHeight);
+    // Use calculated height without artificial minimum - let content determine size
+    // Only ensure we have enough space for the actual content
     
     // === STEP 8: Calculate expanded height with proper margins ===
     int tabHeight = ScaleForDpi(isSuccessDialog ? 290 : 140, dpi);
@@ -1290,31 +1289,6 @@ INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* mes
     return result;
 }
 
-INT_PTR ShowWarningMessage(HWND parent, const wchar_t* title, const wchar_t* message) {
-    wchar_t solutions[512];
-    wcscpy(solutions, L"Review the warning details and follow any recommended actions. "
-                     L"If the issue persists, check the application logs or contact support.");
-    
-    // Log the warning
-    LogWarning(L"Warning", message ? message : L"Warning condition detected");
-    
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title ? title : L"Warning",
-        message ? message : L"A warning condition has been detected",
-        L"A warning condition was encountered during operation. Review the details to understand the issue and determine if action is needed.",
-        L"The application detected a condition that may require attention but does not prevent continued operation.",
-        solutions,
-        ERROR_TYPE_UNKNOWN
-    );
-    
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
-    
-    return result;
-}
 
 INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message) {
     wchar_t solutions[512];

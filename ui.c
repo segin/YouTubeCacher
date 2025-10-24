@@ -1203,7 +1203,26 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
                     
                     if (wcslen(url) == 0) {
-                        ShowWarningMessage(hDlg, L"No URL Provided", L"Please enter a YouTube URL to download.");
+                        // Use flexible dialog system with contextual content
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"No URL Provided";
+                        config.message = L"Please enter a YouTube URL to download.";
+                        config.details = L"The URL field is blank. A valid YouTube URL is required to download videos.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To download a video:\n\n"
+                                            L"1. Copy a YouTube URL from your web browser\n"
+                                            L"2. Paste it into the URL field above\n"
+                                            L"3. Click the Download button\n\n"
+                                            L"Supported URL formats:\n"
+                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\n"
+                                            L"• https://youtu.be/VIDEO_ID\n"
+                                            L"• YouTube playlist URLs";
+                        config.tab2_name = L"How to Fix";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         break;
                     }
                     
@@ -1217,7 +1236,22 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 case IDC_GETINFO_BTN: {
                     // Check if download is in progress
                     if (GetDownloadingState()) {
-                        ShowWarningMessage(hDlg, L"Download in Progress", L"Please wait for the current download to complete before getting video information.");
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"Download in Progress";
+                        config.message = L"Please wait for the current download to complete before getting video information.";
+                        config.details = L"A video download is currently in progress. Only one operation can run at a time to prevent conflicts.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To get video information:\n\n"
+                                            L"1. Wait for the current download to finish\n"
+                                            L"2. The progress bar will disappear when complete\n"
+                                            L"3. Then try the Get Info button again\n\n"
+                                            L"You can also cancel the current download if needed.";
+                        config.tab2_name = L"How to Fix";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         break;
                     }
                     
@@ -1227,7 +1261,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                     // Validate URL is provided
                     if (wcslen(url) == 0) {
-                        ShowWarningMessage(hDlg, L"No URL Provided", L"Please enter a YouTube URL to get video information.");
+                        // Use flexible dialog system with contextual content
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"No URL Provided";
+                        config.message = L"Please enter a YouTube URL to get video information.";
+                        config.details = L"The URL field is blank. A valid YouTube URL is required to retrieve video information.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To get video information:\n\n"
+                                            L"1. Copy a YouTube URL from your web browser\n"
+                                            L"2. Paste it into the URL field above\n"
+                                            L"3. Click the Get Info button\n\n"
+                                            L"This will display the video title, duration, and other details without downloading the video.";
+                        config.tab2_name = L"How to Fix";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         break;
                     }
                     
@@ -1275,7 +1325,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             ShowDetailedError(hDlg, result->errorInfo);
                         } else {
                             // Fallback to generic error
-                            ShowWarningMessage(hDlg, L"Operation Failed", L"Could not start video information retrieval. Please try again.");
+                            UnifiedDialogConfig config = {0};
+                            config.dialogType = UNIFIED_DIALOG_ERROR;
+                            config.title = L"Operation Failed";
+                            config.message = L"Could not start video information retrieval. Please try again.";
+                            config.details = L"An unexpected error occurred while attempting to retrieve video information. The operation could not be started.";
+                            config.tab1_name = L"Details";
+                            config.tab2_content = L"Try these steps:\n\n"
+                                                L"1. Check your internet connection\n"
+                                                L"2. Verify the YouTube URL is valid\n"
+                                                L"3. Ensure yt-dlp is properly installed\n"
+                                                L"4. Try restarting the application\n\n"
+                                                L"If the problem persists, check the application logs for more details.";
+                            config.tab2_name = L"Troubleshooting";
+                            config.showDetailsButton = TRUE;
+                            config.showCopyButton = TRUE;
+                            
+                            ShowUnifiedDialog(hDlg, &config);
                         }
                     }
                     
@@ -1290,31 +1356,96 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     wchar_t* selectedVideoId = GetSelectedVideoId(hListView);
                     
                     if (!selectedVideoId) {
-                        ShowWarningMessage(hDlg, L"No Selection", 
-                                         L"Please select a video from the list to play.");
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"No Selection";
+                        config.message = L"Please select a video from the list to play.";
+                        config.details = L"No video is currently selected in the offline videos list. You must select a video before playing it.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To play a video:\n\n"
+                                            L"1. Click on a video in the offline videos list\n"
+                                            L"2. The selected video will be highlighted\n"
+                                            L"3. Click the Play button\n\n"
+                                            L"Make sure you have downloaded videos first, or the list will be empty.";
+                        config.tab2_name = L"How to Fix";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         break;
                     }
                     
                     // Get player path from settings
                     wchar_t playerPath[MAX_EXTENDED_PATH];
                     if (!LoadSettingFromRegistry(REG_PLAYER_PATH, playerPath, MAX_EXTENDED_PATH)) {
-                        ShowWarningMessage(hDlg, L"Player Not Configured", 
-                                         L"Please configure a media player in File > Settings.");
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"Player Not Configured";
+                        config.message = L"Please configure a media player in File > Settings.";
+                        config.details = L"No media player has been configured. A media player is required to play downloaded videos.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To configure a media player:\n\n"
+                                            L"1. Go to File > Settings\n"
+                                            L"2. Click the browse button next to 'Media player'\n"
+                                            L"3. Select your preferred video player (e.g., VLC, Windows Media Player)\n"
+                                            L"4. Click OK to save\n\n"
+                                            L"Popular media players:\n"
+                                            L"• VLC Media Player (recommended)\n"
+                                            L"• Windows Media Player\n"
+                                            L"• PotPlayer\n"
+                                            L"• MPC-HC";
+                        config.tab2_name = L"How to Fix";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         break;
                     }
                     
                     // Validate player exists
                     DWORD attributes = GetFileAttributesW(playerPath);
                     if (attributes == INVALID_FILE_ATTRIBUTES) {
-                        ShowWarningMessage(hDlg, L"Player Not Found", 
-                                         L"The configured media player was not found. Please check the path in Settings.");
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Player Not Found";
+                        config.message = L"The configured media player was not found. Please check the path in Settings.";
+                        config.details = L"The media player executable file could not be found at the configured path. It may have been moved, deleted, or uninstalled.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To fix this issue:\n\n"
+                                            L"1. Go to File > Settings\n"
+                                            L"2. Check the media player path\n"
+                                            L"3. Browse to the correct location of your media player\n"
+                                            L"4. Or install a new media player if it was uninstalled\n\n"
+                                            L"Common media player locations:\n"
+                                            L"• VLC: C:\\Program Files\\VideoLAN\\VLC\\vlc.exe\n"
+                                            L"• Windows Media Player: C:\\Program Files\\Windows Media Player\\wmplayer.exe";
+                        config.tab2_name = L"How to Fix";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         break;
                     }
                     
                     // Play the video (no success popup)
                     if (!PlayCacheEntry(GetCacheManager(), selectedVideoId, playerPath)) {
-                        ShowWarningMessage(hDlg, L"Playback Failed", 
-                                         L"Failed to launch the video. The file may have been moved or deleted.");
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Playback Failed";
+                        config.message = L"Failed to launch the video. The file may have been moved or deleted.";
+                        config.details = L"The video file could not be opened by the media player. This usually happens when the file has been moved, deleted, or corrupted.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"Possible solutions:\n\n"
+                                            L"1. Check if the video file still exists\n"
+                                            L"2. Try downloading the video again\n"
+                                            L"3. Verify your media player is working correctly\n"
+                                            L"4. Check if the file is being used by another program\n\n"
+                                            L"The cache list will be refreshed to remove any invalid entries.";
+                        config.tab2_name = L"Troubleshooting";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         // Refresh cache to remove invalid entries
                         RefreshCacheList(hListView, GetCacheManager());
                         UpdateCacheListStatus(hDlg, GetCacheManager());
@@ -1328,8 +1459,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     wchar_t** selectedVideoIds = GetSelectedVideoIds(hListView, &selectedCount);
                     
                     if (!selectedVideoIds || selectedCount == 0) {
-                        ShowWarningMessage(hDlg, L"No Selection", 
-                                         L"Please select one or more videos from the list to delete.");
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"No Selection";
+                        config.message = L"Please select one or more videos from the list to delete.";
+                        config.details = L"No videos are currently selected in the offline videos list. You must select at least one video before deleting.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To delete videos:\n\n"
+                                            L"1. Click on one or more videos in the list\n"
+                                            L"2. Hold Ctrl while clicking to select multiple videos\n"
+                                            L"3. Selected videos will be highlighted\n"
+                                            L"4. Click the Delete button\n\n"
+                                            L"Warning: Deleted videos cannot be recovered and will need to be downloaded again.";
+                        config.tab2_name = L"How to Delete";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                         break;
                     }
                     
@@ -1456,8 +1602,24 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                     free(finalDetails);
                                 }
                             } else {
-                                ShowWarningMessage(hDlg, L"Delete Failed", 
-                                                 L"Failed to delete some or all files. They may be in use or you may not have permission.");
+                                UnifiedDialogConfig config = {0};
+                                config.dialogType = UNIFIED_DIALOG_ERROR;
+                                config.title = L"Delete Failed";
+                                config.message = L"Failed to delete some or all files. They may be in use or you may not have permission.";
+                                config.details = L"One or more video files could not be deleted. This can happen if files are currently open in a media player or if you don't have sufficient permissions.";
+                                config.tab1_name = L"Details";
+                                config.tab2_content = L"To resolve this issue:\n\n"
+                                                    L"1. Close any media players that might be using the files\n"
+                                                    L"2. Make sure no other programs have the files open\n"
+                                                    L"3. Check that you have permission to delete files in the download folder\n"
+                                                    L"4. Try running the application as administrator\n"
+                                                    L"5. Wait a moment and try deleting again\n\n"
+                                                    L"Some files may have been successfully deleted even if this error appeared.";
+                                config.tab2_name = L"How to Fix";
+                                config.showDetailsButton = TRUE;
+                                config.showCopyButton = FALSE;
+                                
+                                ShowUnifiedDialog(hDlg, &config);
                             }
                         }
                         
@@ -1491,7 +1653,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         RefreshCacheList(hListView, GetCacheManager());
                         UpdateCacheListStatus(hDlg, GetCacheManager());
                     } else {
-                        ShowWarningMessage(hDlg, L"Add Failed", L"Failed to add dummy video to cache.");
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Add Failed";
+                        config.message = L"Failed to add dummy video to cache.";
+                        config.details = L"The test video entry could not be added to the cache database. This may indicate a problem with the cache system.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"This is a development/testing feature. If you're seeing this error:\n\n"
+                                            L"1. Check that the download folder is accessible\n"
+                                            L"2. Verify you have write permissions to the cache database\n"
+                                            L"3. Try restarting the application\n"
+                                            L"4. Check available disk space\n\n"
+                                            L"This error doesn't affect normal video downloading functionality.";
+                        config.tab2_name = L"Information";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
                     }
                     break;
                 }
@@ -1583,12 +1761,27 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // Clear any existing video info
                     UpdateVideoInfoUI(hDlg, L"", L"");
                     
-                    ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
-                        L"Could not retrieve video information. Please check:\n\n"
-                        L"• The URL is valid and accessible\n"
-                        L"• yt-dlp is properly installed and configured\n"
-                        L"• You have an internet connection\n"
-                        L"• The video is not private or restricted");
+                    UnifiedDialogConfig config = {0};
+                    config.dialogType = UNIFIED_DIALOG_ERROR;
+                    config.title = L"Information Retrieval Failed";
+                    config.message = L"Could not retrieve video information from the provided URL.";
+                    config.details = L"The video information could not be retrieved. This may be due to network issues, an invalid URL, or the video being unavailable.";
+                    config.tab1_name = L"Details";
+                    config.tab2_content = L"Please check:\n\n"
+                                        L"• The URL is valid and accessible\n"
+                                        L"• yt-dlp is properly installed and configured\n"
+                                        L"• You have an internet connection\n"
+                                        L"• The video is not private or restricted\n"
+                                        L"• The video hasn't been deleted or made unavailable\n\n"
+                                        L"If the URL works in your web browser but not here, try:\n"
+                                        L"• Updating yt-dlp to the latest version\n"
+                                        L"• Checking if YouTube has changed their API\n"
+                                        L"• Waiting a few minutes and trying again";
+                    config.tab2_name = L"Troubleshooting";
+                    config.showDetailsButton = TRUE;
+                    config.showCopyButton = TRUE;
+                    
+                    ShowUnifiedDialog(hDlg, &config);
                 }
                 
                 // Cleanup thread data
@@ -1655,8 +1848,24 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     FreeDetailedErrorInfo(errorInfo);
                 } else {
                     // Fallback to generic error
-                    ShowWarningMessage(hDlg, L"Information Retrieval Failed", 
-                        L"Could not retrieve video information. Please try again.");
+                    UnifiedDialogConfig config = {0};
+                    config.dialogType = UNIFIED_DIALOG_ERROR;
+                    config.title = L"Information Retrieval Failed";
+                    config.message = L"Could not retrieve video information. Please try again.";
+                    config.details = L"An unexpected error occurred while retrieving video information. The specific cause could not be determined.";
+                    config.tab1_name = L"Details";
+                    config.tab2_content = L"Try these steps:\n\n"
+                                        L"1. Check your internet connection\n"
+                                        L"2. Verify the YouTube URL is correct\n"
+                                        L"3. Make sure yt-dlp is installed and working\n"
+                                        L"4. Try a different YouTube video\n"
+                                        L"5. Restart the application\n\n"
+                                        L"If the problem persists, there may be a temporary issue with YouTube or yt-dlp.";
+                    config.tab2_name = L"Troubleshooting";
+                    config.showDetailsButton = TRUE;
+                    config.showCopyButton = TRUE;
+                    
+                    ShowUnifiedDialog(hDlg, &config);
                 }
             }
             

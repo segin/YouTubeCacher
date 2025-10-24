@@ -340,8 +340,27 @@ void SaveSettings(HWND hDlg) {
             SaveSettingToRegistry(REG_CUSTOM_ARGS, buffer);
         } else {
             // Invalid arguments - show warning and don't save
-            ShowWarningMessage(hDlg, L"Invalid Arguments", 
-                             L"Custom yt-dlp arguments contain potentially dangerous options and were not saved.\n\nPlease remove any --exec, --batch-file, or other potentially harmful arguments.");
+            UnifiedDialogConfig config = {0};
+            config.dialogType = UNIFIED_DIALOG_WARNING;
+            config.title = L"Invalid Arguments";
+            config.message = L"Custom yt-dlp arguments contain potentially dangerous options and were not saved.";
+            config.details = L"The custom arguments you entered contain options that could be used maliciously or cause system instability. For security reasons, these arguments have been rejected.";
+            config.tab1_name = L"Details";
+            config.tab2_content = L"Blocked argument types:\n\n"
+                                L"• --exec (executes arbitrary commands)\n"
+                                L"• --batch-file (processes batch files)\n"
+                                L"• Other potentially harmful options\n\n"
+                                L"Safe alternatives:\n"
+                                L"• Use format selection: -f best[height<=720]\n"
+                                L"• Add metadata: --add-metadata\n"
+                                L"• Embed subtitles: --embed-subs\n"
+                                L"• Set output template: -o \"%(title)s.%(ext)s\"\n\n"
+                                L"Please remove the dangerous arguments and try again.";
+            config.tab2_name = L"Safe Options";
+            config.showDetailsButton = TRUE;
+            config.showCopyButton = FALSE;
+            
+            ShowUnifiedDialog(hDlg, &config);
         }
     } else {
         // Empty arguments - save empty string
