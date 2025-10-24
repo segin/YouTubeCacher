@@ -1,8 +1,14 @@
-# YouTubeCacher v0.0.0 - Initial Release
+# YouTubeCacher
+
+A modern Windows GUI application for downloading and managing YouTube videos with advanced caching, organization, and offline viewing capabilities.
+
+![Windows](https://img.shields.io/badge/Windows-10%2B-blue?logo=windows)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Version](https://img.shields.io/badge/Version-0.0.0-orange)
 
 ## Overview
 
-YouTubeCacher is a Windows GUI application for downloading and managing YouTube videos with a focus on caching, organization, and offline viewing. This initial release provides core functionality for video downloading, cache management, and a modern Windows interface.
+YouTubeCacher provides a robust, user-friendly solution for downloading YouTube videos with intelligent caching and management features. Built with modern Windows APIs and designed for reliability, it offers seamless integration with your workflow while maintaining high performance and data integrity.
 
 ## Key Features
 
@@ -114,6 +120,33 @@ YouTubeCacher is a Windows GUI application for downloading and managing YouTube 
 - **Memory Safety**: Comprehensive memory management and leak prevention
 - **Error Handling**: Defensive programming with extensive error checking
 
+## Getting Started
+
+### Quick Start
+1. Download the latest release from the [Releases](../../releases) page
+2. Run `YouTubeCacher.exe` (no installation required)
+3. Configure your download folder and yt-dlp path in Settings
+4. Paste a YouTube URL and start downloading!
+
+### Building from Source
+```bash
+# Clone the repository
+git clone https://github.com/segin/YouTubeCacher.git
+cd YouTubeCacher
+
+# Build with MSYS2/MinGW
+export MSYSTEM=MINGW32
+make clean && make
+```
+
+## Contributing
+
+We welcome contributions! Please feel free to:
+- Report bugs and issues
+- Suggest new features
+- Submit pull requests
+- Improve documentation
+
 ## Future Roadmap
 
 - **Playlist Support**: Batch downloading of YouTube playlists
@@ -122,10 +155,16 @@ YouTubeCacher is a Windows GUI application for downloading and managing YouTube 
 - **Search Integration**: Search and browse cached videos
 - **Export/Import**: Cache backup and restore functionality
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 ## Support
 
-For issues, feature requests, or contributions, please visit the project repository.
+- **Issues**: [GitHub Issues](../../issues)
+- **Discussions**: [GitHub Discussions](../../discussions)
+- **Wiki**: [Project Wiki](../../wiki)
 
 ---
 
-**YouTubeCacher v0.0.0** - A robust, modern solution for YouTube video caching and management on Windows.
+**YouTubeCacher** - A robust, modern solution for YouTube video caching and management on Windows.
