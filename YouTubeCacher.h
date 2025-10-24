@@ -21,7 +21,7 @@
 
 // Application constants
 #define APP_NAME            L"YouTube Cacher"
-#define APP_VERSION         L"1.0"
+#define APP_VERSION         L"0.0.1"
 #define MAX_URL_LENGTH      1024
 #define MAX_BUFFER_SIZE     1024
 

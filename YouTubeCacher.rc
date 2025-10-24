@@ -140,19 +140,20 @@ BEGIN
     DEFPUSHBUTTON   "OK", IDC_SUCCESS_OK_BTN, 438, 318, 75, 23
 END
 
-// About Dialog - Dynamic HiDPI-aware layout (positions set by code)
-IDD_ABOUT_DIALOG DIALOGEX 0, 0, 320, 280
+// About Dialog - GNOME-style layout matching specification
+IDD_ABOUT_DIALOG DIALOGEX 0, 0, 420, 300
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About YouTube Cacher"
 FONT 9, "Segoe UI"
 BEGIN
-    ICON            "", IDC_ABOUT_ICON, 144, 20, 32, 32
-    LTEXT           "YouTube Cacher", IDC_ABOUT_TITLE, 0, 60, 320, 18, SS_CENTER
-    LTEXT           "0.0.1", IDC_ABOUT_VERSION, 0, 82, 320, 14, SS_CENTER
-    LTEXT           "A YouTube downloader frontend to youtube-dl and yt-dlp.", IDC_ABOUT_DESCRIPTION, 20, 110, 280, 28, SS_CENTER | SS_WORDELLIPSIS
-    CONTROL         "<a href=""https://github.com/segin/YouTubeCacher"">YouTube Cacher on GitHub</a>", IDC_ABOUT_GITHUB_LINK, "SysLink", WS_TABSTOP, 0, 150, 320, 14, SS_CENTER
-    LTEXT           "Copyright © 2025 Kirn Gill II <segin2005@gmail.com>", IDC_ABOUT_COPYRIGHT, 20, 180, 280, 14, SS_CENTER
-    LTEXT           "This program comes with no warranty.", IDC_ABOUT_WARRANTY, 20, 200, 280, 14, SS_CENTER
-    CONTROL         "<a href=""https://mit-license.org/"">See the MIT License for details.</a>", IDC_ABOUT_LICENSE_LINK, "SysLink", WS_TABSTOP, 0, 220, 320, 14, SS_CENTER
-    DEFPUSHBUTTON   "Close", IDC_ABOUT_CLOSE, 135, 250, 50, 20
+    ICON            "", IDC_ABOUT_ICON, 194, 20, 32, 32
+    LTEXT           "YouTube Cacher", IDC_ABOUT_TITLE, 20, 65, 380, 22, SS_CENTER
+    LTEXT           "0.0.1", IDC_ABOUT_VERSION, 20, 90, 380, 18, SS_CENTER
+    LTEXT           "A YouTube downloader frontend to youtube-dl and yt-dlp.", IDC_ABOUT_DESCRIPTION, 30, 120, 360, 18, SS_CENTER
+    CONTROL         "<a href=""https://github.com/segin/YouTubeCacher"">YouTube Cacher on GitHub</a>", IDC_ABOUT_GITHUB_LINK, "SysLink", WS_TABSTOP, 20, 155, 380, 18, SS_CENTER
+    LTEXT           "Copyright \251 2025 Kirn Gill II <segin2005@gmail.com>", IDC_ABOUT_COPYRIGHT, 30, 190, 360, 18, SS_CENTER
+    LTEXT           "This program comes with no warranty; See the", IDC_ABOUT_WARRANTY, 30, 210, 360, 18, SS_CENTER
+    CONTROL         "<a href=""https://mit-license.org/"">MIT License</a>", IDC_ABOUT_LICENSE_LINK, "SysLink", WS_TABSTOP, 20, 230, 380, 18, SS_CENTER
+    LTEXT           "for details.", IDC_STATIC, 30, 250, 360, 18, SS_CENTER
+    DEFPUSHBUTTON   "Close", IDC_ABOUT_CLOSE, 185, 270, 50, 24
 END

@@ -1484,151 +1484,7 @@ void CleanupErrorLogging(void) {
     }
 }
 
-// About Dialog HiDPI and font-aware layout helper
-static void LayoutAboutDialog(HWND hDlg) {
-    // Get DPI for proper scaling
-    int dpi = GetDpiForWindowSafe(hDlg);
-    
-    // Get system font metrics for proper spacing
-    HDC hdc = GetDC(hDlg);
-    TEXTMETRICW tm;
-    GetTextMetricsW(hdc, &tm);
-    ReleaseDC(hDlg, hdc);
-    
-    // Base measurements scaled for DPI
-    int iconSize = ScaleForDpi(32, dpi);
-    int margin = ScaleForDpi(20, dpi);
-    int smallMargin = ScaleForDpi(10, dpi);
-    int lineHeight = tm.tmHeight + tm.tmExternalLeading + ScaleForDpi(4, dpi);
-    int titleLineHeight = (lineHeight * 3) / 2; // Larger for title
-    
-    // Calculate dialog width based on longest text
-    const wchar_t* texts[] = {
-        L"YouTube Cacher",
-        APP_VERSION,
-        L"A YouTube downloader frontend to youtube-dl and yt-dlp.",
-        L"YouTube Cacher on GitHub",
-        L"Copyright © 2025 Kirn Gill II <segin2005@gmail.com>",
-        L"This program comes with no warranty.",
-        L"See the MIT License for details."
-    };
-    
-    int maxTextWidth = 0;
-    HDC hdcMeasure = GetDC(hDlg);
-    
-    // Measure each text string
-    for (int i = 0; i < (int)_countof(texts); i++) {
-        SIZE textSize;
-        HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
-        HFONT hOldFont = (HFONT)SelectObject(hdcMeasure, hFont);
-        
-        // Use larger font for title measurement
-        if (i == 0) {
-            LOGFONTW lf;
-            if (GetObjectW(hFont, sizeof(lf), &lf)) {
-                lf.lfHeight = (lf.lfHeight * 3) / 2;
-                lf.lfWeight = FW_BOLD;
-                HFONT hTitleFont = CreateFontIndirectW(&lf);
-                if (hTitleFont) {
-                    SelectObject(hdcMeasure, hTitleFont);
-                }
-            }
-        }
-        
-        GetTextExtentPoint32W(hdcMeasure, texts[i], (int)wcslen(texts[i]), &textSize);
-        if (textSize.cx > maxTextWidth) {
-            maxTextWidth = textSize.cx;
-        }
-        
-        SelectObject(hdcMeasure, hOldFont);
-    }
-    
-    ReleaseDC(hDlg, hdcMeasure);
-    
-    // Calculate dialog dimensions
-    int dialogWidth = maxTextWidth + (margin * 2);
-    int dialogHeight = margin + iconSize + smallMargin + titleLineHeight + lineHeight + 
-                      (lineHeight * 5) + ScaleForDpi(30, dpi) + margin; // 30 for button
-    
-    // Ensure minimum size
-    int minWidth = ScaleForDpi(320, dpi);
-    int minHeight = ScaleForDpi(280, dpi);
-    if (dialogWidth < minWidth) dialogWidth = minWidth;
-    if (dialogHeight < minHeight) dialogHeight = minHeight;
-    
-    // Resize dialog
-    SetWindowPos(hDlg, NULL, 0, 0, dialogWidth, dialogHeight, SWP_NOMOVE | SWP_NOZORDER);
-    
-    // Position controls
-    int currentY = margin;
-    int centerX = dialogWidth / 2;
-    
-    // Icon - centered
-    HWND hIcon = GetDlgItem(hDlg, IDC_ABOUT_ICON);
-    if (hIcon) {
-        SetWindowPos(hIcon, NULL, centerX - (iconSize / 2), currentY, iconSize, iconSize, SWP_NOZORDER);
-    }
-    currentY += iconSize + smallMargin;
-    
-    // Title - centered, full width
-    HWND hTitle = GetDlgItem(hDlg, IDC_ABOUT_TITLE);
-    if (hTitle) {
-        SetWindowPos(hTitle, NULL, 0, currentY, dialogWidth, titleLineHeight, SWP_NOZORDER);
-    }
-    currentY += titleLineHeight;
-    
-    // Version - centered, full width
-    HWND hVersion = GetDlgItem(hDlg, IDC_ABOUT_VERSION);
-    if (hVersion) {
-        SetWindowPos(hVersion, NULL, 0, currentY, dialogWidth, lineHeight, SWP_NOZORDER);
-    }
-    currentY += lineHeight + smallMargin;
-    
-    // Description - centered, with margins
-    HWND hDesc = GetDlgItem(hDlg, IDC_ABOUT_DESCRIPTION);
-    if (hDesc) {
-        SetWindowPos(hDesc, NULL, margin, currentY, dialogWidth - (margin * 2), lineHeight * 2, SWP_NOZORDER);
-    }
-    currentY += (lineHeight * 2) + smallMargin;
-    
-    // GitHub link - centered, full width
-    HWND hGithub = GetDlgItem(hDlg, IDC_ABOUT_GITHUB_LINK);
-    if (hGithub) {
-        SetWindowPos(hGithub, NULL, 0, currentY, dialogWidth, lineHeight, SWP_NOZORDER);
-    }
-    currentY += lineHeight + smallMargin;
-    
-    // Copyright - centered, with margins
-    HWND hCopyright = GetDlgItem(hDlg, IDC_ABOUT_COPYRIGHT);
-    if (hCopyright) {
-        SetWindowPos(hCopyright, NULL, margin, currentY, dialogWidth - (margin * 2), lineHeight, SWP_NOZORDER);
-    }
-    currentY += lineHeight;
-    
-    // Warranty - centered, with margins
-    HWND hWarranty = GetDlgItem(hDlg, IDC_ABOUT_WARRANTY);
-    if (hWarranty) {
-        SetWindowPos(hWarranty, NULL, margin, currentY, dialogWidth - (margin * 2), lineHeight, SWP_NOZORDER);
-    }
-    currentY += lineHeight;
-    
-    // License link - centered, full width
-    HWND hLicense = GetDlgItem(hDlg, IDC_ABOUT_LICENSE_LINK);
-    if (hLicense) {
-        SetWindowPos(hLicense, NULL, 0, currentY, dialogWidth, lineHeight, SWP_NOZORDER);
-    }
-    currentY += lineHeight + margin;
-    
-    // Close button - centered
-    HWND hClose = GetDlgItem(hDlg, IDC_ABOUT_CLOSE);
-    if (hClose) {
-        int buttonWidth = ScaleForDpi(60, dpi);
-        int buttonHeight = ScaleForDpi(24, dpi);
-        SetWindowPos(hClose, NULL, centerX - (buttonWidth / 2), currentY, buttonWidth, buttonHeight, SWP_NOZORDER);
-    }
-}
-
-// About Dialog Procedure - HiDPI and font-aware GNOME-style layout
+// About Dialog Procedure - Simple GNOME-style layout
 INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     UNREFERENCED_PARAMETER(lParam);
     
@@ -1640,7 +1496,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 SendDlgItemMessageW(hDlg, IDC_ABOUT_ICON, STM_SETICON, (WPARAM)hIcon, 0);
             }
             
-            // Set version from header
+            // Set version from header - this will now show 0.0.1
             SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, APP_VERSION);
             
             // Create larger, bold font for title
@@ -1650,7 +1506,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 if (hFont) {
                     LOGFONTW lf;
                     if (GetObjectW(hFont, sizeof(lf), &lf)) {
-                        lf.lfHeight = (lf.lfHeight * 3) / 2; // Make 1.5x larger
+                        lf.lfHeight = (lf.lfHeight * 4) / 3; // Make larger
                         lf.lfWeight = FW_BOLD;
                         HFONT hNewFont = CreateFontIndirectW(&lf);
                         if (hNewFont) {
@@ -1662,37 +1518,6 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 }
             }
             
-            // Layout the dialog with proper DPI and font awareness
-            LayoutAboutDialog(hDlg);
-            
-            // Center the dialog on the parent window after sizing
-            HWND hParent = GetParent(hDlg);
-            if (!hParent) hParent = GetDesktopWindow();
-            
-            RECT rcParent, rcDlg;
-            GetWindowRect(hParent, &rcParent);
-            GetWindowRect(hDlg, &rcDlg);
-            
-            int x = rcParent.left + (rcParent.right - rcParent.left - (rcDlg.right - rcDlg.left)) / 2;
-            int y = rcParent.top + (rcParent.bottom - rcParent.top - (rcDlg.bottom - rcDlg.top)) / 2;
-            
-            SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
-            
-            return TRUE;
-        }
-        
-        case WM_DPICHANGED: {
-            // Handle DPI changes by re-laying out the dialog
-            LayoutAboutDialog(hDlg);
-            return TRUE;
-        }
-        
-        case WM_SETTINGCHANGE: {
-            // Handle system font/theme changes
-            if (wParam == SPI_SETNONCLIENTMETRICS || wParam == 0) {
-                // Re-layout when system fonts change
-                LayoutAboutDialog(hDlg);
-            }
             return TRUE;
         }
         
