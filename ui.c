@@ -1582,22 +1582,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                     wcscpy(finalDetails, summary);
                                     wcscat(finalDetails, combinedErrorDetails);
                                     
-                                    EnhancedErrorDialog* errorDialog = CreateEnhancedErrorDialog(
-                                        L"Multiple Delete Failed",
-                                        L"Some files failed to delete. They may be in use or you may not have permission.",
-                                        finalDetails,
-                                        L"Check if files are currently open in another application or if you have sufficient permissions.",
-                                        L"• Close any applications that might be using the files\n"
-                                        L"• Run as administrator if permission is denied\n"
-                                        L"• Check if files are read-only or protected\n"
-                                        L"• Restart the application and try again",
-                                        ERROR_TYPE_PERMISSIONS
-                                    );
+                                    UnifiedDialogConfig config = {0};
+                                    config.dialogType = UNIFIED_DIALOG_ERROR;
+                                    config.title = L"Multiple Delete Failed";
+                                    config.message = L"Some files failed to delete. They may be in use or you may not have permission.";
+                                    config.details = finalDetails;
+                                    config.tab1_name = L"Details";
+                                    config.tab2_content = L"Check if files are currently open in another application or if you have sufficient permissions.";
+                                    config.tab2_name = L"Diagnosis";
+                                    config.tab3_content = L"• Close any applications that might be using the files\n"
+                                                        L"• Run as administrator if permission is denied\n"
+                                                        L"• Check if files are read-only or protected\n"
+                                                        L"• Restart the application and try again";
+                                    config.tab3_name = L"Solutions";
+                                    config.showDetailsButton = TRUE;
+                                    config.showCopyButton = TRUE;
                                     
-                                    if (errorDialog) {
-                                        ShowEnhancedErrorDialog(hDlg, errorDialog);
-                                        FreeEnhancedErrorDialog(errorDialog);
-                                    }
+                                    ShowUnifiedDialog(hDlg, &config);
                                     
                                     free(finalDetails);
                                 }

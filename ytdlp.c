@@ -785,20 +785,21 @@ void FreeOperationResult(OperationResult* result) {
 void ShowDetailedError(HWND parent, const DetailedErrorInfo* errorInfo) {
     if (!errorInfo) return;
     
-    // Create enhanced error dialog with detailed information
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        L"Operation Failed",
-        errorInfo->details ? errorInfo->details : L"An error occurred during the operation.",
-        errorInfo->details ? errorInfo->details : L"No additional details available.",
-        errorInfo->diagnostics ? errorInfo->diagnostics : L"No diagnostic information available.",
-        errorInfo->solutions ? errorInfo->solutions : L"No specific solutions available.",
-        errorInfo->errorType
-    );
+    // Create unified dialog with detailed information
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = L"Operation Failed";
+    config.message = errorInfo->details ? errorInfo->details : L"An error occurred during the operation.";
+    config.details = errorInfo->details ? errorInfo->details : L"No additional details available.";
+    config.tab1_name = L"Details";
+    config.tab2_content = errorInfo->diagnostics ? errorInfo->diagnostics : L"No diagnostic information available.";
+    config.tab2_name = L"Diagnostics";
+    config.tab3_content = errorInfo->solutions ? errorInfo->solutions : L"No specific solutions available.";
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    if (dialog) {
-        ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    ShowUnifiedDialog(parent, &config);
 }
 
 ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result) {

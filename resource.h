@@ -66,20 +66,17 @@
 #define IDC_VIDEO_DURATION     1044
 #define IDC_PROGRESS_TEXT      1045
 
-// Enhanced Error Dialog
-#define IDD_ERROR_DIALOG       105
-#define IDC_ERROR_ICON         1032
-#define IDC_ERROR_MESSAGE      1033
-#define IDC_ERROR_DETAILS_BTN  1034
-#define IDC_ERROR_TAB_CONTROL  1035
-#define IDC_ERROR_DETAILS_TEXT 1036
-#define IDC_ERROR_DIAG_TEXT    1037
-#define IDC_ERROR_SOLUTION_TEXT 1038
-#define IDC_ERROR_COPY_BTN     1039
-#define IDC_ERROR_OK_BTN       1040
-
-// Success Dialog
-#define IDD_SUCCESS_DIALOG     106
+// Unified Dialog - handles all message types (info, warning, error, success)
+#define IDD_UNIFIED_DIALOG     105
+#define IDC_UNIFIED_ICON       1032
+#define IDC_UNIFIED_MESSAGE    1033
+#define IDC_UNIFIED_DETAILS_BTN 1034
+#define IDC_UNIFIED_TAB_CONTROL 1035
+#define IDC_UNIFIED_TAB1_TEXT  1036
+#define IDC_UNIFIED_TAB2_TEXT  1037
+#define IDC_UNIFIED_TAB3_TEXT  1038
+#define IDC_UNIFIED_COPY_BTN   1039
+#define IDC_UNIFIED_OK_BTN     1040
 
 // About Dialog
 #define IDD_ABOUT_DIALOG       107
@@ -92,15 +89,7 @@
 #define IDC_ABOUT_WARRANTY     1064
 #define IDC_ABOUT_LICENSE_LINK 1065
 #define IDC_ABOUT_CLOSE        1066
-#define IDC_SUCCESS_ICON       1046
-#define IDC_SUCCESS_MESSAGE    1047
-#define IDC_SUCCESS_DETAILS_BTN 1048
-#define IDC_SUCCESS_TAB_CONTROL 1049
-#define IDC_SUCCESS_DETAILS_TEXT 1050
-#define IDC_SUCCESS_INFO_TEXT  1051
-#define IDC_SUCCESS_SUMMARY_TEXT 1052
-#define IDC_SUCCESS_COPY_BTN   1053
-#define IDC_SUCCESS_OK_BTN     1054
+
 
 // Error dialog tab IDs
 #define TAB_ERROR_DETAILS      0

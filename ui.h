@@ -30,16 +30,14 @@ void SetProgressBarMarquee(HWND hDlg, BOOL enable);
 void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX, double dpiScaleY);
 void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dpiScaleX, double dpiScaleY);
 
-// Enhanced error dialog functions
-EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message, 
-                                              const wchar_t* details, const wchar_t* diagnostics, 
-                                              const wchar_t* solutions, ErrorType errorType);
-INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog);
-void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog);
-INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+
 
 // Unified dialog function - single entry point for all dialog types
 INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config);
+INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+void ResizeUnifiedDialog(HWND hDlg, BOOL expanded);
+void ShowUnifiedDialogTab(HWND hDlg, int tabIndex);
+BOOL CopyUnifiedDialogToClipboard(const UnifiedDialogConfig* config);
 BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog);
 void ResizeErrorDialog(HWND hDlg, BOOL expanded);
 void InitializeErrorDialogTabs(HWND hTabControl);
@@ -54,9 +52,7 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode);
 INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation);
 INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details);
 INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
-INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 
-INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message);
 void ShowAboutDialog(HWND parent);
 
 // Error logging functions

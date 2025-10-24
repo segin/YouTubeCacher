@@ -159,21 +159,12 @@ static void PositionDialogControls(HWND hDlg, EnhancedErrorDialog* errorDialog) 
     int dialogWidth = dialogRect.right - dialogRect.left;
     int dialogHeight = dialogRect.bottom - dialogRect.top;
     
-    // Determine control IDs based on dialog type
-    int messageId, iconId, detailsButtonId, copyButtonId, okButtonId;
-    if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
-        messageId = IDC_SUCCESS_MESSAGE;
-        iconId = IDC_SUCCESS_ICON;
-        detailsButtonId = IDC_SUCCESS_DETAILS_BTN;
-        copyButtonId = IDC_SUCCESS_COPY_BTN;
-        okButtonId = IDC_SUCCESS_OK_BTN;
-    } else {
-        messageId = IDC_ERROR_MESSAGE;
-        iconId = IDC_ERROR_ICON;
-        detailsButtonId = IDC_ERROR_DETAILS_BTN;
-        copyButtonId = IDC_ERROR_COPY_BTN;
-        okButtonId = IDC_ERROR_OK_BTN;
-    }
+    // Use unified dialog control IDs for all dialog types
+    int messageId = IDC_UNIFIED_MESSAGE;
+    int iconId = IDC_UNIFIED_ICON;
+    int detailsButtonId = IDC_UNIFIED_DETAILS_BTN;
+    int copyButtonId = IDC_UNIFIED_COPY_BTN;
+    int okButtonId = IDC_UNIFIED_OK_BTN;
     
     // Get device context for text measurement
     HDC hdc = GetDC(hDlg);
@@ -250,106 +241,364 @@ static const wchar_t* SUCCESS_TAB_NAMES[] = {
 INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config) {
     if (!config) return IDCANCEL;
     
-    // Convert unified dialog type to existing dialog type
-    DialogType dialogType;
-    ErrorType errorType = ERROR_TYPE_UNKNOWN;
+    // Store config in a way the dialog procedure can access it
+    return DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_UNIFIED_DIALOG), 
+                          parent, UnifiedDialogProc, (LPARAM)config);
+}
+
+// Unified Dialog Procedure - handles all dialog types with single resource
+INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    static const UnifiedDialogConfig* config = NULL;
+    static BOOL isExpanded = FALSE;
     
+    switch (message) {
+        case WM_INITDIALOG: {
+            config = (const UnifiedDialogConfig*)lParam;
+            if (!config) {
+                EndDialog(hDlg, IDCANCEL);
+                return TRUE;
+            }
+            
+            // Set dialog title and message
+            SetWindowTextW(hDlg, config->title ? config->title : L"Information");
+            SetDlgItemTextW(hDlg, IDC_UNIFIED_MESSAGE, config->message ? config->message : L"No message");
+            
+            // Set appropriate icon based on dialog type
+            LPCWSTR iconResource;
+            switch (config->dialogType) {
+                case UNIFIED_DIALOG_ERROR:
+                    iconResource = IDI_ERROR;
+                    break;
+                case UNIFIED_DIALOG_WARNING:
+                    iconResource = IDI_WARNING;
+                    break;
+                case UNIFIED_DIALOG_SUCCESS:
+                    iconResource = IDI_INFORMATION;
+                    break;
+                case UNIFIED_DIALOG_INFO:
+                default:
+                    iconResource = IDI_INFORMATION;
+                    break;
+            }
+            
+            HICON hIcon = LoadIconW(NULL, iconResource);
+            if (hIcon) {
+                SendDlgItemMessageW(hDlg, IDC_UNIFIED_ICON, STM_SETICON, (WPARAM)hIcon, 0);
+            }
+            
+            // Set up tabs if details are provided
+            if (config->details || config->tab2_content || config->tab3_content) {
+                HWND hTabControl = GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL);
+                if (hTabControl) {
+                    TCITEMW tie;
+                    tie.mask = TCIF_TEXT;
+                    
+                    // Always add first tab (Details)
+                    tie.pszText = (wchar_t*)(config->tab1_name ? config->tab1_name : L"Details");
+                    TabCtrl_InsertItem(hTabControl, 0, &tie);
+                    
+                    // Add second tab if content exists
+                    if (config->tab2_content) {
+                        tie.pszText = (wchar_t*)(config->tab2_name ? config->tab2_name : L"Information");
+                        TabCtrl_InsertItem(hTabControl, 1, &tie);
+                    }
+                    
+                    // Add third tab if content exists
+                    if (config->tab3_content) {
+                        tie.pszText = (wchar_t*)(config->tab3_name ? config->tab3_name : L"Additional");
+                        TabCtrl_InsertItem(hTabControl, 2, &tie);
+                    }
+                    
+                    TabCtrl_SetCurSel(hTabControl, 0);
+                    
+                    // Set initial tab content
+                    SetDlgItemTextW(hDlg, IDC_UNIFIED_TAB1_TEXT, config->details ? config->details : L"No details available");
+                    if (config->tab2_content) {
+                        SetDlgItemTextW(hDlg, IDC_UNIFIED_TAB2_TEXT, config->tab2_content);
+                    }
+                    if (config->tab3_content) {
+                        SetDlgItemTextW(hDlg, IDC_UNIFIED_TAB3_TEXT, config->tab3_content);
+                    }
+                }
+            }
+            
+            // Show/hide buttons based on config
+            if (!config->showDetailsButton || (!config->details && !config->tab2_content && !config->tab3_content)) {
+                ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), SW_HIDE);
+            }
+            
+            if (!config->showCopyButton) {
+                ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN), SW_HIDE);
+            }
+            
+            // Start in collapsed state
+            ResizeUnifiedDialog(hDlg, FALSE);
+            
+            return TRUE;
+        }
+        
+        case WM_COMMAND:
+            switch (LOWORD(wParam)) {
+                case IDC_UNIFIED_DETAILS_BTN:
+                    isExpanded = !isExpanded;
+                    ResizeUnifiedDialog(hDlg, isExpanded);
+                    if (isExpanded) {
+                        ShowUnifiedDialogTab(hDlg, TabCtrl_GetCurSel(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL)));
+                    }
+                    return TRUE;
+                    
+                case IDC_UNIFIED_COPY_BTN:
+                    CopyUnifiedDialogToClipboard(config);
+                    return TRUE;
+                    
+                case IDC_UNIFIED_OK_BTN:
+                case IDOK:
+                case IDCANCEL:
+                    EndDialog(hDlg, LOWORD(wParam));
+                    return TRUE;
+            }
+            break;
+            
+        case WM_NOTIFY: {
+            LPNMHDR pnmh = (LPNMHDR)lParam;
+            if (pnmh->code == TCN_SELCHANGE && pnmh->idFrom == IDC_UNIFIED_TAB_CONTROL) {
+                int selectedTab = TabCtrl_GetCurSel(pnmh->hwndFrom);
+                ShowUnifiedDialogTab(hDlg, selectedTab);
+                return TRUE;
+            }
+            break;
+        }
+        
+        case WM_CLOSE:
+            EndDialog(hDlg, IDCANCEL);
+            return TRUE;
+    }
+    
+    return FALSE;
+}
+
+// Helper function to resize unified dialog
+void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
+    // Get DPI for this window
+    int dpi = GetDpiForWindowSafe(hDlg);
+    
+    // Calculate base metrics per Microsoft Win32 UI standards
+    int margin = ScaleForDpi(11, dpi);
+    int iconSize = ScaleForDpi(32, dpi);
+    int buttonHeight = ScaleForDpi(23, dpi);
+    int buttonWidth = ScaleForDpi(75, dpi);
+    int buttonGap = ScaleForDpi(6, dpi);
+    int controlSpacing = ScaleForDpi(6, dpi);
+    int groupSpacing = ScaleForDpi(10, dpi);
+    
+    // Get current message text for sizing
+    wchar_t messageText[1024];
+    GetDlgItemTextW(hDlg, IDC_UNIFIED_MESSAGE, messageText, 1024);
+    
+    // Calculate text metrics
+    HDC hdc = GetDC(hDlg);
+    HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    HFONT hOldFont = NULL;
+    if (hFont) hOldFont = (HFONT)SelectObject(hdc, hFont);
+    
+    TEXTMETRICW tm;
+    GetTextMetricsW(hdc, &tm);
+    int lineHeight = tm.tmHeight;
+    
+    // Calculate dialog dimensions
+    int minWidth = ScaleForDpi(320, dpi);
+    int maxWidth = ScaleForDpi(520, dpi);
+    int iconGap = controlSpacing;
+    int availableTextWidth = maxWidth - margin - iconSize - iconGap - margin;
+    
+    RECT textRect = {0, 0, availableTextWidth, 0};
+    int textHeight = DrawTextW(hdc, messageText, -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    
+    int requiredWidth = margin + iconSize + iconGap + textRect.right + margin;
+    int dialogWidth = max(minWidth, min(maxWidth, requiredWidth));
+    
+    int finalTextWidth = dialogWidth - margin - iconSize - iconGap - margin;
+    RECT finalTextRect = {0, 0, finalTextWidth, 0};
+    textHeight = DrawTextW(hdc, messageText, -1, &finalTextRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    
+    // Position elements
+    int iconX = margin;
+    int iconY = margin;
+    int iconCenterY = iconY + iconSize / 2;
+    int textStartY = iconCenterY - lineHeight / 2;
+    
+    int messageX = iconX + iconSize + iconGap;
+    int messageY = textStartY;
+    int messageWidth = finalTextWidth;
+    int messageHeight = textHeight;
+    
+    int contentBottom = max(iconY + iconSize, messageY + messageHeight);
+    int buttonY = contentBottom + groupSpacing;
+    
+    // Calculate collapsed height
+    int collapsedHeight = buttonY + buttonHeight + margin;
+    int minCollapsedHeight = ScaleForDpi(150, dpi);
+    collapsedHeight = max(collapsedHeight, minCollapsedHeight);
+    
+    // Calculate expanded height
+    int tabHeight = ScaleForDpi(290, dpi);
+    int expandedHeight = collapsedHeight + groupSpacing + tabHeight + margin;
+    
+    int finalHeight = expanded ? expandedHeight : collapsedHeight;
+    
+    // Position dialog on screen
+    RECT rect;
+    GetWindowRect(hDlg, &rect);
+    int currentX = rect.left;
+    int currentY = rect.top;
+    
+    // Adjust position if dialog would go off screen
+    HMONITOR hMonitor = MonitorFromWindow(hDlg, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi;
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(hMonitor, &mi);
+    RECT screenRect = mi.rcWork;
+    
+    if (currentX < screenRect.left) currentX = screenRect.left;
+    if (currentY < screenRect.top) currentY = screenRect.top;
+    if (currentX + dialogWidth > screenRect.right) currentX = screenRect.right - dialogWidth;
+    if (currentY + finalHeight > screenRect.bottom) currentY = screenRect.bottom - finalHeight;
+    
+    // Apply positioning
+    SetWindowPos(hDlg, NULL, currentX, currentY, dialogWidth, finalHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    
+    // Position controls
+    SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_ICON), NULL, iconX, iconY, iconSize, iconSize, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_MESSAGE), NULL, messageX, messageY, messageWidth, messageHeight, SWP_NOZORDER);
+    
+    // Position buttons
+    int detailsX = margin;
+    int okX = dialogWidth - margin - buttonWidth;
+    int copyX = okX - buttonGap - buttonWidth;
+    
+    SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), NULL, detailsX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN), NULL, copyX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN), NULL, okX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
+    
+    // Position expanded controls
+    if (expanded) {
+        int tabY = buttonY + buttonHeight + groupSpacing;
+        int tabWidth = dialogWidth - 2 * margin;
+        
+        SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL), NULL, margin, tabY, tabWidth, tabHeight, SWP_NOZORDER);
+        
+        int textX = margin + ScaleForDpi(5, dpi);
+        int textY = tabY + ScaleForDpi(20, dpi);
+        int textW = tabWidth - ScaleForDpi(10, dpi);
+        int textH = tabHeight - ScaleForDpi(25, dpi);
+        
+        SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), NULL, textX, textY, textW, textH, SWP_NOZORDER);
+        SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), NULL, textX, textY, textW, textH, SWP_NOZORDER);
+        SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), NULL, textX, textY, textW, textH, SWP_NOZORDER);
+    }
+    
+    // Show/hide expanded controls
+    int showState = expanded ? SW_SHOW : SW_HIDE;
+    ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), showState);
+    
+    // Update details button text
+    SetWindowTextW(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), expanded ? L"<< Details" : L"Details >>");
+    
+    if (hOldFont) SelectObject(hdc, hOldFont);
+    ReleaseDC(hDlg, hdc);
+}
+
+// Helper function to show specific tab
+void ShowUnifiedDialogTab(HWND hDlg, int tabIndex) {
+    // Hide all text controls
+    ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), SW_HIDE);
+    ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), SW_HIDE);
+    ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), SW_HIDE);
+    
+    // Show selected tab
+    switch (tabIndex) {
+        case 0:
+            ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), SW_SHOW);
+            break;
+        case 1:
+            ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), SW_SHOW);
+            break;
+        case 2:
+            ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), SW_SHOW);
+            break;
+    }
+}
+
+// Helper function to copy dialog content to clipboard
+BOOL CopyUnifiedDialogToClipboard(const UnifiedDialogConfig* config) {
+    if (!config) return FALSE;
+    
+    size_t totalSize = 1024;
+    if (config->title) totalSize += wcslen(config->title);
+    if (config->message) totalSize += wcslen(config->message);
+    if (config->details) totalSize += wcslen(config->details);
+    if (config->tab2_content) totalSize += wcslen(config->tab2_content);
+    if (config->tab3_content) totalSize += wcslen(config->tab3_content);
+    
+    wchar_t* clipboardText = (wchar_t*)malloc(totalSize * sizeof(wchar_t));
+    if (!clipboardText) return FALSE;
+    
+    const wchar_t* typeStr;
     switch (config->dialogType) {
-        case UNIFIED_DIALOG_INFO:
-            dialogType = DIALOG_TYPE_SUCCESS;
-            break;
-        case UNIFIED_DIALOG_SUCCESS:
-            dialogType = DIALOG_TYPE_SUCCESS;
-            break;
-        case UNIFIED_DIALOG_WARNING:
-        case UNIFIED_DIALOG_ERROR:
-            dialogType = DIALOG_TYPE_ERROR;
-            errorType = (config->dialogType == UNIFIED_DIALOG_WARNING) ? ERROR_TYPE_UNKNOWN : ERROR_TYPE_DEPENDENCIES;
-            break;
-        default:
-            dialogType = DIALOG_TYPE_ERROR;
-            break;
+        case UNIFIED_DIALOG_ERROR: typeStr = L"ERROR"; break;
+        case UNIFIED_DIALOG_WARNING: typeStr = L"WARNING"; break;
+        case UNIFIED_DIALOG_SUCCESS: typeStr = L"SUCCESS"; break;
+        case UNIFIED_DIALOG_INFO: 
+        default: typeStr = L"INFORMATION"; break;
     }
     
-    // Create enhanced dialog with the unified config
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        config->title ? config->title : L"Information",
-        config->message ? config->message : L"No message provided",
-        config->details ? config->details : L"No additional details available",
-        config->tab2_content,  // Use tab2 as diagnostics/info
-        config->tab3_content,  // Use tab3 as solutions/summary
-        errorType
-    );
+    swprintf(clipboardText, totalSize,
+        L"=== %ls REPORT ===\r\n"
+        L"Title: %ls\r\n"
+        L"Message: %ls\r\n\r\n"
+        L"=== %ls ===\r\n%ls\r\n\r\n"
+        L"=== %ls ===\r\n%ls\r\n\r\n"
+        L"=== %ls ===\r\n%ls\r\n",
+        typeStr,
+        config->title ? config->title : L"No title",
+        config->message ? config->message : L"No message",
+        config->tab1_name ? config->tab1_name : L"DETAILS",
+        config->details ? config->details : L"No details available",
+        config->tab2_name ? config->tab2_name : L"INFORMATION",
+        config->tab2_content ? config->tab2_content : L"No additional information",
+        config->tab3_name ? config->tab3_name : L"ADDITIONAL",
+        config->tab3_content ? config->tab3_content : L"No additional content");
     
-    if (!dialog) return IDCANCEL;
+    BOOL success = FALSE;
+    if (OpenClipboard(NULL)) {
+        EmptyClipboard();
+        
+        size_t textLen = wcslen(clipboardText);
+        HGLOBAL hClipboardData = GlobalAlloc(GMEM_MOVEABLE, (textLen + 1) * sizeof(wchar_t));
+        
+        if (hClipboardData) {
+            wchar_t* pchData = (wchar_t*)GlobalLock(hClipboardData);
+            if (pchData) {
+                wcscpy(pchData, clipboardText);
+                GlobalUnlock(hClipboardData);
+                
+                if (SetClipboardData(CF_UNICODETEXT, hClipboardData)) {
+                    success = TRUE;
+                }
+            }
+        }
+        
+        CloseClipboard();
+    }
     
-    // Set dialog type
-    dialog->dialogType = dialogType;
-    
-    INT_PTR result = ShowEnhancedErrorDialog(parent, dialog);
-    FreeEnhancedErrorDialog(dialog);
-    
-    return result;
+    free(clipboardText);
+    return success;
 }
 
-// Enhanced error dialog creation
-EnhancedErrorDialog* CreateEnhancedErrorDialog(const wchar_t* title, const wchar_t* message,
-                                              const wchar_t* details, const wchar_t* diagnostics,
-                                              const wchar_t* solutions, ErrorType errorType) {
-    EnhancedErrorDialog* dialog = (EnhancedErrorDialog*)malloc(sizeof(EnhancedErrorDialog));
-    if (!dialog) return NULL;
 
-    // Initialize structure
-    memset(dialog, 0, sizeof(EnhancedErrorDialog));
-    dialog->errorType = errorType;
-    dialog->dialogType = DIALOG_TYPE_ERROR; // Default to error type
-    dialog->isExpanded = FALSE;
-
-    // Allocate and copy strings
-    if (title) {
-        size_t len = wcslen(title) + 1;
-        dialog->title = (wchar_t*)malloc(len * sizeof(wchar_t));
-        if (dialog->title) wcscpy(dialog->title, title);
-    }
-
-    if (message) {
-        size_t len = wcslen(message) + 1;
-        dialog->message = (wchar_t*)malloc(len * sizeof(wchar_t));
-        if (dialog->message) wcscpy(dialog->message, message);
-    }
-
-    if (details) {
-        size_t len = wcslen(details) + 1;
-        dialog->details = (wchar_t*)malloc(len * sizeof(wchar_t));
-        if (dialog->details) wcscpy(dialog->details, details);
-    }
-
-    if (diagnostics) {
-        size_t len = wcslen(diagnostics) + 1;
-        dialog->diagnostics = (wchar_t*)malloc(len * sizeof(wchar_t));
-        if (dialog->diagnostics) wcscpy(dialog->diagnostics, diagnostics);
-    }
-
-    if (solutions) {
-        size_t len = wcslen(solutions) + 1;
-        dialog->solutions = (wchar_t*)malloc(len * sizeof(wchar_t));
-        if (dialog->solutions) wcscpy(dialog->solutions, solutions);
-    }
-
-    return dialog;
-}
-
-// Free enhanced error dialog
-void FreeEnhancedErrorDialog(EnhancedErrorDialog* errorDialog) {
-    if (!errorDialog) return;
-
-    free(errorDialog->title);
-    free(errorDialog->message);
-    free(errorDialog->details);
-    free(errorDialog->diagnostics);
-    free(errorDialog->solutions);
-    free(errorDialog);
-}
 
 // Resize error dialog for expanded/collapsed state
 void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
@@ -357,19 +606,19 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     int dpi = GetDpiForWindowSafe(hDlg);
     
     // Get all control handles at the start
-    HWND hIcon = GetDlgItem(hDlg, IDC_ERROR_ICON);
-    HWND hMessage = GetDlgItem(hDlg, IDC_ERROR_MESSAGE);
-    HWND hDetailsBtn = GetDlgItem(hDlg, IDC_ERROR_DETAILS_BTN);
-    HWND hCopyBtn = GetDlgItem(hDlg, IDC_ERROR_COPY_BTN);
-    HWND hOkBtn = GetDlgItem(hDlg, IDC_ERROR_OK_BTN);
-    HWND hTabControl = GetDlgItem(hDlg, IDC_ERROR_TAB_CONTROL);
-    HWND hDetailsText = GetDlgItem(hDlg, IDC_ERROR_DETAILS_TEXT);
-    HWND hDiagText = GetDlgItem(hDlg, IDC_ERROR_DIAG_TEXT);
-    HWND hSolutionText = GetDlgItem(hDlg, IDC_ERROR_SOLUTION_TEXT);
+    HWND hIcon = GetDlgItem(hDlg, IDC_UNIFIED_ICON);
+    HWND hMessage = GetDlgItem(hDlg, IDC_UNIFIED_MESSAGE);
+    HWND hDetailsBtn = GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN);
+    HWND hCopyBtn = GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN);
+    HWND hOkBtn = GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN);
+    HWND hTabControl = GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL);
+    HWND hDetailsText = GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT);
+    HWND hDiagText = GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT);
+    HWND hSolutionText = GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT);
     
     // Get the current message text for dynamic sizing
     wchar_t messageText[1024];
-    GetDlgItemTextW(hDlg, IDC_ERROR_MESSAGE, messageText, 1024);
+    GetDlgItemTextW(hDlg, IDC_UNIFIED_MESSAGE, messageText, 1024);
     
     // === STEP 1: Calculate base metrics per Microsoft Win32 UI standards ===
     int margin = ScaleForDpi(11, dpi);           // 7 DLU = ~11px dialog margin standard
@@ -596,9 +845,9 @@ void InitializeFullSuccessDialogTabs(HWND hTabControl) {
 
 // Show specific error dialog tab
 void ShowErrorDialogTab(HWND hDlg, int tabIndex) {
-    HWND hDetailsText = GetDlgItem(hDlg, IDC_ERROR_DETAILS_TEXT);
-    HWND hDiagText = GetDlgItem(hDlg, IDC_ERROR_DIAG_TEXT);
-    HWND hSolutionText = GetDlgItem(hDlg, IDC_ERROR_SOLUTION_TEXT);
+    HWND hDetailsText = GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT);
+    HWND hDiagText = GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT);
+    HWND hSolutionText = GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT);
     
     // Hide all text controls first
     ShowWindow(hDetailsText, SW_HIDE);
@@ -709,26 +958,26 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             
             errorDialog->hDialog = hDlg;
             
-            // Determine control IDs based on dialog type
-            int tabControlId, messageId, iconId, detailsTextId, diagTextId, solutionTextId;
-            LPCWSTR iconResource;
+            // Use unified control IDs for all dialog types
+            int tabControlId = IDC_UNIFIED_TAB_CONTROL;
+            int messageId = IDC_UNIFIED_MESSAGE;
+            int iconId = IDC_UNIFIED_ICON;
+            int detailsTextId = IDC_UNIFIED_TAB1_TEXT;
+            int diagTextId = IDC_UNIFIED_TAB2_TEXT;
+            int solutionTextId = IDC_UNIFIED_TAB3_TEXT;
             
-            if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
-                tabControlId = IDC_SUCCESS_TAB_CONTROL;
-                messageId = IDC_SUCCESS_MESSAGE;
-                iconId = IDC_SUCCESS_ICON;
-                detailsTextId = IDC_SUCCESS_DETAILS_TEXT;
-                diagTextId = IDC_SUCCESS_INFO_TEXT;
-                solutionTextId = IDC_SUCCESS_SUMMARY_TEXT;
-                iconResource = IDI_INFORMATION; // Use information icon for success
-            } else {
-                tabControlId = IDC_ERROR_TAB_CONTROL;
-                messageId = IDC_ERROR_MESSAGE;
-                iconId = IDC_ERROR_ICON;
-                detailsTextId = IDC_ERROR_DETAILS_TEXT;
-                diagTextId = IDC_ERROR_DIAG_TEXT;
-                solutionTextId = IDC_ERROR_SOLUTION_TEXT;
-                iconResource = IDI_ERROR;
+            // Set appropriate icon based on dialog type
+            LPCWSTR iconResource;
+            switch (errorDialog->dialogType) {
+                case DIALOG_TYPE_SUCCESS:
+                    iconResource = IDI_INFORMATION;
+                    break;
+                case DIALOG_TYPE_ERROR:
+                    iconResource = IDI_ERROR;
+                    break;
+                default:
+                    iconResource = IDI_WARNING;
+                    break;
             }
             
             errorDialog->hTabControl = GetDlgItem(hDlg, tabControlId);
@@ -825,7 +1074,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             SetWindowPos(hDlg, NULL, x, y, optimalWidth, optimalHeight, SWP_NOZORDER);
             
             // Update message control for word wrapping
-            HWND hMessage = GetDlgItem(hDlg, IDC_ERROR_MESSAGE);
+            HWND hMessage = GetDlgItem(hDlg, IDC_UNIFIED_MESSAGE);
             if (hMessage) {
                 int dpi = GetDpiForWindowSafe(hDlg);
                 int iconSpace = ScaleForDpi(50, dpi);
@@ -837,13 +1086,13 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
             
-            // Hide Details button and related controls for success dialogs
-            if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) {
-                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_DETAILS_BTN), SW_HIDE);
-                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_TAB_CONTROL), SW_HIDE);
-                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_DETAILS_TEXT), SW_HIDE);
-                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_INFO_TEXT), SW_HIDE);
-                ShowWindow(GetDlgItem(hDlg, IDC_SUCCESS_SUMMARY_TEXT), SW_HIDE);
+            // Hide Details button and related controls for success dialogs if no additional content
+            if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS && !errorDialog->details && !errorDialog->diagnostics && !errorDialog->solutions) {
+                ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), SW_HIDE);
             }
             
             // Start in collapsed state (this will trigger ResizeErrorDialog)
@@ -854,7 +1103,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
         
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
-                case IDC_ERROR_DETAILS_BTN:
+                case IDC_UNIFIED_DETAILS_BTN:
                     if (errorDialog) {
                         errorDialog->isExpanded = !errorDialog->isExpanded;
                         ResizeErrorDialog(hDlg, errorDialog->isExpanded);
@@ -864,8 +1113,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     }
                     return TRUE;
                     
-                case IDC_ERROR_COPY_BTN:
-                case IDC_SUCCESS_COPY_BTN:
+                case IDC_UNIFIED_COPY_BTN:
                     if (errorDialog) {
                         if (CopyErrorInfoToClipboard(errorDialog)) {
                             MessageBoxW(hDlg, L"Information copied to clipboard.", 
@@ -877,18 +1125,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     }
                     return TRUE;
                     
-                case IDC_SUCCESS_DETAILS_BTN:
-                    if (errorDialog) {
-                        errorDialog->isExpanded = !errorDialog->isExpanded;
-                        ResizeErrorDialog(hDlg, errorDialog->isExpanded);
-                        if (errorDialog->isExpanded) {
-                            ShowErrorDialogTab(hDlg, TabCtrl_GetCurSel(errorDialog->hTabControl));
-                        }
-                    }
-                    return TRUE;
-                    
-                case IDC_ERROR_OK_BTN:
-                case IDC_SUCCESS_OK_BTN:
+                case IDC_UNIFIED_OK_BTN:
                 case IDOK:
                 case IDCANCEL:
                     EndDialog(hDlg, LOWORD(wParam));
@@ -898,7 +1135,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             
         case WM_NOTIFY: {
             NMHDR* pnmh = (NMHDR*)lParam;
-            if (pnmh->idFrom == IDC_ERROR_TAB_CONTROL && pnmh->code == TCN_SELCHANGE) {
+            if (pnmh->idFrom == IDC_UNIFIED_TAB_CONTROL && pnmh->code == TCN_SELCHANGE) {
                 int selectedTab = TabCtrl_GetCurSel(errorDialog->hTabControl);
                 ShowErrorDialogTab(hDlg, selectedTab);
                 return TRUE;
@@ -914,17 +1151,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
     return FALSE;
 }
 
-// Show enhanced error dialog
-INT_PTR ShowEnhancedErrorDialog(HWND parent, EnhancedErrorDialog* errorDialog) {
-    if (!errorDialog) return IDCANCEL;
-    
-    // Choose the appropriate dialog resource based on dialog type
-    int dialogResource = (errorDialog->dialogType == DIALOG_TYPE_SUCCESS) ? 
-                        IDD_SUCCESS_DIALOG : IDD_ERROR_DIALOG;
-    
-    return DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(dialogResource),
-                          parent, EnhancedErrorDialogProc, (LPARAM)errorDialog);
-}
+
 
 // Convenience function for yt-dlp errors
 INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpRequest* request) {
@@ -959,20 +1186,20 @@ INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpReques
     // Log the error
     LogError(L"YtDlp", message, result->output ? result->output : L"No output available");
     
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title,
-        message,
-        result->output ? result->output : L"No detailed output available",
-        result->diagnostics ? result->diagnostics : L"No diagnostic information available",
-        solutions,
-        analysis ? analysis->type : ERROR_TYPE_UNKNOWN
-    );
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = result->output ? result->output : L"No detailed output available";
+    config.tab1_name = L"Output";
+    config.tab2_content = result->diagnostics ? result->diagnostics : L"No diagnostic information available";
+    config.tab2_name = L"Diagnostics";
+    config.tab3_content = solutions;
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    INT_PTR result_code = IDCANCEL;
-    if (dialog) {
-        result_code = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    INT_PTR result_code = ShowUnifiedDialog(parent, &config);
     
     if (analysis) {
         FreeErrorAnalysis(analysis);
@@ -1024,20 +1251,20 @@ INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo) {
     // Log the error
     LogError(L"Validation", message, validationInfo->errorDetails ? validationInfo->errorDetails : L"No details available");
     
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title,
-        message,
-        validationInfo->errorDetails ? validationInfo->errorDetails : L"No detailed error information available",
-        L"Validation performed comprehensive checks on the yt-dlp executable and its dependencies.",
-        solutions,
-        ERROR_TYPE_DEPENDENCIES
-    );
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = validationInfo->errorDetails ? validationInfo->errorDetails : L"No detailed error information available";
+    config.tab1_name = L"Details";
+    config.tab2_content = L"Validation performed comprehensive checks on the yt-dlp executable and its dependencies.";
+    config.tab2_name = L"Validation Info";
+    config.tab3_content = solutions;
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    INT_PTR result = ShowUnifiedDialog(parent, &config);
     
     return result;
 }
@@ -1071,20 +1298,20 @@ INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation)
     // Log the error
     LogError(L"Process", message, details);
     
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title,
-        message,
-        details,
-        L"Process creation or execution failed at the Windows API level.",
-        solutions,
-        ERROR_TYPE_PERMISSIONS
-    );
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = details;
+    config.tab1_name = L"Details";
+    config.tab2_content = L"Process creation or execution failed at the Windows API level.";
+    config.tab2_name = L"Technical Info";
+    config.tab3_content = solutions;
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    INT_PTR result = ShowUnifiedDialog(parent, &config);
     
     return result;
 }
@@ -1123,20 +1350,20 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode) {
     // Log the error
     LogError(L"TempDir", message, details);
     
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title,
-        message,
-        details,
-        L"Temporary directory creation failed. This may be due to permissions, disk space, or path length issues.",
-        solutions,
-        ERROR_TYPE_TEMP_DIR
-    );
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = details;
+    config.tab1_name = L"Details";
+    config.tab2_content = L"Temporary directory creation failed. This may be due to permissions, disk space, or path length issues.";
+    config.tab2_name = L"Analysis";
+    config.tab3_content = solutions;
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    INT_PTR result = ShowUnifiedDialog(parent, &config);
     
     return result;
 }
@@ -1165,20 +1392,20 @@ INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation) {
     // Log the error
     LogError(L"Memory", message, details);
     
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title,
-        message,
-        details,
-        L"Memory allocation failed. This may indicate low system memory or memory fragmentation.",
-        solutions,
-        ERROR_TYPE_UNKNOWN
-    );
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = details;
+    config.tab1_name = L"Details";
+    config.tab2_content = L"Memory allocation failed. This may indicate low system memory or memory fragmentation.";
+    config.tab2_name = L"Analysis";
+    config.tab3_content = solutions;
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    INT_PTR result = ShowUnifiedDialog(parent, &config);
     
     return result;
 }
@@ -1200,20 +1427,20 @@ INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details) {
     // Log the error
     LogError(L"Configuration", message, details ? details : L"No details available");
     
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title,
-        message,
-        details ? details : L"Configuration initialization failed",
-        L"Application configuration could not be loaded or initialized properly.",
-        solutions,
-        ERROR_TYPE_DEPENDENCIES
-    );
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = details ? details : L"Configuration initialization failed";
+    config.tab1_name = L"Details";
+    config.tab2_content = L"Application configuration could not be loaded or initialized properly.";
+    config.tab2_name = L"Analysis";
+    config.tab3_content = solutions;
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    INT_PTR result = ShowUnifiedDialog(parent, &config);
     
     return result;
 }
@@ -1241,79 +1468,25 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation) {
     // Log the error
     LogError(L"UI", message, details);
     
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title,
-        message,
-        details,
-        L"User interface component creation failed. This may indicate system resource issues.",
-        solutions,
-        ERROR_TYPE_UNKNOWN
-    );
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = details;
+    config.tab1_name = L"Details";
+    config.tab2_content = L"User interface component creation failed. This may indicate system resource issues.";
+    config.tab2_name = L"Analysis";
+    config.tab3_content = solutions;
+    config.tab3_name = L"Solutions";
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
     
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
-    
-    return result;
-}
-
-INT_PTR ShowSuccessMessage(HWND parent, const wchar_t* title, const wchar_t* message) {
-    wchar_t nextSteps[512];
-    wcscpy(nextSteps, L"The operation completed successfully. You can now use the downloaded files or perform additional operations.");
-    
-    // Log the success
-    LogInfo(L"Success", message ? message : L"Operation completed");
-    
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title ? title : L"Success",
-        message ? message : L"Operation completed successfully",
-        L"The requested operation has been completed without errors.",
-        L"All processes executed successfully with no issues detected.",
-        nextSteps,
-        ERROR_TYPE_UNKNOWN  // Will be overridden by dialogType
-    );
-    
-    if (dialog) {
-        // Set this as a success dialog
-        dialog->dialogType = DIALOG_TYPE_SUCCESS;
-    }
-    
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
+    INT_PTR result = ShowUnifiedDialog(parent, &config);
     
     return result;
 }
 
 
-INT_PTR ShowInfoMessage(HWND parent, const wchar_t* title, const wchar_t* message) {
-    wchar_t solutions[512];
-    wcscpy(solutions, L"No action is required. This information is provided for your reference and awareness.");
-    
-    // Log the info
-    LogInfo(L"Info", message ? message : L"Information message");
-    
-    EnhancedErrorDialog* dialog = CreateEnhancedErrorDialog(
-        title ? title : L"Information",
-        message ? message : L"Information",
-        message ? message : L"Additional information about the current operation or system state.",
-        L"Informational message provided to keep you informed about the application's status or operations.",
-        solutions,
-        ERROR_TYPE_UNKNOWN
-    );
-    
-    INT_PTR result = IDCANCEL;
-    if (dialog) {
-        result = ShowEnhancedErrorDialog(parent, dialog);
-        FreeEnhancedErrorDialog(dialog);
-    }
-    
-    return result;
-}
 
 // Error logging implementation
 static HANDLE hLogFile = INVALID_HANDLE_VALUE;
