@@ -1232,13 +1232,13 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         config.message = L"Please enter a YouTube URL to download.";
                         config.details = L"The URL field is blank. A valid YouTube URL is required to download videos.";
                         config.tab1_name = L"Details";
-                        config.tab2_content = L"To download a video:\n\n"
-                                            L"1. Copy a YouTube URL from your web browser\n"
-                                            L"2. Paste it into the URL field above\n"
-                                            L"3. Click the Download button\n\n"
-                                            L"Supported URL formats:\n"
-                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\n"
-                                            L"• https://youtu.be/VIDEO_ID\n"
+                        config.tab2_content = L"To download a video:\r\n\r\n"
+                                            L"1. Copy a YouTube URL from your web browser\r\n"
+                                            L"2. Paste it into the URL field above\r\n"
+                                            L"3. Click the Download button\r\n\r\n"
+                                            L"Supported URL formats:\r\n"
+                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
+                                            L"• https://youtu.be/VIDEO_ID\r\n"
                                             L"• YouTube playlist URLs";
                         config.tab2_name = L"How to Fix";
                         config.showDetailsButton = TRUE;
@@ -1317,10 +1317,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         config.message = L"Please wait for the current download to complete before getting video information.";
                         config.details = L"A video download is currently in progress. Only one operation can run at a time to prevent conflicts.";
                         config.tab1_name = L"Details";
-                        config.tab2_content = L"To get video information:\n\n"
-                                            L"1. Wait for the current download to finish\n"
-                                            L"2. The progress bar will disappear when complete\n"
-                                            L"3. Then try the Get Info button again\n\n"
+                        config.tab2_content = L"To get video information:\r\n\r\n"
+                                            L"1. Wait for the current download to finish\r\n"
+                                            L"2. The progress bar will disappear when complete\r\n"
+                                            L"3. Then try the Get Info button again\r\n\r\n"
                                             L"You can also cancel the current download if needed.";
                         config.tab2_name = L"How to Fix";
                         config.showDetailsButton = TRUE;
@@ -1343,10 +1343,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         config.message = L"Please enter a YouTube URL to get video information.";
                         config.details = L"The URL field is blank. A valid YouTube URL is required to retrieve video information.";
                         config.tab1_name = L"Details";
-                        config.tab2_content = L"To get video information:\n\n"
-                                            L"1. Copy a YouTube URL from your web browser\n"
-                                            L"2. Paste it into the URL field above\n"
-                                            L"3. Click the Get Info button\n\n"
+                        config.tab2_content = L"To get video information:\r\n\r\n"
+                                            L"1. Copy a YouTube URL from your web browser\r\n"
+                                            L"2. Paste it into the URL field above\r\n"
+                                            L"3. Click the Get Info button\r\n\r\n"
                                             L"This will display the video title, duration, and other details without downloading the video.";
                         config.tab2_name = L"How to Fix";
                         config.showDetailsButton = TRUE;
@@ -1406,11 +1406,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             config.message = L"Could not start video information retrieval. Please try again.";
                             config.details = L"An unexpected error occurred while attempting to retrieve video information. The operation could not be started.";
                             config.tab1_name = L"Details";
-                            config.tab2_content = L"Try these steps:\n\n"
-                                                L"1. Check your internet connection\n"
-                                                L"2. Verify the YouTube URL is valid\n"
-                                                L"3. Ensure yt-dlp is properly installed\n"
-                                                L"4. Try restarting the application\n\n"
+                            config.tab2_content = L"Try these steps:\r\n\r\n"
+                                                L"1. Check your internet connection\r\n"
+                                                L"2. Verify the YouTube URL is valid\r\n"
+                                                L"3. Ensure yt-dlp is properly installed\r\n"
+                                                L"4. Try restarting the application\r\n\r\n"
                                                 L"If the problem persists, check the application logs for more details.";
                             config.tab2_name = L"Troubleshooting";
                             config.showDetailsButton = TRUE;
@@ -1437,10 +1437,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         config.message = L"Please select a video from the list to play.";
                         config.details = L"No video is currently selected in the offline videos list. You must select a video before playing it.";
                         config.tab1_name = L"Details";
-                        config.tab2_content = L"To play a video:\n\n"
-                                            L"1. Click on a video in the offline videos list\n"
-                                            L"2. The selected video will be highlighted\n"
-                                            L"3. Click the Play button\n\n"
+                        config.tab2_content = L"To play a video:\r\n\r\n"
+                                            L"1. Click on a video in the offline videos list\r\n"
+                                            L"2. The selected video will be highlighted\r\n"
+                                            L"3. Click the Play button\r\n\r\n"
                                             L"Make sure you have downloaded videos first, or the list will be empty.";
                         config.tab2_name = L"How to Fix";
                         config.showDetailsButton = TRUE;
@@ -1459,15 +1459,15 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         config.message = L"Please configure a media player in File > Settings.";
                         config.details = L"No media player has been configured. A media player is required to play downloaded videos.";
                         config.tab1_name = L"Details";
-                        config.tab2_content = L"To configure a media player:\n\n"
-                                            L"1. Go to File > Settings\n"
-                                            L"2. Click the browse button next to 'Media player'\n"
-                                            L"3. Select your preferred video player (e.g., VLC, Windows Media Player)\n"
-                                            L"4. Click OK to save\n\n"
-                                            L"Popular media players:\n"
-                                            L"• VLC Media Player (recommended)\n"
-                                            L"• Windows Media Player\n"
-                                            L"• PotPlayer\n"
+                        config.tab2_content = L"To configure a media player:\r\n\r\n"
+                                            L"1. Go to File > Settings\r\n"
+                                            L"2. Click the browse button next to 'Media player'\r\n"
+                                            L"3. Select your preferred video player (e.g., VLC, Windows Media Player)\r\n"
+                                            L"4. Click OK to save\r\n\r\n"
+                                            L"Popular media players:\r\n"
+                                            L"• VLC Media Player (recommended)\r\n"
+                                            L"• Windows Media Player\r\n"
+                                            L"• PotPlayer\r\n"
                                             L"• MPC-HC";
                         config.tab2_name = L"How to Fix";
                         config.showDetailsButton = TRUE;
@@ -1561,17 +1561,17 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         CacheEntry* entry = FindCacheEntry(GetCacheManager(), selectedVideoIds[0]);
                         if (entry && entry->title) {
                             swprintf(confirmMsg, 1024, 
-                                    L"Are you sure you want to delete \"%ls\"?\n\n"
+                                    L"Are you sure you want to delete \"%ls\"?\r\n\r\n"
                                     L"This will permanently delete the video file and any associated subtitle files.",
                                     entry->title);
                         } else {
-                            wcscpy(confirmMsg, L"Are you sure you want to delete the selected video?\n\n"
+                            wcscpy(confirmMsg, L"Are you sure you want to delete the selected video?\r\n\r\n"
                                              L"This will permanently delete the video file and any associated subtitle files.");
                         }
                     } else {
                         // Multiple videos
                         swprintf(confirmMsg, 1024, 
-                                L"Are you sure you want to delete %d selected videos?\n\n"
+                                L"Are you sure you want to delete %d selected videos?\r\n\r\n"
                                 L"This will permanently delete all video files and any associated subtitle files.",
                                 selectedCount);
                     }
