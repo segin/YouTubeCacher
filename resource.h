@@ -78,6 +78,12 @@
 #define IDC_UNIFIED_COPY_BTN   1039
 #define IDC_UNIFIED_OK_BTN     1040
 
+// Debug Test Buttons (only visible when debugging is enabled)
+#define IDC_DEBUG_TEST_INFO    1067
+#define IDC_DEBUG_TEST_WARNING 1068
+#define IDC_DEBUG_TEST_ERROR   1069
+#define IDC_DEBUG_TEST_SUCCESS 1070
+
 // About Dialog
 #define IDD_ABOUT_DIALOG       107
 #define IDC_ABOUT_ICON         1058

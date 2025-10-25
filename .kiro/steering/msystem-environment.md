@@ -6,16 +6,10 @@ inclusion: always
 
 ## Environment Requirements
 
-When executing shell commands, ensure the MSYSTEM environment variable is set to `MINGW32` for consistent build and development environment.
+The development environment uses MSYS2/MINGW32 toolchain. The MSYSTEM environment variable should already be properly configured in the shell environment.
 
 ## Command Execution Protocol
 
-Before executing any shell commands, unconditionally set the MSYSTEM environment variable to `MINGW32`:
+Execute shell commands normally without modifying environment variables. The MSYSTEM environment is managed by the shell initialization and does not need to be set before each command.
 
-```bash
-export MSYSTEM=MINGW32
-```
-
-This ensures all development tools, compilers, and libraries are available from the MINGW32 toolchain, providing consistent behavior across all command executions. The setting is done unconditionally without checking the current value to guarantee the correct environment.
-
-This steering rule applies to all command executions to maintain environment consistency.
+Only set MSYSTEM manually if there are specific issues with toolchain detection, and only when actually needed for troubleshooting.

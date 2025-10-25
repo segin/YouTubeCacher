@@ -34,6 +34,12 @@ void UpdateDebugControlVisibility(HWND hDlg) {
     ShowWindow(GetDlgItem(hDlg, IDC_COLOR_TEAL), showState);
     ShowWindow(GetDlgItem(hDlg, IDC_COLOR_BLUE), showState);
     ShowWindow(GetDlgItem(hDlg, IDC_COLOR_WHITE), showState);
+    
+    // Show/hide debug test buttons
+    ShowWindow(GetDlgItem(hDlg, IDC_DEBUG_TEST_INFO), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_DEBUG_TEST_WARNING), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_DEBUG_TEST_ERROR), showState);
+    ShowWindow(GetDlgItem(hDlg, IDC_DEBUG_TEST_SUCCESS), showState);
 }
 
 void CheckClipboardForYouTubeURL(HWND hDlg) {
@@ -721,6 +727,22 @@ void ResizeControls(HWND hDlg) {
                 sideButtonX, colorButtonRow2Y, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
     SetWindowPos(GetDlgItem(hDlg, IDC_COLOR_WHITE), NULL, 
                 sideButtonX + colorButtonWidth + colorButtonSpacing, colorButtonRow2Y, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
+    
+    // Debug test buttons in 2x2 grid below color buttons (only visible when debugging enabled)
+    int debugButtonStartY = colorButtonRow2Y + colorButtonHeight + (int)(4 * scaleY);
+    
+    // Top row: Info and Warning
+    SetWindowPos(GetDlgItem(hDlg, IDC_DEBUG_TEST_INFO), NULL, 
+                sideButtonX, debugButtonStartY, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_DEBUG_TEST_WARNING), NULL, 
+                sideButtonX + colorButtonWidth + colorButtonSpacing, debugButtonStartY, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
+    
+    // Bottom row: Error and Success
+    int debugButtonRow2Y = debugButtonStartY + colorButtonHeight + (int)(4 * scaleY);
+    SetWindowPos(GetDlgItem(hDlg, IDC_DEBUG_TEST_ERROR), NULL, 
+                sideButtonX, debugButtonRow2Y, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
+    SetWindowPos(GetDlgItem(hDlg, IDC_DEBUG_TEST_SUCCESS), NULL, 
+                sideButtonX + colorButtonWidth + colorButtonSpacing, debugButtonRow2Y, colorButtonWidth, colorButtonHeight, SWP_NOZORDER);
 }
 
 // Settings dialog procedure
@@ -1747,6 +1769,145 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     SetCurrentBrush(GetBrush(BRUSH_WHITE));
                     InvalidateRect(GetDlgItem(hDlg, IDC_TEXT_FIELD), NULL, TRUE);
                     break;
+                    
+                case IDC_DEBUG_TEST_INFO: {
+                    // Test Info dialog
+                    UnifiedDialogConfig config = {0};
+                    config.dialogType = UNIFIED_DIALOG_INFO;
+                    config.title = L"Test Information Dialog";
+                    config.message = L"This is a test information dialog to verify the dialog system is working correctly.";
+                    config.details = L"This dialog demonstrates the information dialog type with:\n\n"
+                                   L"• Information icon\n"
+                                   L"• Blue title bar color\n"
+                                   L"• Standard OK button\n"
+                                   L"• Optional details section\n\n"
+                                   L"This is useful for showing non-critical information to users.";
+                    config.tab1_name = L"Details";
+                    config.tab2_content = L"Additional information can be displayed in multiple tabs:\n\n"
+                                        L"• Tab 1: Primary details\n"
+                                        L"• Tab 2: Secondary information\n"
+                                        L"• Tab 3: Additional context\n\n"
+                                        L"Each tab can contain different types of information to help organize complex messages.";
+                    config.tab2_name = L"Features";
+                    config.tab3_content = L"Debug Information:\n"
+                                        L"=================\n\n"
+                                        L"Dialog Type: UNIFIED_DIALOG_INFO\n"
+                                        L"Icon: IDI_INFORMATION\n"
+                                        L"Button Configuration: OK only\n"
+                                        L"Resizable: Yes\n"
+                                        L"Copy Support: Yes\n\n"
+                                        L"This tab demonstrates technical details that might be useful for debugging or support purposes.";
+                    config.tab3_name = L"Debug Info";
+                    config.showDetailsButton = TRUE;
+                    config.showCopyButton = TRUE;
+                    
+                    ShowUnifiedDialog(hDlg, &config);
+                    break;
+                }
+                
+                case IDC_DEBUG_TEST_WARNING: {
+                    // Test Warning dialog
+                    UnifiedDialogConfig config = {0};
+                    config.dialogType = UNIFIED_DIALOG_WARNING;
+                    config.title = L"Test Warning Dialog";
+                    config.message = L"This is a test warning dialog to verify warning notifications are displayed correctly.";
+                    config.details = L"Warning dialogs are used to alert users about:\n\n"
+                                   L"• Potentially problematic situations\n"
+                                   L"• Actions that might have consequences\n"
+                                   L"• Configuration issues that should be addressed\n"
+                                   L"• Non-fatal errors that don't prevent operation\n\n"
+                                   L"They use a yellow warning icon and are designed to get the user's attention without being alarming.";
+                    config.tab1_name = L"Details";
+                    config.tab2_content = L"Common warning scenarios in YouTube Cacher:\n\n"
+                                        L"• Missing yt-dlp configuration\n"
+                                        L"• Invalid or empty URLs\n"
+                                        L"• Network connectivity issues\n"
+                                        L"• Insufficient disk space\n"
+                                        L"• Outdated yt-dlp version\n\n"
+                                        L"Warnings allow users to take corrective action before problems become critical.";
+                    config.tab2_name = L"Use Cases";
+                    config.showDetailsButton = TRUE;
+                    config.showCopyButton = FALSE;
+                    
+                    ShowUnifiedDialog(hDlg, &config);
+                    break;
+                }
+                
+                case IDC_DEBUG_TEST_ERROR: {
+                    // Test Error dialog
+                    UnifiedDialogConfig config = {0};
+                    config.dialogType = UNIFIED_DIALOG_ERROR;
+                    config.title = L"Test Error Dialog";
+                    config.message = L"This is a test error dialog to verify error reporting is working correctly.";
+                    config.details = L"Error Details:\n"
+                                   L"=============\n\n"
+                                   L"Operation: Test Error Generation\n"
+                                   L"Error Code: TEST_ERROR_001\n"
+                                   L"Timestamp: " __DATE__ L" " __TIME__ L"\n"
+                                   L"Component: Debug Test System\n\n"
+                                   L"This is a simulated error to test the error dialog functionality. "
+                                   L"Real errors would contain actual diagnostic information to help "
+                                   L"users and developers understand what went wrong.";
+                    config.tab1_name = L"Error Details";
+                    config.tab2_content = L"Troubleshooting Steps:\n\n"
+                                        L"1. Verify all system requirements are met\n"
+                                        L"2. Check network connectivity\n"
+                                        L"3. Ensure yt-dlp is properly installed\n"
+                                        L"4. Try restarting the application\n"
+                                        L"5. Check the application logs\n\n"
+                                        L"If the problem persists:\n"
+                                        L"• Copy the error details using the Copy button\n"
+                                        L"• Report the issue with the copied information\n"
+                                        L"• Include steps to reproduce the problem";
+                    config.tab2_name = L"Troubleshooting";
+                    config.tab3_content = L"Technical Information:\n"
+                                        L"=====================\n\n"
+                                        L"Stack Trace: (simulated)\n"
+                                        L"  at TestErrorFunction()\n"
+                                        L"  at DebugButtonHandler()\n"
+                                        L"  at DialogProc()\n"
+                                        L"  at WindowProc()\n\n"
+                                        L"System Information:\n"
+                                        L"  OS: Windows (detected)\n"
+                                        L"  Architecture: x64\n"
+                                        L"  Memory: Available\n"
+                                        L"  Disk Space: Sufficient\n\n"
+                                        L"This technical information would help developers diagnose the issue.";
+                    config.tab3_name = L"Technical";
+                    config.showDetailsButton = TRUE;
+                    config.showCopyButton = TRUE;
+                    
+                    ShowUnifiedDialog(hDlg, &config);
+                    break;
+                }
+                
+                case IDC_DEBUG_TEST_SUCCESS: {
+                    // Test Success dialog
+                    UnifiedDialogConfig config = {0};
+                    config.dialogType = UNIFIED_DIALOG_SUCCESS;
+                    config.title = L"Test Success Dialog";
+                    config.message = L"This is a test success dialog to verify success notifications are displayed correctly.";
+                    config.details = L"Success dialogs are used to confirm:\n\n"
+                                   L"• Successful completion of operations\n"
+                                   L"• Positive outcomes that users should know about\n"
+                                   L"• Configuration changes that were applied\n"
+                                   L"• Downloads or installations that completed\n\n"
+                                   L"They use a green checkmark icon and provide positive feedback to users.";
+                    config.tab1_name = L"Details";
+                    config.tab2_content = L"Success scenarios in YouTube Cacher:\n\n"
+                                        L"• Video downloaded successfully\n"
+                                        L"• yt-dlp installation completed\n"
+                                        L"• Settings saved and applied\n"
+                                        L"• Cache refresh completed\n"
+                                        L"• Video information retrieved\n\n"
+                                        L"Success dialogs help users understand that their actions were completed successfully.";
+                    config.tab2_name = L"Examples";
+                    config.showDetailsButton = TRUE;
+                    config.showCopyButton = FALSE;
+                    
+                    ShowUnifiedDialog(hDlg, &config);
+                    break;
+                }
                     
                 case IDCANCEL:
                     DestroyWindow(hDlg);
