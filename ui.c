@@ -1625,7 +1625,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                         size_t errorLen = wcslen(errorDetails);
                                         size_t newSize = combinedErrorSize + errorLen + 100; // Extra space for headers
                                         
-                                        wchar_t* newCombined = (wchar_t*)realloc(combinedErrorDetails, newSize * sizeof(wchar_t));
+                                        wchar_t* newCombined = (wchar_t*)SAFE_REALLOC(combinedErrorDetails, newSize * sizeof(wchar_t));
                                         if (newCombined) {
                                             combinedErrorDetails = newCombined;
                                             
@@ -1652,7 +1652,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                             combinedErrorSize = wcslen(combinedErrorDetails);
                                         }
                                         
-                                        free(errorDetails);
+                                        SAFE_FREE(errorDetails);
                                     }
                                 }
                                 
@@ -1674,7 +1674,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                 
                                 size_t summaryLen = wcslen(summary);
                                 size_t totalLen = summaryLen + wcslen(combinedErrorDetails) + 1;
-                                wchar_t* finalDetails = (wchar_t*)malloc(totalLen * sizeof(wchar_t));
+                                wchar_t* finalDetails = (wchar_t*)SAFE_MALLOC(totalLen * sizeof(wchar_t));
                                 
                                 if (finalDetails) {
                                     wcscpy(finalDetails, summary);
@@ -1698,7 +1698,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                     
                                     ShowUnifiedDialog(hDlg, &config);
                                     
-                                    free(finalDetails);
+                                    SAFE_FREE(finalDetails);
                                 }
                             } else {
                                 UnifiedDialogConfig config = {0};
@@ -1723,7 +1723,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         }
                         
                         if (combinedErrorDetails) {
-                            free(combinedErrorDetails);
+                            SAFE_FREE(combinedErrorDetails);
                         }
                         
                         // Refresh the list to show current state
@@ -2026,7 +2026,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 if (data->hThread) {
                     CloseHandle(data->hThread);
                 }
-                free(data);
+                SAFE_FREE(data);
             }
             return TRUE;
         }
@@ -2114,7 +2114,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             // Cleanup metadata (it was allocated by the worker thread)
             if (metadata) {
                 FreeVideoMetadata(metadata);
-                free(metadata);
+                SAFE_FREE(metadata);
             }
             
             return TRUE;
@@ -2170,7 +2170,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         OutputDebugStringW(L"\n");
                         
                         SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title);
-                        free(title);
+                        SAFE_FREE(title);
                     }
                     break;
                 }
@@ -2178,7 +2178,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     wchar_t* duration = (wchar_t*)data;
                     if (duration) {
                         SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, duration);
-                        free(duration);
+                        SAFE_FREE(duration);
                     }
                     break;
                 }
@@ -2201,7 +2201,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     wchar_t* status = (wchar_t*)data;
                     if (status) {
                         SetDlgItemTextW(hDlg, IDC_PROGRESS_TEXT, status);
-                        free(status);
+                        SAFE_FREE(status);
                     }
                     break;
                 }

@@ -13,13 +13,13 @@ BOOL InitializeEnhancedProgressInfo(EnhancedProgressInfo* progress) {
     memset(progress, 0, sizeof(EnhancedProgressInfo));
     
     progress->currentState = DOWNLOAD_STATE_INITIALIZING;
-    progress->stateDescription = _wcsdup(L"Initializing download process");
+    progress->stateDescription = SAFE_WCSDUP(L"Initializing download process");
     progress->progressPercentage = 0;
-    progress->statusMessage = _wcsdup(L"Starting...");
+    progress->statusMessage = SAFE_WCSDUP(L"Starting...");
     
     // Initialize file tracking arrays
     progress->maxFiles = 10;
-    progress->trackedFiles = (TrackedFile**)malloc(progress->maxFiles * sizeof(TrackedFile*));
+    progress->trackedFiles = (TrackedFile**)SAFE_MALLOC(progress->maxFiles * sizeof(TrackedFile*));
     if (!progress->trackedFiles) {
         FreeEnhancedProgressInfo(progress);
         return FALSE;
@@ -27,7 +27,7 @@ BOOL InitializeEnhancedProgressInfo(EnhancedProgressInfo* progress) {
     
     // Initialize message tracking arrays
     progress->maxMessages = 50;
-    progress->preDownloadMessages = (wchar_t**)malloc(progress->maxMessages * sizeof(wchar_t*));
+    progress->preDownloadMessages = (wchar_t**)SAFE_MALLOC(progress->maxMessages * sizeof(wchar_t*));
     if (!progress->preDownloadMessages) {
         FreeEnhancedProgressInfo(progress);
         return FALSE;
@@ -40,38 +40,38 @@ BOOL InitializeEnhancedProgressInfo(EnhancedProgressInfo* progress) {
 void FreeEnhancedProgressInfo(EnhancedProgressInfo* progress) {
     if (!progress) return;
     
-    if (progress->stateDescription) free(progress->stateDescription);
-    if (progress->statusMessage) free(progress->statusMessage);
-    if (progress->currentOperation) free(progress->currentOperation);
-    if (progress->videoId) free(progress->videoId);
-    if (progress->videoTitle) free(progress->videoTitle);
-    if (progress->videoDuration) free(progress->videoDuration);
-    if (progress->videoFormat) free(progress->videoFormat);
-    if (progress->finalVideoFile) free(progress->finalVideoFile);
-    if (progress->eta) free(progress->eta);
-    if (progress->errorMessage) free(progress->errorMessage);
-    if (progress->errorDetails) free(progress->errorDetails);
+    if (progress->stateDescription) SAFE_FREE(progress->stateDescription);
+    if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
+    if (progress->currentOperation) SAFE_FREE(progress->currentOperation);
+    if (progress->videoId) SAFE_FREE(progress->videoId);
+    if (progress->videoTitle) SAFE_FREE(progress->videoTitle);
+    if (progress->videoDuration) SAFE_FREE(progress->videoDuration);
+    if (progress->videoFormat) SAFE_FREE(progress->videoFormat);
+    if (progress->finalVideoFile) SAFE_FREE(progress->finalVideoFile);
+    if (progress->eta) SAFE_FREE(progress->eta);
+    if (progress->errorMessage) SAFE_FREE(progress->errorMessage);
+    if (progress->errorDetails) SAFE_FREE(progress->errorDetails);
     
     // Free tracked files
     if (progress->trackedFiles) {
         for (int i = 0; i < progress->fileCount; i++) {
             if (progress->trackedFiles[i]) {
-                if (progress->trackedFiles[i]->filePath) free(progress->trackedFiles[i]->filePath);
-                if (progress->trackedFiles[i]->extension) free(progress->trackedFiles[i]->extension);
-                free(progress->trackedFiles[i]);
+                if (progress->trackedFiles[i]->filePath) SAFE_FREE(progress->trackedFiles[i]->filePath);
+                if (progress->trackedFiles[i]->extension) SAFE_FREE(progress->trackedFiles[i]->extension);
+                SAFE_FREE(progress->trackedFiles[i]);
             }
         }
-        free(progress->trackedFiles);
+        SAFE_FREE(progress->trackedFiles);
     }
     
     // Free pre-download messages
     if (progress->preDownloadMessages) {
         for (int i = 0; i < progress->messageCount; i++) {
             if (progress->preDownloadMessages[i]) {
-                free(progress->preDownloadMessages[i]);
+                SAFE_FREE(progress->preDownloadMessages[i]);
             }
         }
-        free(progress->preDownloadMessages);
+        SAFE_FREE(progress->preDownloadMessages);
     }
     
     memset(progress, 0, sizeof(EnhancedProgressInfo));
@@ -123,8 +123,8 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
             
         case LINE_TYPE_ERROR:
             progress->hasError = TRUE;
-            if (progress->errorMessage) free(progress->errorMessage);
-            progress->errorMessage = _wcsdup(line);
+            if (progress->errorMessage) SAFE_FREE(progress->errorMessage);
+            progress->errorMessage = SAFE_WCSDUP(line);
             UpdateDownloadState(progress, DOWNLOAD_STATE_FAILED, L"Download failed");
             return TRUE;
             
@@ -135,8 +135,8 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
         case LINE_TYPE_COMPLETION:
             UpdateDownloadState(progress, DOWNLOAD_STATE_COMPLETED, L"Download completed");
             progress->progressPercentage = 100;
-            if (progress->statusMessage) free(progress->statusMessage);
-            progress->statusMessage = _wcsdup(L"Download completed successfully");
+            if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
+            progress->statusMessage = SAFE_WCSDUP(L"Download completed successfully");
             return TRUE;
             
         case LINE_TYPE_DEBUG:
@@ -155,7 +155,7 @@ OutputLineType ClassifyOutputLine(const wchar_t* line) {
     if (!line) return LINE_TYPE_UNKNOWN;
     
     // Convert to lowercase for pattern matching
-    wchar_t* lowerLine = _wcsdup(line);
+    wchar_t* lowerLine = SAFE_WCSDUP(line);
     if (!lowerLine) return LINE_TYPE_UNKNOWN;
     
     for (wchar_t* p = lowerLine; *p; p++) {
@@ -211,7 +211,7 @@ OutputLineType ClassifyOutputLine(const wchar_t* line) {
         result = LINE_TYPE_DEBUG;
     }
     
-    free(lowerLine);
+    SAFE_FREE(lowerLine);
     return result;
 }
 
@@ -229,7 +229,7 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
         }
         
         // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-        wchar_t* lineCopy = _wcsdup(dataStart);
+        wchar_t* lineCopy = SAFE_WCSDUP(dataStart);
         if (!lineCopy) return FALSE;
         
         wchar_t* context = NULL;
@@ -266,7 +266,7 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
             tokenIndex++;
         }
         
-        free(lineCopy);
+        SAFE_FREE(lineCopy);
         
         // Calculate percentage from raw data
         if (totalBytes > 0 && downloadedBytes >= 0) {
@@ -274,10 +274,10 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
             if (progress->progressPercentage > 100) progress->progressPercentage = 100;
             
             // Update status message
-            if (progress->statusMessage) free(progress->statusMessage);
+            if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
             wchar_t statusMsg[256];
             swprintf(statusMsg, 256, L"Downloading (%d%%)", progress->progressPercentage);
-            progress->statusMessage = _wcsdup(statusMsg);
+            progress->statusMessage = SAFE_WCSDUP(statusMsg);
             
             return TRUE;
         } else if (downloadedBytes > 0) {
@@ -285,7 +285,7 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
             progress->progressPercentage = -1;
             
             // Update status message with downloaded amount
-            if (progress->statusMessage) free(progress->statusMessage);
+            if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
             wchar_t statusMsg[256];
             if (downloadedBytes >= 1024 * 1024) {
                 swprintf(statusMsg, 256, L"Downloaded %.1f MB", downloadedBytes / (1024.0 * 1024.0));
@@ -294,7 +294,7 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
             } else {
                 swprintf(statusMsg, 256, L"Downloaded %lld bytes", downloadedBytes);
             }
-            progress->statusMessage = _wcsdup(statusMsg);
+            progress->statusMessage = SAFE_WCSDUP(statusMsg);
             
             return TRUE;
         }
@@ -327,18 +327,18 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
         
         if (speedEnd > speedStart) {
             size_t speedLen = speedEnd - speedStart;
-            wchar_t* speedStr = (wchar_t*)malloc((speedLen + 1) * sizeof(wchar_t));
+            wchar_t* speedStr = (wchar_t*)SAFE_MALLOC((speedLen + 1) * sizeof(wchar_t));
             if (speedStr) {
                 wcsncpy(speedStr, speedStart, speedLen);
                 speedStr[speedLen] = L'\0';
                 
                 // Update status message with speed
-                if (progress->statusMessage) free(progress->statusMessage);
+                if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
                 wchar_t statusMsg[256];
                 swprintf(statusMsg, 256, L"Downloading (%d%%) at %ls", progress->progressPercentage, speedStr);
-                progress->statusMessage = _wcsdup(statusMsg);
+                progress->statusMessage = SAFE_WCSDUP(statusMsg);
                 
-                free(speedStr);
+                SAFE_FREE(speedStr);
             }
         }
     }
@@ -354,8 +354,8 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
         
         if (etaEnd > etaStart) {
             size_t etaLen = etaEnd - etaStart;
-            if (progress->eta) free(progress->eta);
-            progress->eta = (wchar_t*)malloc((etaLen + 1) * sizeof(wchar_t));
+            if (progress->eta) SAFE_FREE(progress->eta);
+            progress->eta = (wchar_t*)SAFE_MALLOC((etaLen + 1) * sizeof(wchar_t));
             if (progress->eta) {
                 wcsncpy(progress->eta, etaStart, etaLen);
                 progress->eta[etaLen] = L'\0';
@@ -375,7 +375,7 @@ BOOL ParseFileDestinationLine(const wchar_t* line, EnhancedProgressInfo* progres
     // Look for various destination patterns
     if (wcsstr(line, L"Destination: ")) {
         const wchar_t* start = wcsstr(line, L"Destination: ") + 13;
-        filePath = _wcsdup(start);
+        filePath = SAFE_WCSDUP(start);
     }
     else if (wcsstr(line, L"[download] ") && wcsstr(line, L" has already been downloaded")) {
         // Extract filename from "has already been downloaded" message
@@ -383,7 +383,7 @@ BOOL ParseFileDestinationLine(const wchar_t* line, EnhancedProgressInfo* progres
         const wchar_t* end = wcsstr(start, L" has already been downloaded");
         if (end && end > start) {
             size_t len = end - start;
-            filePath = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+            filePath = (wchar_t*)SAFE_MALLOC((len + 1) * sizeof(wchar_t));
             if (filePath) {
                 wcsncpy(filePath, start, len);
                 filePath[len] = L'\0';
@@ -397,7 +397,7 @@ BOOL ParseFileDestinationLine(const wchar_t* line, EnhancedProgressInfo* progres
         if (!end) end = start + wcslen(start);
         if (end > start) {
             size_t len = end - start;
-            filePath = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+            filePath = (wchar_t*)SAFE_MALLOC((len + 1) * sizeof(wchar_t));
             if (filePath) {
                 wcsncpy(filePath, start, len);
                 filePath[len] = L'\0';
@@ -424,18 +424,18 @@ BOOL ParseFileDestinationLine(const wchar_t* line, EnhancedProgressInfo* progres
             
             // If this is a video file, it might be our final output
             if (isMainVideo) {
-                if (progress->finalVideoFile) free(progress->finalVideoFile);
-                progress->finalVideoFile = _wcsdup(cleanPath);
+                if (progress->finalVideoFile) SAFE_FREE(progress->finalVideoFile);
+                progress->finalVideoFile = SAFE_WCSDUP(cleanPath);
                 
                 // Extract video format from extension
-                if (progress->videoFormat) free(progress->videoFormat);
-                progress->videoFormat = _wcsdup(extension ? extension : L"unknown");
+                if (progress->videoFormat) SAFE_FREE(progress->videoFormat);
+                progress->videoFormat = SAFE_WCSDUP(extension ? extension : L"unknown");
             }
             
-            if (extension) free(extension);
+            if (extension) SAFE_FREE(extension);
         }
         
-        free(filePath);
+        SAFE_FREE(filePath);
         return TRUE;
     }
     
@@ -477,7 +477,7 @@ BOOL ParseInfoExtractionLine(const wchar_t* line, EnhancedProgressInfo* progress
             
             if (idChars == 11) {
                 tempId[11] = L'\0';
-                progress->videoId = _wcsdup(tempId);
+                progress->videoId = SAFE_WCSDUP(tempId);
             }
         }
     }
@@ -490,19 +490,19 @@ BOOL ParseInfoExtractionLine(const wchar_t* line, EnhancedProgressInfo* progress
 BOOL ParsePostProcessingLine(const wchar_t* line, EnhancedProgressInfo* progress) {
     if (!line || !progress) return FALSE;
     
-    if (progress->currentOperation) free(progress->currentOperation);
+    if (progress->currentOperation) SAFE_FREE(progress->currentOperation);
     
     if (wcsstr(line, L"[ffmpeg]")) {
-        progress->currentOperation = _wcsdup(L"Converting video format");
+        progress->currentOperation = SAFE_WCSDUP(L"Converting video format");
     }
     else if (wcsstr(line, L"Merging formats")) {
-        progress->currentOperation = _wcsdup(L"Merging video and audio");
+        progress->currentOperation = SAFE_WCSDUP(L"Merging video and audio");
     }
     else if (wcsstr(line, L"Correcting container")) {
-        progress->currentOperation = _wcsdup(L"Correcting video container");
+        progress->currentOperation = SAFE_WCSDUP(L"Correcting video container");
     }
     else {
-        progress->currentOperation = _wcsdup(L"Post-processing video");
+        progress->currentOperation = SAFE_WCSDUP(L"Post-processing video");
     }
     
     // Look for output file in post-processing messages
@@ -520,18 +520,18 @@ BOOL AddTrackedFile(EnhancedProgressInfo* progress, const wchar_t* filePath, BOO
     // Expand array if needed
     if (progress->fileCount >= progress->maxFiles) {
         progress->maxFiles *= 2;
-        TrackedFile** newArray = (TrackedFile**)realloc(progress->trackedFiles, 
+        TrackedFile** newArray = (TrackedFile**)SAFE_REALLOC(progress->trackedFiles, 
                                                         progress->maxFiles * sizeof(TrackedFile*));
         if (!newArray) return FALSE;
         progress->trackedFiles = newArray;
     }
     
     // Create new tracked file
-    TrackedFile* file = (TrackedFile*)malloc(sizeof(TrackedFile));
+    TrackedFile* file = (TrackedFile*)SAFE_MALLOC(sizeof(TrackedFile));
     if (!file) return FALSE;
     
     memset(file, 0, sizeof(TrackedFile));
-    file->filePath = _wcsdup(filePath);
+    file->filePath = SAFE_WCSDUP(filePath);
     file->extension = ExtractFileExtension(filePath);
     file->isMainVideo = isMainVideo;
     file->isSubtitle = IsSubtitleFileExtension(file->extension);
@@ -594,14 +594,14 @@ BOOL ParseJsonMetadataLine(const wchar_t* line, EnhancedProgressInfo* progress) 
             if (*titleEnd == L'"') {
                 size_t titleLen = titleEnd - titleStart;
                 if (titleLen > 0 && titleLen < 512) {
-                    wchar_t* title = (wchar_t*)malloc((titleLen + 1) * sizeof(wchar_t));
+                    wchar_t* title = (wchar_t*)SAFE_MALLOC((titleLen + 1) * sizeof(wchar_t));
                     if (title) {
                         wcsncpy(title, titleStart, titleLen);
                         title[titleLen] = L'\0';
                         
                         // Simple unescape for common characters
                         wchar_t* unescaped = UnescapeJsonString(title);
-                        free(title);
+                        SAFE_FREE(title);
                         
                         if (unescaped) {
                             progress->videoTitle = unescaped;
@@ -651,7 +651,7 @@ BOOL ParseJsonMetadataLine(const wchar_t* line, EnhancedProgressInfo* progress) 
                     swprintf(formattedDuration, 32, L"%d:%02d", minutes, seconds);
                 }
                 
-                progress->videoDuration = _wcsdup(formattedDuration);
+                progress->videoDuration = SAFE_WCSDUP(formattedDuration);
                 swprintf(debugMsg, 1024, L"YouTubeCacher: ParseJsonMetadataLine - Extracted duration: %ls", progress->videoDuration);
                 DebugOutput(debugMsg);
                 
@@ -672,7 +672,7 @@ wchar_t* UnescapeJsonString(const wchar_t* escaped) {
     if (!escaped) return NULL;
     
     size_t len = wcslen(escaped);
-    wchar_t* unescaped = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+    wchar_t* unescaped = (wchar_t*)SAFE_MALLOC((len + 1) * sizeof(wchar_t));
     if (!unescaped) return NULL;
     
     size_t i = 0, j = 0;
@@ -703,13 +703,13 @@ BOOL AddPreDownloadMessage(EnhancedProgressInfo* progress, const wchar_t* messag
     // Expand array if needed
     if (progress->messageCount >= progress->maxMessages) {
         progress->maxMessages *= 2;
-        wchar_t** newArray = (wchar_t**)realloc(progress->preDownloadMessages, 
+        wchar_t** newArray = (wchar_t**)SAFE_REALLOC(progress->preDownloadMessages, 
                                                progress->maxMessages * sizeof(wchar_t*));
         if (!newArray) return FALSE;
         progress->preDownloadMessages = newArray;
     }
     
-    progress->preDownloadMessages[progress->messageCount++] = _wcsdup(message);
+    progress->preDownloadMessages[progress->messageCount++] = SAFE_WCSDUP(message);
     return TRUE;
 }
 
@@ -720,8 +720,8 @@ void UpdateDownloadState(EnhancedProgressInfo* progress, DownloadState newState,
     if (progress->currentState != newState) {
         progress->currentState = newState;
         
-        if (progress->stateDescription) free(progress->stateDescription);
-        progress->stateDescription = description ? _wcsdup(description) : NULL;
+        if (progress->stateDescription) SAFE_FREE(progress->stateDescription);
+        progress->stateDescription = description ? SAFE_WCSDUP(description) : NULL;
         
         wchar_t debugMsg[256];
         swprintf(debugMsg, 256, L"YouTubeCacher: Download state changed to: %d (%ls)", 
@@ -749,12 +749,12 @@ wchar_t* DetectFinalVideoFile(EnhancedProgressInfo* progress) {
     }
     
     if (latestVideo) {
-        return _wcsdup(latestVideo->filePath);
+        return SAFE_WCSDUP(latestVideo->filePath);
     }
     
     // Fallback: return the finalVideoFile if set
     if (progress->finalVideoFile) {
-        return _wcsdup(progress->finalVideoFile);
+        return SAFE_WCSDUP(progress->finalVideoFile);
     }
     
     return NULL;
@@ -805,9 +805,9 @@ wchar_t* ExtractFileNameFromPath(const wchar_t* fullPath) {
     if (!lastSlash) lastSlash = wcsrchr(fullPath, L'/');
     
     if (lastSlash) {
-        return _wcsdup(lastSlash + 1);
+        return SAFE_WCSDUP(lastSlash + 1);
     } else {
-        return _wcsdup(fullPath);
+        return SAFE_WCSDUP(fullPath);
     }
 }
 
@@ -817,7 +817,7 @@ wchar_t* ExtractFileExtension(const wchar_t* fileName) {
     
     const wchar_t* lastDot = wcsrchr(fileName, L'.');
     if (lastDot && wcslen(lastDot) > 1) {
-        return _wcsdup(lastDot);
+        return SAFE_WCSDUP(lastDot);
     }
     
     return NULL;
@@ -850,7 +850,7 @@ EnhancedSubprocessContext* CreateEnhancedSubprocessContext(const YtDlpConfig* co
                                                           HWND parentWindow) {
     if (!config || !request) return NULL;
     
-    EnhancedSubprocessContext* context = (EnhancedSubprocessContext*)malloc(sizeof(EnhancedSubprocessContext));
+    EnhancedSubprocessContext* context = (EnhancedSubprocessContext*)SAFE_MALLOC(sizeof(EnhancedSubprocessContext));
     if (!context) return NULL;
     
     memset(context, 0, sizeof(EnhancedSubprocessContext));
@@ -858,22 +858,22 @@ EnhancedSubprocessContext* CreateEnhancedSubprocessContext(const YtDlpConfig* co
     // Create base subprocess context
     context->baseContext = CreateSubprocessContext(config, request, progressCallback, callbackUserData, parentWindow);
     if (!context->baseContext) {
-        free(context);
+        SAFE_FREE(context);
         return NULL;
     }
     
     // Create enhanced progress info
-    context->enhancedProgress = (EnhancedProgressInfo*)malloc(sizeof(EnhancedProgressInfo));
+    context->enhancedProgress = (EnhancedProgressInfo*)SAFE_MALLOC(sizeof(EnhancedProgressInfo));
     if (!context->enhancedProgress) {
         FreeSubprocessContext(context->baseContext);
-        free(context);
+        SAFE_FREE(context);
         return NULL;
     }
     
     if (!InitializeEnhancedProgressInfo(context->enhancedProgress)) {
-        free(context->enhancedProgress);
+        SAFE_FREE(context->enhancedProgress);
         FreeSubprocessContext(context->baseContext);
-        free(context);
+        SAFE_FREE(context);
         return NULL;
     }
     
@@ -893,7 +893,7 @@ void FreeEnhancedSubprocessContext(EnhancedSubprocessContext* context) {
     
     if (context->enhancedProgress) {
         FreeEnhancedProgressInfo(context->enhancedProgress);
-        free(context->enhancedProgress);
+        SAFE_FREE(context->enhancedProgress);
     }
     
     if (context->baseContext) {
@@ -901,7 +901,7 @@ void FreeEnhancedSubprocessContext(EnhancedSubprocessContext* context) {
     }
     
     DeleteCriticalSection(&context->progressLock);
-    free(context);
+    SAFE_FREE(context);
 }
 
 // Start enhanced subprocess execution
@@ -938,7 +938,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     LeaveCriticalSection(&context->threadContext.criticalSection);
     
     // Initialize result structure
-    context->result = (YtDlpResult*)malloc(sizeof(YtDlpResult));
+    context->result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
     if (!context->result) {
         DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Failed to allocate result structure");
         context->completed = TRUE;
@@ -959,7 +959,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to build yt-dlp arguments");
         context->result->success = FALSE;
         context->result->exitCode = 1;
-        context->result->errorMessage = _wcsdup(L"Failed to build yt-dlp arguments");
+        context->result->errorMessage = SAFE_WCSDUP(L"Failed to build yt-dlp arguments");
         context->completed = TRUE;
         return 1;
     }
@@ -968,7 +968,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (IsCancellationRequested(&context->threadContext)) {
         DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Operation was cancelled");
         context->result->success = FALSE;
-        context->result->errorMessage = _wcsdup(L"Operation cancelled by user");
+        context->result->errorMessage = SAFE_WCSDUP(L"Operation cancelled by user");
         context->completed = TRUE;
         return 1;
     }
@@ -980,7 +980,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create output pipe");
         context->result->success = FALSE;
         context->result->exitCode = error;
-        context->result->errorMessage = _wcsdup(L"Failed to create output pipe");
+        context->result->errorMessage = SAFE_WCSDUP(L"Failed to create output pipe");
         context->completed = TRUE;
         return 1;
     }
@@ -999,14 +999,14 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     
     // Build command line
     size_t cmdLineLen = wcslen(context->config->ytDlpPath) + wcslen(arguments) + 10;
-    wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
+    wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
     if (!cmdLine) {
         DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to allocate command line memory");
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
         context->result->success = FALSE;
         context->result->exitCode = 1;
-        context->result->errorMessage = _wcsdup(L"Memory allocation failed");
+        context->result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed");
         context->completed = TRUE;
         return 1;
     }
@@ -1025,12 +1025,12 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (!processCreated) {
         DWORD error = GetLastError();
         DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create process");
-        free(cmdLine);
+        SAFE_FREE(cmdLine);
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
         context->result->success = FALSE;
         context->result->exitCode = error;
-        context->result->errorMessage = _wcsdup(L"Failed to start yt-dlp process");
+        context->result->errorMessage = SAFE_WCSDUP(L"Failed to start yt-dlp process");
         context->completed = TRUE;
         return 1;
     }
@@ -1038,11 +1038,11 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     // Store process handle for potential cancellation
     context->hProcess = pi.hProcess;
     CloseHandle(context->hOutputWrite);
-    free(cmdLine);
+    SAFE_FREE(cmdLine);
     
     // Initialize output buffer
     context->outputBufferSize = 8192;
-    context->accumulatedOutput = (wchar_t*)malloc(context->outputBufferSize * sizeof(wchar_t));
+    context->accumulatedOutput = (wchar_t*)SAFE_MALLOC(context->outputBufferSize * sizeof(wchar_t));
     if (context->accumulatedOutput) {
         context->accumulatedOutput[0] = L'\0';
     }
@@ -1120,7 +1120,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                                 size_t newLen = currentLen + converted + 2;
                                 if (newLen >= context->outputBufferSize) {
                                     context->outputBufferSize = newLen * 2;
-                                    wchar_t* newBuffer = (wchar_t*)realloc(context->accumulatedOutput, 
+                                    wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(context->accumulatedOutput, 
                                                                           context->outputBufferSize * sizeof(wchar_t));
                                     if (newBuffer) {
                                         context->accumulatedOutput = newBuffer;
@@ -1199,7 +1199,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         // Detect final video file
         wchar_t* finalFile = DetectFinalVideoFile(progress);
         if (finalFile) {
-            if (progress->finalVideoFile) free(progress->finalVideoFile);
+            if (progress->finalVideoFile) SAFE_FREE(progress->finalVideoFile);
             progress->finalVideoFile = finalFile;
         }
     } else {
@@ -1216,9 +1216,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (!context->result->success) {
         EnterCriticalSection(&enhancedContext->progressLock);
         if (progress->errorMessage) {
-            context->result->errorMessage = _wcsdup(progress->errorMessage);
+            context->result->errorMessage = SAFE_WCSDUP(progress->errorMessage);
         } else {
-            context->result->errorMessage = _wcsdup(L"yt-dlp process failed");
+            context->result->errorMessage = SAFE_WCSDUP(L"yt-dlp process failed");
         }
         LeaveCriticalSection(&enhancedContext->progressLock);
     }
@@ -1253,7 +1253,7 @@ void EnhancedProgressCallback(const EnhancedProgressInfo* progress, void* userDa
         // Fallback to direct PostMessage if IPC is not available
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, progress->progressPercentage);
         if (progress->statusMessage) {
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(progress->statusMessage));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)SAFE_WCSDUP(progress->statusMessage));
         }
     }
     

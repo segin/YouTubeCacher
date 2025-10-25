@@ -543,7 +543,7 @@ BOOL CopyUnifiedDialogToClipboard(const UnifiedDialogConfig* config) {
     if (config->tab2_content) totalSize += wcslen(config->tab2_content);
     if (config->tab3_content) totalSize += wcslen(config->tab3_content);
     
-    wchar_t* clipboardText = (wchar_t*)malloc(totalSize * sizeof(wchar_t));
+    wchar_t* clipboardText = (wchar_t*)SAFE_MALLOC(totalSize * sizeof(wchar_t));
     if (!clipboardText) return FALSE;
     
     const wchar_t* typeStr;
@@ -594,7 +594,7 @@ BOOL CopyUnifiedDialogToClipboard(const UnifiedDialogConfig* config) {
         CloseClipboard();
     }
     
-    free(clipboardText);
+    SAFE_FREE(clipboardText);
     return success;
 }
 
@@ -880,7 +880,7 @@ BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog) {
     if (errorDialog->diagnostics) totalSize += wcslen(errorDialog->diagnostics);
     if (errorDialog->solutions) totalSize += wcslen(errorDialog->solutions);
     
-    wchar_t* clipboardText = (wchar_t*)malloc(totalSize * sizeof(wchar_t));
+    wchar_t* clipboardText = (wchar_t*)SAFE_MALLOC(totalSize * sizeof(wchar_t));
     if (!clipboardText) return FALSE;
     
     // Format the information based on dialog type
@@ -934,7 +934,7 @@ BOOL CopyErrorInfoToClipboard(const EnhancedErrorDialog* errorDialog) {
         CloseClipboard();
     }
     
-    free(clipboardText);
+    SAFE_FREE(clipboardText);
     return success;
 }
 
@@ -1551,7 +1551,7 @@ void LogError(const wchar_t* category, const wchar_t* message, const wchar_t* de
     // Convert to UTF-8 for file writing
     int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
     if (utf8Size > 0) {
-        char* utf8Buffer = (char*)malloc(utf8Size);
+        char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
         if (utf8Buffer) {
             WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
             
@@ -1559,7 +1559,7 @@ void LogError(const wchar_t* category, const wchar_t* message, const wchar_t* de
             WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
             FlushFileBuffers(hLogFile);
             
-            free(utf8Buffer);
+            SAFE_FREE(utf8Buffer);
         }
     }
 }
@@ -1580,7 +1580,7 @@ void LogWarning(const wchar_t* category, const wchar_t* message) {
     // Convert to UTF-8 for file writing
     int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
     if (utf8Size > 0) {
-        char* utf8Buffer = (char*)malloc(utf8Size);
+        char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
         if (utf8Buffer) {
             WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
             
@@ -1588,7 +1588,7 @@ void LogWarning(const wchar_t* category, const wchar_t* message) {
             WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
             FlushFileBuffers(hLogFile);
             
-            free(utf8Buffer);
+            SAFE_FREE(utf8Buffer);
         }
     }
 }
@@ -1609,7 +1609,7 @@ void LogInfo(const wchar_t* category, const wchar_t* message) {
     // Convert to UTF-8 for file writing
     int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
     if (utf8Size > 0) {
-        char* utf8Buffer = (char*)malloc(utf8Size);
+        char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
         if (utf8Buffer) {
             WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
             
@@ -1617,7 +1617,7 @@ void LogInfo(const wchar_t* category, const wchar_t* message) {
             WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
             FlushFileBuffers(hLogFile);
             
-            free(utf8Buffer);
+            SAFE_FREE(utf8Buffer);
         }
     }
 }

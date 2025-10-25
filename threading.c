@@ -289,7 +289,7 @@ BOOL SendStatusUpdate(IPCContext* context, HWND targetWindow, const wchar_t* sta
     IPCMessage message = {0};
     message.type = IPC_MSG_STATUS_UPDATE;
     message.targetWindow = targetWindow;
-    message.data.status.text = _wcsdup(status);
+    message.data.status.text = SAFE_WCSDUP(status);
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
     
@@ -302,7 +302,7 @@ BOOL SendTitleUpdate(IPCContext* context, HWND targetWindow, const wchar_t* titl
     IPCMessage message = {0};
     message.type = IPC_MSG_TITLE_UPDATE;
     message.targetWindow = targetWindow;
-    message.data.title.title = _wcsdup(title);
+    message.data.title.title = SAFE_WCSDUP(title);
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
     
@@ -315,7 +315,7 @@ BOOL SendDurationUpdate(IPCContext* context, HWND targetWindow, const wchar_t* d
     IPCMessage message = {0};
     message.type = IPC_MSG_DURATION_UPDATE;
     message.targetWindow = targetWindow;
-    message.data.duration.duration = _wcsdup(duration);
+    message.data.duration.duration = SAFE_WCSDUP(duration);
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
     
@@ -388,7 +388,7 @@ void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void
         // Fallback to direct PostMessage if IPC is not available
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
         if (status) {
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)SAFE_WCSDUP(status));
         }
     }
 }
@@ -409,7 +409,7 @@ void MainWindowProgressCallback(int percentage, const wchar_t* status, void* use
         // Fallback to direct PostMessage if IPC is not available
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
         if (status) {
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)_wcsdup(status));
+            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)SAFE_WCSDUP(status));
         }
     }
 }
@@ -478,8 +478,8 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
                                 
                                 // Select the most recent video file (in case of multiple formats)
                                 if (!bestVideoFile || CompareFileTime(&findData.ftLastWriteTime, &latestTime) > 0) {
-                                    if (bestVideoFile) free(bestVideoFile);
-                                    bestVideoFile = _wcsdup(fullVideoPath);
+                                    if (bestVideoFile) SAFE_FREE(bestVideoFile);
+                                    bestVideoFile = SAFE_WCSDUP(fullVideoPath);
                                     latestTime = findData.ftLastWriteTime;
                                 }
                             }
@@ -509,18 +509,18 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
                     // Clean up subtitle files array
                     if (subtitleFiles) {
                         for (int i = 0; i < subtitleCount; i++) {
-                            if (subtitleFiles[i]) free(subtitleFiles[i]);
+                            if (subtitleFiles[i]) SAFE_FREE(subtitleFiles[i]);
                         }
-                        free(subtitleFiles);
+                        SAFE_FREE(subtitleFiles);
                     }
                     
-                    free(bestVideoFile);
+                    SAFE_FREE(bestVideoFile);
                 } else {
                     OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - No video file found with enhanced detection\n");
                 }
             }
             
-            free(videoId);
+            SAFE_FREE(videoId);
             
             // Refresh the cache list UI
             OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - Refreshing cache list UI\n");
@@ -556,7 +556,7 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
                     
                     // Enhance the diagnostics with Windows error information
                     size_t newDiagSize = (result->diagnostics ? wcslen(result->diagnostics) : 0) + 1024;
-                    wchar_t* enhancedDiag = (wchar_t*)malloc(newDiagSize * sizeof(wchar_t));
+                    wchar_t* enhancedDiag = (wchar_t*)SAFE_MALLOC(newDiagSize * sizeof(wchar_t));
                     if (enhancedDiag) {
                         swprintf(enhancedDiag, newDiagSize,
                             L"%ls\n\n=== WINDOWS API ERROR ===\n"
@@ -566,7 +566,7 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
                             errorCode, errorCode, windowsError);
                         
                         // Replace the diagnostics
-                        if (result->diagnostics) free(result->diagnostics);
+                        if (result->diagnostics) SAFE_FREE(result->diagnostics);
                         result->diagnostics = enhancedDiag;
                     }
                 }
@@ -585,7 +585,7 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
     if (result) FreeYtDlpResult(result);
     if (downloadContext->request) FreeYtDlpRequest(downloadContext->request);
     CleanupYtDlpConfig(&downloadContext->config);
-    free(downloadContext);
+    SAFE_FREE(downloadContext);
 }
 
 // ============================================================================
@@ -596,15 +596,15 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
 IPCMessageQueue* CreateIPCMessageQueue(size_t capacity) {
     if (capacity == 0) capacity = 100; // Default capacity
     
-    IPCMessageQueue* queue = (IPCMessageQueue*)malloc(sizeof(IPCMessageQueue));
+    IPCMessageQueue* queue = (IPCMessageQueue*)SAFE_MALLOC(sizeof(IPCMessageQueue));
     if (!queue) return NULL;
     
     memset(queue, 0, sizeof(IPCMessageQueue));
     
     // Allocate message buffer
-    queue->messages = (IPCMessage*)malloc(sizeof(IPCMessage) * capacity);
+    queue->messages = (IPCMessage*)SAFE_MALLOC(sizeof(IPCMessage) * capacity);
     if (!queue->messages) {
-        free(queue);
+        SAFE_FREE(queue);
         return NULL;
     }
     
@@ -622,8 +622,8 @@ IPCMessageQueue* CreateIPCMessageQueue(size_t capacity) {
         if (queue->notEmpty) CloseHandle(queue->notEmpty);
         if (queue->notFull) CloseHandle(queue->notFull);
         DeleteCriticalSection(&queue->lock);
-        free(queue->messages);
-        free(queue);
+        SAFE_FREE(queue->messages);
+        SAFE_FREE(queue);
         return NULL;
     }
     
@@ -651,8 +651,8 @@ void DestroyIPCMessageQueue(IPCMessageQueue* queue) {
     DeleteCriticalSection(&queue->lock);
     
     // Free memory
-    free(queue->messages);
-    free(queue);
+    SAFE_FREE(queue->messages);
+    SAFE_FREE(queue);
 }
 
 // Add a message to the queue
@@ -724,21 +724,21 @@ void FreeIPCMessage(IPCMessage* message) {
         switch (message->type) {
             case IPC_MSG_STATUS_UPDATE:
                 if (message->data.status.text) {
-                    free(message->data.status.text);
+                    SAFE_FREE(message->data.status.text);
                     message->data.status.text = NULL;
                 }
                 break;
                 
             case IPC_MSG_TITLE_UPDATE:
                 if (message->data.title.title) {
-                    free(message->data.title.title);
+                    SAFE_FREE(message->data.title.title);
                     message->data.title.title = NULL;
                 }
                 break;
                 
             case IPC_MSG_DURATION_UPDATE:
                 if (message->data.duration.duration) {
-                    free(message->data.duration.duration);
+                    SAFE_FREE(message->data.duration.duration);
                     message->data.duration.duration = NULL;
                 }
                 break;

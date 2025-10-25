@@ -41,7 +41,7 @@ BOOL InitializeApplicationState(ApplicationState* state) {
     state->hCurrentBrush = state->hBrushWhite;  // Default to white
     
     // Allocate and initialize cache manager
-    state->cacheManager = (CacheManager*)malloc(sizeof(CacheManager));
+    state->cacheManager = (CacheManager*)SAFE_MALLOC(sizeof(CacheManager));
     if (state->cacheManager) {
         memset(state->cacheManager, 0, sizeof(CacheManager));
         // Note: Debug output deferred until logging system is initialized
@@ -51,7 +51,7 @@ BOOL InitializeApplicationState(ApplicationState* state) {
     }
     
     // Allocate and initialize cached video metadata
-    state->cachedVideoMetadata = (CachedVideoMetadata*)malloc(sizeof(CachedVideoMetadata));
+    state->cachedVideoMetadata = (CachedVideoMetadata*)SAFE_MALLOC(sizeof(CachedVideoMetadata));
     if (state->cachedVideoMetadata) {
         memset(state->cachedVideoMetadata, 0, sizeof(CachedVideoMetadata));
         // Note: Debug output deferred until logging system is initialized
@@ -103,7 +103,7 @@ void CleanupApplicationState(ApplicationState* state) {
         // Use direct debug output since logging system may be shutting down
         OutputDebugStringW(L"YouTubeCacher: CleanupApplicationState - Cleaning up cache manager");
         CleanupCacheManager(state->cacheManager);
-        free(state->cacheManager);
+        SAFE_FREE(state->cacheManager);
         state->cacheManager = NULL;
     }
     
@@ -112,7 +112,7 @@ void CleanupApplicationState(ApplicationState* state) {
         // Use direct debug output since logging system may be shutting down
         OutputDebugStringW(L"YouTubeCacher: CleanupApplicationState - Cleaning up cached video metadata");
         FreeCachedMetadata(state->cachedVideoMetadata);
-        free(state->cachedVideoMetadata);
+        SAFE_FREE(state->cachedVideoMetadata);
         state->cachedVideoMetadata = NULL;
     }
     
@@ -399,7 +399,7 @@ CachedVideoMetadata* GetCachedVideoMetadata(void) {
 void RegisterStateChangeCallback(StateChangeCallback callback, void* userData) {
     if (!callback) return;
     
-    StateChangeCallbackNode* node = (StateChangeCallbackNode*)malloc(sizeof(StateChangeCallbackNode));
+    StateChangeCallbackNode* node = (StateChangeCallbackNode*)SAFE_MALLOC(sizeof(StateChangeCallbackNode));
     if (!node) return;
     
     node->callback = callback;
@@ -416,7 +416,7 @@ void UnregisterStateChangeCallback(StateChangeCallback callback) {
         if ((*current)->callback == callback) {
             StateChangeCallbackNode* toDelete = *current;
             *current = (*current)->next;
-            free(toDelete);
+            SAFE_FREE(toDelete);
             return;
         }
         current = &(*current)->next;

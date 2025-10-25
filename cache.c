@@ -59,21 +59,21 @@ void CleanupCacheManager(CacheManager* manager) {
 void FreeCacheEntry(CacheEntry* entry) {
     if (!entry) return;
     
-    if (entry->videoId) free(entry->videoId);
-    if (entry->title) free(entry->title);
-    if (entry->duration) free(entry->duration);
-    if (entry->mainVideoFile) free(entry->mainVideoFile);
+    if (entry->videoId) SAFE_FREE(entry->videoId);
+    if (entry->title) SAFE_FREE(entry->title);
+    if (entry->duration) SAFE_FREE(entry->duration);
+    if (entry->mainVideoFile) SAFE_FREE(entry->mainVideoFile);
     
     if (entry->subtitleFiles) {
         for (int i = 0; i < entry->subtitleCount; i++) {
             if (entry->subtitleFiles[i]) {
-                free(entry->subtitleFiles[i]);
+                SAFE_FREE(entry->subtitleFiles[i]);
             }
         }
-        free(entry->subtitleFiles);
+        SAFE_FREE(entry->subtitleFiles);
     }
     
-    free(entry);
+    SAFE_FREE(entry);
 }
 
 // Load cache from file with bulletproof error handling
@@ -268,7 +268,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         DebugOutput(debugMsg);
         
         // Allocate memory for cache entry
-        CacheEntry* entry = (CacheEntry*)malloc(sizeof(CacheEntry));
+        CacheEntry* entry = (CacheEntry*)SAFE_MALLOC(sizeof(CacheEntry));
         if (!entry) {
             swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Memory allocation failed for line %d", lineCount);
             DebugOutput(debugMsg);
@@ -279,10 +279,10 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         memset(entry, 0, sizeof(CacheEntry));
         
         // Parse video ID with validation
-        entry->videoId = _wcsdup(token);
+        entry->videoId = SAFE_WCSDUP(token);
         if (!entry->videoId) {
             DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to duplicate video ID");
-            free(entry);
+            SAFE_FREE(entry);
             memoryErrors++;
             continue;
         }
@@ -298,41 +298,41 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             } else {
                 swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Base64 decode failed for title on line %d", lineCount);
                 DebugOutput(debugMsg);
-                entry->title = _wcsdup(L"Unknown Title");
+                entry->title = SAFE_WCSDUP(L"Unknown Title");
             }
         } else {
             DebugOutput(L"YouTubeCacher: LoadCacheFromFile - No title found, using default");
-            entry->title = _wcsdup(L"Unknown Title");
+            entry->title = SAFE_WCSDUP(L"Unknown Title");
         }
         
         // Parse duration with validation
         token = wcstok(NULL, L"|", &context);
         if (token && wcslen(token) > 0) {
-            entry->duration = _wcsdup(token);
+            entry->duration = SAFE_WCSDUP(token);
             if (entry->duration) {
                 // Format the duration properly (fix legacy single-number durations)
                 size_t len = wcslen(entry->duration);
-                wchar_t* tempDuration = (wchar_t*)malloc((len + 32) * sizeof(wchar_t));
+                wchar_t* tempDuration = (wchar_t*)SAFE_MALLOC((len + 32) * sizeof(wchar_t));
                 if (tempDuration) {
                     wcscpy(tempDuration, entry->duration);
                     FormatDuration(tempDuration, len + 32);
                     
                     // Replace the original if it changed
                     if (wcscmp(entry->duration, tempDuration) != 0) {
-                        free(entry->duration);
-                        entry->duration = _wcsdup(tempDuration);
+                        SAFE_FREE(entry->duration);
+                        entry->duration = SAFE_WCSDUP(tempDuration);
                     }
-                    free(tempDuration);
+                    SAFE_FREE(tempDuration);
                 }
             }
         } else {
-            entry->duration = _wcsdup(L"Unknown");
+            entry->duration = SAFE_WCSDUP(L"Unknown");
         }
         
         // Parse main video file with validation
         token = wcstok(NULL, L"|", &context);
         if (token && wcslen(token) > 0) {
-            entry->mainVideoFile = _wcsdup(token);
+            entry->mainVideoFile = SAFE_WCSDUP(token);
         } else {
             swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Line %d missing main video file", lineCount);
             DebugOutput(debugMsg);
@@ -354,12 +354,12 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             
             entry->subtitleCount = subtitleCount;
             if (subtitleCount > 0) {
-                entry->subtitleFiles = (wchar_t**)malloc(subtitleCount * sizeof(wchar_t*));
+                entry->subtitleFiles = (wchar_t**)SAFE_MALLOC(subtitleCount * sizeof(wchar_t*));
                 if (entry->subtitleFiles) {
                     for (int i = 0; i < subtitleCount; i++) {
                         token = wcstok(NULL, L"|", &context);
                         if (token && wcslen(token) > 0) {
-                            entry->subtitleFiles[i] = _wcsdup(token);
+                            entry->subtitleFiles[i] = SAFE_WCSDUP(token);
                         } else {
                             entry->subtitleFiles[i] = NULL;
                             swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Missing subtitle file %d for line %d", i+1, lineCount);
@@ -476,7 +476,7 @@ BOOL SaveCacheToFile(CacheManager* manager) {
                     current->mainVideoFile ? current->mainVideoFile : L"",
                     current->subtitleCount);
             
-            if (encodedTitle) free(encodedTitle);
+            if (encodedTitle) SAFE_FREE(encodedTitle);
             
             // Write subtitle files
             for (int i = 0; i < current->subtitleCount; i++) {
@@ -529,7 +529,7 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     }
     
     // Create new entry
-    CacheEntry* entry = (CacheEntry*)malloc(sizeof(CacheEntry));
+    CacheEntry* entry = (CacheEntry*)SAFE_MALLOC(sizeof(CacheEntry));
     if (!entry) {
         LeaveCriticalSection(&manager->lock);
         return FALSE;
@@ -537,18 +537,18 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     
     memset(entry, 0, sizeof(CacheEntry));
     
-    entry->videoId = _wcsdup(videoId);
-    entry->title = title ? _wcsdup(title) : NULL;
-    entry->duration = duration ? _wcsdup(duration) : NULL;
-    entry->mainVideoFile = _wcsdup(mainVideoFile);
+    entry->videoId = SAFE_WCSDUP(videoId);
+    entry->title = title ? SAFE_WCSDUP(title) : NULL;
+    entry->duration = duration ? SAFE_WCSDUP(duration) : NULL;
+    entry->mainVideoFile = SAFE_WCSDUP(mainVideoFile);
     entry->subtitleCount = subtitleCount;
     
     // Copy subtitle files
     if (subtitleCount > 0 && subtitleFiles) {
-        entry->subtitleFiles = (wchar_t**)malloc(subtitleCount * sizeof(wchar_t*));
+        entry->subtitleFiles = (wchar_t**)SAFE_MALLOC(subtitleCount * sizeof(wchar_t*));
         if (entry->subtitleFiles) {
             for (int i = 0; i < subtitleCount; i++) {
-                entry->subtitleFiles[i] = subtitleFiles[i] ? _wcsdup(subtitleFiles[i]) : NULL;
+                entry->subtitleFiles[i] = subtitleFiles[i] ? SAFE_WCSDUP(subtitleFiles[i]) : NULL;
             }
         }
     }
@@ -651,7 +651,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     }
     
     // Create result structure
-    DeleteResult* result = (DeleteResult*)malloc(sizeof(DeleteResult));
+    DeleteResult* result = (DeleteResult*)SAFE_MALLOC(sizeof(DeleteResult));
     if (!result) {
         LeaveCriticalSection(&manager->lock);
         return NULL;
@@ -664,9 +664,9 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     
     // Allocate error array (worst case: all files fail)
     if (result->totalFiles > 0) {
-        result->errors = (FileDeleteError*)malloc(result->totalFiles * sizeof(FileDeleteError));
+        result->errors = (FileDeleteError*)SAFE_MALLOC(result->totalFiles * sizeof(FileDeleteError));
         if (!result->errors) {
-            free(result);
+            SAFE_FREE(result);
             LeaveCriticalSection(&manager->lock);
             return NULL;
         }
@@ -677,7 +677,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     if (entry->mainVideoFile) {
         if (!DeleteFileW(entry->mainVideoFile)) {
             DWORD error = GetLastError();
-            result->errors[result->errorCount].fileName = _wcsdup(entry->mainVideoFile);
+            result->errors[result->errorCount].fileName = SAFE_WCSDUP(entry->mainVideoFile);
             result->errors[result->errorCount].errorCode = error;
             result->errorCount++;
         } else {
@@ -690,7 +690,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
         if (entry->subtitleFiles && entry->subtitleFiles[i]) {
             if (!DeleteFileW(entry->subtitleFiles[i])) {
                 DWORD error = GetLastError();
-                result->errors[result->errorCount].fileName = _wcsdup(entry->subtitleFiles[i]);
+                result->errors[result->errorCount].fileName = SAFE_WCSDUP(entry->subtitleFiles[i]);
                 result->errors[result->errorCount].errorCode = error;
                 result->errorCount++;
             } else {
@@ -716,13 +716,13 @@ void FreeDeleteResult(DeleteResult* result) {
     if (result->errors) {
         for (int i = 0; i < result->errorCount; i++) {
             if (result->errors[i].fileName) {
-                free(result->errors[i].fileName);
+                SAFE_FREE(result->errors[i].fileName);
             }
         }
-        free(result->errors);
+        SAFE_FREE(result->errors);
     }
     
-    free(result);
+    SAFE_FREE(result);
 }
 
 // Format delete error details for display
@@ -737,7 +737,7 @@ wchar_t* FormatDeleteErrorDetails(const DeleteResult* result) {
         }
     }
     
-    wchar_t* details = (wchar_t*)malloc(bufferSize * sizeof(wchar_t));
+    wchar_t* details = (wchar_t*)SAFE_MALLOC(bufferSize * sizeof(wchar_t));
     if (!details) return NULL;
     
     // Format summary
@@ -819,7 +819,7 @@ BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t
     
     // Build command line to launch player
     size_t cmdLineLen = wcslen(playerPath) + wcslen(entry->mainVideoFile) + 10;
-    wchar_t* cmdLine = (wchar_t*)malloc(cmdLineLen * sizeof(wchar_t));
+    wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
     if (!cmdLine) {
         LeaveCriticalSection(&manager->lock);
         return FALSE;
@@ -841,7 +841,7 @@ BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t
         CloseHandle(pi.hThread);
     }
     
-    free(cmdLine);
+    SAFE_FREE(cmdLine);
     return result;
 }
 
@@ -929,7 +929,7 @@ void RefreshCacheList(HWND hListView, CacheManager* manager) {
             // Title column
             item.iSubItem = 0;
             item.pszText = current->title ? current->title : L"Unknown Title";
-            item.lParam = (LPARAM)_wcsdup(current->videoId); // Store video ID
+            item.lParam = (LPARAM)SAFE_WCSDUP(current->videoId); // Store video ID
             
             int insertedIndex = (int)SendMessageW(hListView, LVM_INSERTITEMW, 0, (LPARAM)&item);
             
@@ -976,7 +976,7 @@ wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
         }
         
         if (count == 11) {
-            wchar_t* videoId = (wchar_t*)malloc(12 * sizeof(wchar_t));
+            wchar_t* videoId = (wchar_t*)SAFE_MALLOC(12 * sizeof(wchar_t));
             if (videoId) {
                 wcsncpy(videoId, vParam, 11);
                 videoId[11] = L'\0';
@@ -1000,7 +1000,7 @@ wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
         }
         
         if (count == 11) {
-            wchar_t* videoId = (wchar_t*)malloc(12 * sizeof(wchar_t));
+            wchar_t* videoId = (wchar_t*)SAFE_MALLOC(12 * sizeof(wchar_t));
             if (videoId) {
                 wcsncpy(videoId, shortUrl, 11);
                 videoId[11] = L'\0';
@@ -1024,7 +1024,7 @@ wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
         }
         
         if (count == 11) {
-            wchar_t* videoId = (wchar_t*)malloc(12 * sizeof(wchar_t));
+            wchar_t* videoId = (wchar_t*)SAFE_MALLOC(12 * sizeof(wchar_t));
             if (videoId) {
                 wcsncpy(videoId, shortsUrl, 11);
                 videoId[11] = L'\0';
@@ -1099,7 +1099,7 @@ BOOL FindSubtitleFiles(const wchar_t* videoFilePath, wchar_t*** subtitleFiles, i
     const wchar_t* subtitleExts[] = {L".srt", L".vtt", L".ass", L".ssa", L".sub"};
     int numExts = sizeof(subtitleExts) / sizeof(subtitleExts[0]);
     
-    wchar_t** tempFiles = (wchar_t**)malloc(numExts * sizeof(wchar_t*));
+    wchar_t** tempFiles = (wchar_t**)SAFE_MALLOC(numExts * sizeof(wchar_t*));
     if (!tempFiles) return FALSE;
     
     int foundCount = 0;
@@ -1110,24 +1110,24 @@ BOOL FindSubtitleFiles(const wchar_t* videoFilePath, wchar_t*** subtitleFiles, i
         
         DWORD attributes = GetFileAttributesW(subtitlePath);
         if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            tempFiles[foundCount] = _wcsdup(subtitlePath);
+            tempFiles[foundCount] = SAFE_WCSDUP(subtitlePath);
             foundCount++;
         }
     }
     
     if (foundCount > 0) {
-        *subtitleFiles = (wchar_t**)realloc(tempFiles, foundCount * sizeof(wchar_t*));
+        *subtitleFiles = (wchar_t**)SAFE_REALLOC(tempFiles, foundCount * sizeof(wchar_t*));
         *count = foundCount;
         return TRUE;
     } else {
-        free(tempFiles);
+        SAFE_FREE(tempFiles);
         return FALSE;
     }
 }
 
 // Format file size for display
 wchar_t* FormatFileSize(DWORD sizeBytes) {
-    wchar_t* result = (wchar_t*)malloc(32 * sizeof(wchar_t));
+    wchar_t* result = (wchar_t*)SAFE_MALLOC(32 * sizeof(wchar_t));
     if (!result) return NULL;
     
     if (sizeBytes < 1024) {
@@ -1147,7 +1147,7 @@ wchar_t* FormatFileSize(DWORD sizeBytes) {
 wchar_t* FormatCacheEntryDisplay(const CacheEntry* entry) {
     if (!entry) return NULL;
     
-    wchar_t* result = (wchar_t*)malloc(512 * sizeof(wchar_t));
+    wchar_t* result = (wchar_t*)SAFE_MALLOC(512 * sizeof(wchar_t));
     if (!result) return NULL;
     
     wchar_t* sizeStr = FormatFileSize(entry->fileSize);
@@ -1157,7 +1157,7 @@ wchar_t* FormatCacheEntryDisplay(const CacheEntry* entry) {
             entry->duration ? entry->duration : L"Unknown Duration",
             sizeStr ? sizeStr : L"Unknown Size");
     
-    if (sizeStr) free(sizeStr);
+    if (sizeStr) SAFE_FREE(sizeStr);
     
     return result;
 }
@@ -1192,12 +1192,12 @@ BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath) {
     }
     
     // Create dummy subtitle files
-    wchar_t** subtitleFiles = (wchar_t**)malloc(2 * sizeof(wchar_t*));
+    wchar_t** subtitleFiles = (wchar_t**)SAFE_MALLOC(2 * sizeof(wchar_t*));
     if (subtitleFiles) {
         // Create .srt file
         wchar_t srtPath[MAX_EXTENDED_PATH];
         swprintf(srtPath, MAX_EXTENDED_PATH, L"%ls\\debug_video_%d [%ls].en.srt", downloadPath, dummyCounter, videoId);
-        subtitleFiles[0] = _wcsdup(srtPath);
+        subtitleFiles[0] = SAFE_WCSDUP(srtPath);
         
         HANDLE hSrt = CreateFileW(srtPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hSrt != INVALID_HANDLE_VALUE) {
@@ -1210,7 +1210,7 @@ BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath) {
         // Create .vtt file
         wchar_t vttPath[MAX_EXTENDED_PATH];
         swprintf(vttPath, MAX_EXTENDED_PATH, L"%ls\\debug_video_%d [%ls].en.vtt", downloadPath, dummyCounter, videoId);
-        subtitleFiles[1] = _wcsdup(vttPath);
+        subtitleFiles[1] = SAFE_WCSDUP(vttPath);
         
         HANDLE hVtt = CreateFileW(vttPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hVtt != INVALID_HANDLE_VALUE) {
@@ -1226,9 +1226,9 @@ BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath) {
     
     // Clean up
     if (subtitleFiles) {
-        if (subtitleFiles[0]) free(subtitleFiles[0]);
-        if (subtitleFiles[1]) free(subtitleFiles[1]);
-        free(subtitleFiles);
+        if (subtitleFiles[0]) SAFE_FREE(subtitleFiles[0]);
+        if (subtitleFiles[1]) SAFE_FREE(subtitleFiles[1]);
+        SAFE_FREE(subtitleFiles);
     }
     
     dummyCounter++;
@@ -1260,7 +1260,7 @@ BOOL ScanDownloadFolderForVideos(CacheManager* manager, const wchar_t* downloadP
             if (bracket) {
                 wchar_t* closeBracket = wcschr(bracket, L']');
                 if (closeBracket && (closeBracket - bracket) == 12) {
-                    videoId = (wchar_t*)malloc(12 * sizeof(wchar_t));
+                    videoId = (wchar_t*)SAFE_MALLOC(12 * sizeof(wchar_t));
                     if (videoId) {
                         wcsncpy(videoId, bracket + 1, 11);
                         videoId[11] = L'\0';
@@ -1281,12 +1281,12 @@ BOOL ScanDownloadFolderForVideos(CacheManager* manager, const wchar_t* downloadP
                 // Clean up
                 if (subtitleFiles) {
                     for (int i = 0; i < subtitleCount; i++) {
-                        if (subtitleFiles[i]) free(subtitleFiles[i]);
+                        if (subtitleFiles[i]) SAFE_FREE(subtitleFiles[i]);
                     }
-                    free(subtitleFiles);
+                    SAFE_FREE(subtitleFiles);
                 }
                 
-                free(videoId);
+                SAFE_FREE(videoId);
             }
         }
     } while (FindNextFileW(hFind, &findData));
@@ -1319,7 +1319,7 @@ void UpdateCacheListStatus(HWND hDlg, CacheManager* manager) {
     // Format status text
     wchar_t* sizeStr = FormatFileSize(totalSize);
     swprintf(statusText, 256, L"Status: Ready - Total size: %ls", sizeStr ? sizeStr : L"0 B");
-    if (sizeStr) free(sizeStr);
+    if (sizeStr) SAFE_FREE(sizeStr);
     
     // Format items count
     swprintf(itemsText, 64, L"Items: %d", manager->totalEntries);
@@ -1365,7 +1365,7 @@ wchar_t** GetSelectedVideoIds(HWND hListView, int* count) {
     if (selectedCount == 0) return NULL;
     
     // Allocate array for video IDs
-    wchar_t** videoIds = (wchar_t**)malloc(selectedCount * sizeof(wchar_t*));
+    wchar_t** videoIds = (wchar_t**)SAFE_MALLOC(selectedCount * sizeof(wchar_t*));
     if (!videoIds) return NULL;
     
     // Second pass: collect video IDs
@@ -1379,7 +1379,7 @@ wchar_t** GetSelectedVideoIds(HWND hListView, int* count) {
         if (SendMessageW(hListView, LVM_GETITEMW, 0, (LPARAM)&item)) {
             wchar_t* videoId = (wchar_t*)item.lParam;
             if (videoId) {
-                videoIds[currentIndex] = _wcsdup(videoId);
+                videoIds[currentIndex] = SAFE_WCSDUP(videoId);
                 currentIndex++;
             }
         }
@@ -1395,11 +1395,11 @@ void FreeSelectedVideoIds(wchar_t** videoIds, int count) {
     
     for (int i = 0; i < count; i++) {
         if (videoIds[i]) {
-            free(videoIds[i]);
+            SAFE_FREE(videoIds[i]);
         }
     }
     
-    free(videoIds);
+    SAFE_FREE(videoIds);
 }
 
 // Clean up item data when clearing the ListView
@@ -1415,7 +1415,7 @@ void CleanupListViewItemData(HWND hListView) {
         if (SendMessageW(hListView, LVM_GETITEMW, 0, (LPARAM)&item)) {
             wchar_t* videoId = (wchar_t*)item.lParam;
             if (videoId) {
-                free(videoId);
+                SAFE_FREE(videoId);
             }
         }
     }

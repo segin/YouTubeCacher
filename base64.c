@@ -20,7 +20,7 @@ char* Base64Encode(const unsigned char* data, size_t input_length) {
     if (!data || input_length == 0) return NULL;
     
     size_t output_length = 4 * ((input_length + 2) / 3);
-    char* encoded_data = (char*)malloc(output_length + 1);
+    char* encoded_data = (char*)SAFE_MALLOC(output_length + 1);
     if (!encoded_data) return NULL;
     
     for (size_t i = 0, j = 0; i < input_length;) {
@@ -55,7 +55,7 @@ unsigned char* Base64Decode(const char* data, size_t* output_length) {
     if (data[input_length - 1] == '=') (*output_length)--;
     if (data[input_length - 2] == '=') (*output_length)--;
     
-    unsigned char* decoded_data = (unsigned char*)malloc(*output_length);
+    unsigned char* decoded_data = (unsigned char*)SAFE_MALLOC(*output_length);
     if (!decoded_data) return NULL;
     
     for (size_t i = 0, j = 0; i < input_length;) {
@@ -81,32 +81,32 @@ wchar_t* Base64EncodeWide(const wchar_t* input) {
     int utf8_size = WideCharToMultiByte(CP_UTF8, 0, input, -1, NULL, 0, NULL, NULL);
     if (utf8_size <= 0) return NULL;
     
-    char* utf8_data = (char*)malloc(utf8_size);
+    char* utf8_data = (char*)SAFE_MALLOC(utf8_size);
     if (!utf8_data) return NULL;
     
     WideCharToMultiByte(CP_UTF8, 0, input, -1, utf8_data, utf8_size, NULL, NULL);
     
     // Encode to base64
     char* base64_data = Base64Encode((unsigned char*)utf8_data, utf8_size - 1); // -1 to exclude null terminator
-    free(utf8_data);
+    SAFE_FREE(utf8_data);
     
     if (!base64_data) return NULL;
     
     // Convert base64 result to wide string
     int wide_size = MultiByteToWideChar(CP_UTF8, 0, base64_data, -1, NULL, 0);
     if (wide_size <= 0) {
-        free(base64_data);
+        SAFE_FREE(base64_data);
         return NULL;
     }
     
-    wchar_t* wide_result = (wchar_t*)malloc(wide_size * sizeof(wchar_t));
+    wchar_t* wide_result = (wchar_t*)SAFE_MALLOC(wide_size * sizeof(wchar_t));
     if (!wide_result) {
-        free(base64_data);
+        SAFE_FREE(base64_data);
         return NULL;
     }
     
     MultiByteToWideChar(CP_UTF8, 0, base64_data, -1, wide_result, wide_size);
-    free(base64_data);
+    SAFE_FREE(base64_data);
     
     return wide_result;
 }
@@ -118,7 +118,7 @@ wchar_t* Base64DecodeWide(const wchar_t* input) {
     int utf8_size = WideCharToMultiByte(CP_UTF8, 0, input, -1, NULL, 0, NULL, NULL);
     if (utf8_size <= 0) return NULL;
     
-    char* utf8_data = (char*)malloc(utf8_size);
+    char* utf8_data = (char*)SAFE_MALLOC(utf8_size);
     if (!utf8_data) return NULL;
     
     WideCharToMultiByte(CP_UTF8, 0, input, -1, utf8_data, utf8_size, NULL, NULL);
@@ -126,14 +126,14 @@ wchar_t* Base64DecodeWide(const wchar_t* input) {
     // Decode from base64
     size_t decoded_length;
     unsigned char* decoded_data = Base64Decode(utf8_data, &decoded_length);
-    free(utf8_data);
+    SAFE_FREE(utf8_data);
     
     if (!decoded_data) return NULL;
     
     // Add null terminator to decoded data
-    unsigned char* null_terminated = (unsigned char*)realloc(decoded_data, decoded_length + 1);
+    unsigned char* null_terminated = (unsigned char*)SAFE_REALLOC(decoded_data, decoded_length + 1);
     if (!null_terminated) {
-        free(decoded_data);
+        SAFE_FREE(decoded_data);
         return NULL;
     }
     null_terminated[decoded_length] = '\0';
@@ -141,18 +141,18 @@ wchar_t* Base64DecodeWide(const wchar_t* input) {
     // Convert back to wide string
     int wide_size = MultiByteToWideChar(CP_UTF8, 0, (char*)null_terminated, -1, NULL, 0);
     if (wide_size <= 0) {
-        free(null_terminated);
+        SAFE_FREE(null_terminated);
         return NULL;
     }
     
-    wchar_t* wide_result = (wchar_t*)malloc(wide_size * sizeof(wchar_t));
+    wchar_t* wide_result = (wchar_t*)SAFE_MALLOC(wide_size * sizeof(wchar_t));
     if (!wide_result) {
-        free(null_terminated);
+        SAFE_FREE(null_terminated);
         return NULL;
     }
     
     MultiByteToWideChar(CP_UTF8, 0, (char*)null_terminated, -1, wide_result, wide_size);
-    free(null_terminated);
+    SAFE_FREE(null_terminated);
     
     return wide_result;
 }

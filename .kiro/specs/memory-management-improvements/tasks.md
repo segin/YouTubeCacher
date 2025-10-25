@@ -57,8 +57,6 @@
 - [x] 7. Add memory error handling and reporting
 
 
-
-
   - Create MemoryError structure for detailed error information
   - Implement MemoryErrorCallback system for error notification
   - Add SetMemoryErrorCallback function for custom error handling
@@ -66,7 +64,14 @@
   - Implement buffer overrun detection in debug builds
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 8. Migrate existing memory allocations to safe wrappers
+- [-] 8. Migrate existing memory allocations to safe wrappers
+
+
+
+
+
+
+
   - Replace malloc/free calls in main.c with SAFE_MALLOC/SAFE_FREE macros
   - Replace _wcsdup calls with SAFE_WCSDUP macro
   - Update YtDlpRequest creation/destruction to use safe functions

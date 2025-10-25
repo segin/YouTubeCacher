@@ -304,7 +304,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (lpCmdLine && strlen(lpCmdLine) > 0) {
         int len = MultiByteToWideChar(CP_UTF8, 0, lpCmdLine, -1, NULL, 0);
         if (len > 0) {
-            lpCmdLineW = (wchar_t*)malloc(len * sizeof(wchar_t));
+            lpCmdLineW = (wchar_t*)SAFE_MALLOC(len * sizeof(wchar_t));
             if (lpCmdLineW) {
                 MultiByteToWideChar(CP_UTF8, 0, lpCmdLine, -1, lpCmdLineW, len);
             }
@@ -316,7 +316,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     // Clean up
     if (lpCmdLineW) {
-        free(lpCmdLineW);
+        SAFE_FREE(lpCmdLineW);
     }
     
     return result;
