@@ -232,6 +232,69 @@ BOOL TestMemoryPools(void);
 // Test function for error-safe allocation patterns
 BOOL TestErrorSafeAllocationPatterns(void);
 
+// Test function for memory error handling and reporting
+BOOL TestMemoryErrorHandling(void);
+
+// Memory Error Handling and Reporting
+
+// Memory error types for classification
+typedef enum {
+    MEMORY_ERROR_ALLOCATION_FAILED,
+    MEMORY_ERROR_DOUBLE_FREE,
+    MEMORY_ERROR_USE_AFTER_FREE,
+    MEMORY_ERROR_BUFFER_OVERRUN,
+    MEMORY_ERROR_LEAK_DETECTED,
+    MEMORY_ERROR_INVALID_ADDRESS,
+    MEMORY_ERROR_CORRUPTION_DETECTED
+} MemoryErrorType;
+
+// Detailed memory error information structure
+typedef struct {
+    MemoryErrorType type;           // Type of memory error
+    void* address;                  // Address where error occurred
+    size_t size;                    // Size of allocation (if applicable)
+    const char* file;               // Source file where error occurred
+    int line;                       // Line number where error occurred
+    wchar_t* description;           // Human-readable error description
+    DWORD threadId;                 // Thread ID where error occurred
+    SYSTEMTIME errorTime;           // Time when error was detected
+    void* stackTrace[16];           // Stack trace (if available)
+    int stackDepth;                 // Number of valid stack trace entries
+} MemoryError;
+
+// Memory error callback function type
+typedef void (*MemoryErrorCallback)(const MemoryError* error);
+
+// Memory error handling functions
+void SetMemoryErrorCallback(MemoryErrorCallback callback);
+MemoryErrorCallback GetMemoryErrorCallback(void);
+void ReportMemoryError(MemoryErrorType type, void* address, size_t size, 
+                      const char* file, int line, const wchar_t* description);
+void ClearMemoryErrorCallback(void);
+
+// Error detection configuration
+BOOL EnableDoubleFreDetection(BOOL enable);
+BOOL EnableUseAfterFreeDetection(BOOL enable);
+BOOL EnableBufferOverrunDetection(BOOL enable);
+BOOL IsDoubleFreDetectionEnabled(void);
+BOOL IsUseAfterFreeDetectionEnabled(void);
+BOOL IsBufferOverrunDetectionEnabled(void);
+
+// Memory validation functions
+BOOL ValidateMemoryAddress(void* address);
+BOOL ValidateAllocationIntegrity(void* address);
+void CheckForMemoryCorruption(void);
+
+// Debug memory patterns for error detection
+#ifdef MEMORY_DEBUG
+#define FREED_MEMORY_PATTERN    0xDEADBEEF
+#define GUARD_PATTERN          0xCAFEBABE
+#define UNINITIALIZED_PATTERN  0xCCCCCCCC
+#define GUARD_SIZE             16
+#else
+#define GUARD_SIZE             0
+#endif
+
 // Error-Safe Allocation Patterns
 
 // Multi-allocation transaction structure for atomic allocation operations
