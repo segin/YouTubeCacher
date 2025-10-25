@@ -50,8 +50,15 @@ BOOL InitializeApplicationState(ApplicationState* state) {
         OutputDebugStringW(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate cache manager");
     }
     
-    // Initialize metadata pointer to NULL
-    state->cachedVideoMetadata = NULL;
+    // Allocate and initialize cached video metadata
+    state->cachedVideoMetadata = (CachedVideoMetadata*)malloc(sizeof(CachedVideoMetadata));
+    if (state->cachedVideoMetadata) {
+        memset(state->cachedVideoMetadata, 0, sizeof(CachedVideoMetadata));
+        // Note: Debug output deferred until logging system is initialized
+    } else {
+        // Critical error - use direct output since logging may not be ready
+        OutputDebugStringW(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate cached video metadata");
+    }
     
     // Initialize window procedure pointer
     state->originalTextFieldProc = NULL;
@@ -100,8 +107,14 @@ void CleanupApplicationState(ApplicationState* state) {
         state->cacheManager = NULL;
     }
     
-    // Note: Cached video metadata cleanup should be handled
-    // by its respective module when it is implemented
+    // Clean up cached video metadata
+    if (state->cachedVideoMetadata) {
+        // Use direct debug output since logging system may be shutting down
+        OutputDebugStringW(L"YouTubeCacher: CleanupApplicationState - Cleaning up cached video metadata");
+        FreeCachedMetadata(state->cachedVideoMetadata);
+        free(state->cachedVideoMetadata);
+        state->cachedVideoMetadata = NULL;
+    }
     
     // Mark as uninitialized
     state->isInitialized = FALSE;

@@ -618,9 +618,9 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
             wchar_t* diagnostics = (wchar_t*)malloc(2048 * sizeof(wchar_t));
             if (diagnostics) {
                 swprintf(diagnostics, 2048,
-                    L"yt-dlp process exited with code %lu\n\n"
-                    L"Command executed: %ls\n\n"
-                    L"Process output:\n%ls",
+                    L"yt-dlp process exited with code %lu\r\n\r\n"
+                    L"Command executed: %ls\r\n\r\n"
+                    L"Process output:\r\n%ls",
                     exitCode, savedCmdLine ? savedCmdLine : L"Unknown", result->output);
                 result->diagnostics = diagnostics;
             }
@@ -631,12 +631,12 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
             wchar_t* diagnostics = (wchar_t*)malloc(1024 * sizeof(wchar_t));
             if (diagnostics) {
                 swprintf(diagnostics, 1024,
-                    L"yt-dlp process exited with code %lu but produced no output\n\n"
-                    L"Command executed: %ls\n\n"
-                    L"This may indicate:\n"
-                    L"- yt-dlp executable not found or corrupted\n"
-                    L"- Missing dependencies (Python runtime)\n"
-                    L"- Permission issues\n"
+                    L"yt-dlp process exited with code %lu but produced no output\r\n\r\n"
+                    L"Command executed: %ls\r\n\r\n"
+                    L"This may indicate:\r\n"
+                    L"- yt-dlp executable not found or corrupted\r\n"
+                    L"- Missing dependencies (Python runtime)\r\n"
+                    L"- Permission issues\r\n"
                     L"- Invalid command line arguments",
                     exitCode, savedCmdLine ? savedCmdLine : L"Unknown");
                 result->diagnostics = diagnostics;
@@ -695,51 +695,51 @@ DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode,
     switch (errorType) {
         case ERROR_TYPE_MEMORY_ALLOCATION:
             swprintf(detailsBuffer, 1024, L"Memory allocation failed (Error Code: %lu). The system may be low on available memory.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"GetLastError(): %lu\nOperation: %ls\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"GetLastError(): %lu\r\nOperation: %ls\r\nContext: %ls", 
                     errorCode, operation ? operation : L"Unknown", context ? context : L"None");
-            wcscpy(solutionsBuffer, L"• Close other applications to free memory\n• Restart the application\n• Check available system memory");
+            wcscpy(solutionsBuffer, L"• Close other applications to free memory\r\n• Restart the application\r\n• Check available system memory");
             break;
             
         case ERROR_TYPE_THREAD_CREATION:
             swprintf(detailsBuffer, 1024, L"Failed to create worker thread (Error Code: %lu). The system may have reached thread limits.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"CreateThread() failed\nGetLastError(): %lu\nOperation: %ls\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"CreateThread() failed\r\nGetLastError(): %lu\r\nOperation: %ls\r\nContext: %ls", 
                     errorCode, operation ? operation : L"Unknown", context ? context : L"None");
-            wcscpy(solutionsBuffer, L"• Close other applications to reduce thread usage\n• Restart the application\n• Check system resources");
+            wcscpy(solutionsBuffer, L"• Close other applications to reduce thread usage\r\n• Restart the application\r\n• Check system resources");
             break;
             
         case ERROR_TYPE_YTDLP_NOT_FOUND:
             swprintf(detailsBuffer, 1024, L"yt-dlp executable not found or not accessible (Error Code: %lu).", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"File access failed\nGetLastError(): %lu\nOperation: %ls\nExpected path: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"File access failed\r\nGetLastError(): %lu\r\nOperation: %ls\r\nExpected path: %ls", 
                     errorCode, operation ? operation : L"Unknown", context ? context : L"Not specified");
-            wcscpy(solutionsBuffer, L"• Install yt-dlp using File > Install yt-dlp\n• Check yt-dlp path in File > Settings\n• Verify yt-dlp is in system PATH");
+            wcscpy(solutionsBuffer, L"• Install yt-dlp using File > Install yt-dlp\r\n• Check yt-dlp path in File > Settings\r\n• Verify yt-dlp is in system PATH");
             break;
             
         case ERROR_TYPE_YTDLP_EXECUTION:
             swprintf(detailsBuffer, 1024, L"yt-dlp execution failed (Exit Code: %lu). The video may be unavailable or the URL invalid.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Process exit code: %lu\nOperation: %ls\nURL: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Process exit code: %lu\r\nOperation: %ls\r\nURL: %ls", 
                     errorCode, operation ? operation : L"Unknown", context ? context : L"Not provided");
-            wcscpy(solutionsBuffer, L"• Verify the URL is correct and accessible\n• Check internet connection\n• Try a different video URL\n• Update yt-dlp to latest version");
+            wcscpy(solutionsBuffer, L"• Verify the URL is correct and accessible\r\n• Check internet connection\r\n• Try a different video URL\r\n• Update yt-dlp to latest version");
             break;
             
         case ERROR_TYPE_INVALID_PARAMETERS:
             swprintf(detailsBuffer, 1024, L"Invalid parameters provided to operation (Error Code: %lu).", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Parameter validation failed\nError Code: %lu\nOperation: %ls\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Parameter validation failed\r\nError Code: %lu\r\nOperation: %ls\r\nContext: %ls", 
                     errorCode, operation ? operation : L"Unknown", context ? context : L"None");
-            wcscpy(solutionsBuffer, L"• Check that all required fields are filled\n• Verify URL format is correct\n• Contact support if issue persists");
+            wcscpy(solutionsBuffer, L"• Check that all required fields are filled\r\n• Verify URL format is correct\r\n• Contact support if issue persists");
             break;
             
         case ERROR_TYPE_NETWORK:
             swprintf(detailsBuffer, 1024, L"Network connectivity issue (Error Code: %lu). Unable to reach the video source.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Network error\nError Code: %lu\nOperation: %ls\nURL: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Network error\r\nError Code: %lu\r\nOperation: %ls\r\nURL: %ls", 
                     errorCode, operation ? operation : L"Unknown", context ? context : L"Not provided");
-            wcscpy(solutionsBuffer, L"• Check internet connection\n• Verify firewall settings\n• Try again later\n• Check if the website is accessible");
+            wcscpy(solutionsBuffer, L"• Check internet connection\r\n• Verify firewall settings\r\n• Try again later\r\n• Check if the website is accessible");
             break;
             
         default:
             swprintf(detailsBuffer, 1024, L"An unexpected error occurred (Error Code: %lu).", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Unknown error type: %d\nError Code: %lu\nOperation: %ls\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Unknown error type: %d\r\nError Code: %lu\r\nOperation: %ls\r\nContext: %ls", 
                     errorType, errorCode, operation ? operation : L"Unknown", context ? context : L"None");
-            wcscpy(solutionsBuffer, L"• Try the operation again\n• Restart the application\n• Check the application logs\n• Contact support with error details");
+            wcscpy(solutionsBuffer, L"• Try the operation again\r\n• Restart the application\r\n• Check the application logs\r\n• Contact support with error details");
             break;
     }
     
