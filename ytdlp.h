@@ -64,6 +64,9 @@ void FreeYtDlpRequest(YtDlpRequest* request);
 YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* request);
 void FreeYtDlpResult(YtDlpResult* result);
 
+// Error message processing
+wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output);
+
 // Enhanced error handling
 DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode, 
                                           const wchar_t* operation, const wchar_t* context);

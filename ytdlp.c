@@ -420,6 +420,99 @@ void DestroyProgressDialog(ProgressDialog* dialog) {
     free(dialog);
 }
 
+// Extract a simple, user-friendly error message from yt-dlp output
+wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
+    if (!output || wcslen(output) == 0) {
+        return NULL;
+    }
+    
+    // Split output into lines and find the last meaningful error line
+    wchar_t* outputCopy = _wcsdup(output);
+    if (!outputCopy) return NULL;
+    
+    wchar_t* lastErrorLine = NULL;
+    wchar_t* context = NULL;
+    wchar_t* line = wcstok(outputCopy, L"\r\n", &context);
+    
+    while (line) {
+        // Trim leading/trailing whitespace
+        while (*line == L' ' || *line == L'\t') line++;
+        
+        size_t len = wcslen(line);
+        while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'\t')) {
+            line[--len] = L'\0';
+        }
+        
+        // Look for lines that start with "ERROR:" or contain common error patterns
+        if (len > 0) {
+            if (wcsncmp(line, L"ERROR:", 6) == 0) {
+                // Found an ERROR line - this is likely the main error
+                if (lastErrorLine) free(lastErrorLine);
+                lastErrorLine = _wcsdup(line);
+            } else if (wcsstr(line, L"HTTP Error") || 
+                      wcsstr(line, L"Forbidden") ||
+                      wcsstr(line, L"Not Found") ||
+                      wcsstr(line, L"Unavailable") ||
+                      wcsstr(line, L"Private video") ||
+                      wcsstr(line, L"Video unavailable") ||
+                      wcsstr(line, L"This video is not available") ||
+                      wcsstr(line, L"Sign in to confirm") ||
+                      wcsstr(line, L"Unable to download") ||
+                      wcsstr(line, L"No video formats found")) {
+                // Found a line with common error patterns
+                if (!lastErrorLine) { // Only use if we haven't found an ERROR: line yet
+                    lastErrorLine = _wcsdup(line);
+                }
+            }
+        }
+        
+        line = wcstok(NULL, L"\r\n", &context);
+    }
+    
+    free(outputCopy);
+    
+    // If we found an error line, clean it up and return it
+    if (lastErrorLine) {
+        // Remove "ERROR: " prefix if present
+        wchar_t* cleanError = lastErrorLine;
+        if (wcsncmp(cleanError, L"ERROR: ", 7) == 0) {
+            cleanError += 7;
+        }
+        
+        // Create a clean copy without the prefix
+        wchar_t* result = _wcsdup(cleanError);
+        free(lastErrorLine);
+        return result;
+    }
+    
+    // Fallback: return the last non-empty line if no specific error found
+    outputCopy = _wcsdup(output);
+    if (!outputCopy) return NULL;
+    
+    wchar_t* lastLine = NULL;
+    context = NULL;
+    line = wcstok(outputCopy, L"\r\n", &context);
+    
+    while (line) {
+        // Trim and check if line has meaningful content
+        while (*line == L' ' || *line == L'\t') line++;
+        size_t len = wcslen(line);
+        while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'\t')) {
+            line[--len] = L'\0';
+        }
+        
+        if (len > 0 && wcscmp(line, L"") != 0) {
+            if (lastLine) free(lastLine);
+            lastLine = _wcsdup(line);
+        }
+        
+        line = wcstok(NULL, L"\r\n", &context);
+    }
+    
+    free(outputCopy);
+    return lastLine;
+}
+
 YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* request) {
     if (!config || !request) return NULL;
     
@@ -611,8 +704,9 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     // For failed processes, extract meaningful error information from output
     if (!result->success) {
         if (result->output && wcslen(result->output) > 0) {
-            // Use the actual yt-dlp output as the error message
-            result->errorMessage = _wcsdup(result->output);
+            // Extract a simple, user-friendly error message from yt-dlp output
+            wchar_t* simpleError = ExtractSimpleErrorFromYtDlpOutput(result->output);
+            result->errorMessage = simpleError ? simpleError : _wcsdup(L"yt-dlp process failed");
             
             // Generate diagnostic information based on the output
             wchar_t* diagnostics = (wchar_t*)malloc(2048 * sizeof(wchar_t));
