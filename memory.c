@@ -50,8 +50,10 @@ static void CleanupErrorSystem(void);
 static void AddFreedMemoryRecord(void* address, size_t size, const char* file, int line);
 static BOOL IsFreedMemory(void* address);
 static void CleanupFreedMemoryList(void);
+#ifdef MEMORY_DEBUG
 static void FillMemoryPattern(void* ptr, size_t size, DWORD pattern);
 static BOOL CheckMemoryPattern(void* ptr, size_t size, DWORD pattern);
+#endif
 static void CaptureStackTrace(void** stackTrace, int* stackDepth);
 
 // Initial allocation table size
@@ -1696,6 +1698,7 @@ static void CleanupFreedMemoryList(void)
     g_freedMemoryCount = 0;
 }
 
+#ifdef MEMORY_DEBUG
 static void FillMemoryPattern(void* ptr, size_t size, DWORD pattern)
 {
     if (!ptr || size == 0) {
@@ -1753,6 +1756,7 @@ static BOOL CheckMemoryPattern(void* ptr, size_t size, DWORD pattern)
     
     return TRUE;
 }
+#endif // MEMORY_DEBUG
 
 static void CaptureStackTrace(void** stackTrace, int* stackDepth)
 {
