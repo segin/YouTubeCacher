@@ -105,4 +105,76 @@ void FreeStringBuilder(StringBuilder* sb);
 // StringBuilder convenience macro
 #define CREATE_STRING_BUILDER(capacity) CreateStringBuilder(capacity, __FILE__, __LINE__)
 
+// RAII Resource Management Structures and Functions
+
+// Generic RAII resource wrapper
+typedef struct {
+    void* resource;
+    void (*cleanup)(void* resource);
+    const char* file;
+    int line;
+} AutoResource;
+
+// RAII cleanup function for AutoResource
+void AutoResourceCleanup(AutoResource* autoRes);
+
+// RAII macros for automatic cleanup using GCC cleanup attribute
+#define AUTO_RESOURCE(cleanup_func) \
+    __attribute__((cleanup(AutoResourceCleanup))) AutoResource
+
+#define INIT_AUTO_RESOURCE(resource, cleanup_func) \
+    { resource, cleanup_func, __FILE__, __LINE__ }
+
+// Specific RAII wrappers for common types
+typedef struct {
+    wchar_t* str;
+    const char* file;
+    int line;
+} AutoString;
+
+typedef struct {
+    void** array;
+    size_t count;
+    void (*elementCleanup)(void*);
+    const char* file;
+    int line;
+} AutoArray;
+
+// RAII cleanup functions for specific types
+void AutoStringCleanup(AutoString* autoStr);
+void AutoArrayCleanup(AutoArray* autoArray);
+
+// RAII macros for automatic cleanup
+#define AUTO_STRING __attribute__((cleanup(AutoStringCleanup))) AutoString
+#define AUTO_ARRAY __attribute__((cleanup(AutoArrayCleanup))) AutoArray
+
+// Factory functions for RAII-wrapped existing structures
+typedef struct {
+    void* request;
+    AutoResource autoRes;
+} AutoYtDlpRequest;
+
+typedef struct {
+    void* entry;
+    AutoResource autoRes;
+} AutoCacheEntry;
+
+// Factory function declarations
+AutoYtDlpRequest* CreateAutoYtDlpRequest(void* request);
+AutoCacheEntry* CreateAutoCacheEntry(void* entry);
+
+// Generic cleanup wrapper for SafeFree
+void GenericSafeFreeCleanup(void* ptr);
+
+// Cleanup functions for wrapped structures
+void CleanupYtDlpRequest(void* request);
+void CleanupCacheEntry(void* entry);
+
+// Helper macros for initializing RAII structures
+#define INIT_AUTO_STRING(str_ptr) \
+    { str_ptr, __FILE__, __LINE__ }
+
+#define INIT_AUTO_ARRAY(array_ptr, count_val, cleanup_func) \
+    { array_ptr, count_val, cleanup_func, __FILE__, __LINE__ }
+
 #endif // MEMORY_H

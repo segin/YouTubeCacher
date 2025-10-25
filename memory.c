@@ -268,7 +268,7 @@ void DumpMemoryLeaks(void)
             AllocationInfo* alloc = &g_memoryManager.allocations[i];
             printf("Leak #%zu: %zu bytes at %p\n", i + 1, alloc->size, alloc->address);
             printf("  Allocated at: %s:%d\n", alloc->file ? alloc->file : "unknown", alloc->line);
-            printf("  Thread ID: %lu\n", alloc->threadId);
+            printf("  Thread ID: %u\n", (unsigned int)alloc->threadId);
             printf("  Time: %02d:%02d:%02d.%03d\n", 
                    alloc->allocTime.wHour, alloc->allocTime.wMinute, 
                    alloc->allocTime.wSecond, alloc->allocTime.wMilliseconds);
@@ -667,45 +667,28 @@ BOOL AppendFormatToStringBuilder(StringBuilder* sb, const wchar_t* format, ...)
     va_list args;
     va_start(args, format);
 
-    // First, determine how much space we need
-    int requiredLen = _vscwprintf(format, args);
-    if (requiredLen < 0) {
+    // Use a reasonable initial buffer size for formatting
+    size_t formatBufferSize = 1024;
+    wchar_t* formatBuffer = (wchar_t*)SafeMalloc(formatBufferSize * sizeof(wchar_t), sb->file, sb->line);
+    if (!formatBuffer) {
         va_end(args);
         return FALSE;
     }
 
-    size_t newLength = sb->length + (size_t)requiredLen;
-
-    // Expand buffer if necessary
-    if (newLength >= sb->capacity) {
-        size_t newCapacity = sb->capacity;
-        while (newCapacity <= newLength) {
-            newCapacity *= 2;
-        }
-
-        wchar_t* newBuffer = (wchar_t*)SafeRealloc(sb->buffer, 
-            newCapacity * sizeof(wchar_t), sb->file, sb->line);
-        if (!newBuffer) {
-            va_end(args);
-            return FALSE;
-        }
-
-        sb->buffer = newBuffer;
-        sb->capacity = newCapacity;
-    }
-
-    // Format and append the string
-    int written = vswprintf(sb->buffer + sb->length, 
-        sb->capacity - sb->length, format, args);
-    
+    // Try to format the string
+    int written = vswprintf(formatBuffer, formatBufferSize, format, args);
     va_end(args);
 
     if (written < 0) {
+        SafeFree(formatBuffer, sb->file, sb->line);
         return FALSE;
     }
 
-    sb->length = newLength;
-    return TRUE;
+    // Append the formatted string to the StringBuilder
+    BOOL result = AppendToStringBuilder(sb, formatBuffer);
+    
+    SafeFree(formatBuffer, sb->file, sb->line);
+    return result;
 }
 
 wchar_t* FinalizeStringBuilder(StringBuilder* sb)
@@ -733,4 +716,127 @@ void FreeStringBuilder(StringBuilder* sb)
     }
 
     SafeFree(sb, sb->file, sb->line);
+}
+
+// RAII Resource Management Implementation
+
+void AutoResourceCleanup(AutoResource* autoRes)
+{
+    if (!autoRes) {
+        return;
+    }
+
+    if (autoRes->resource && autoRes->cleanup) {
+        autoRes->cleanup(autoRes->resource);
+        autoRes->resource = NULL;
+    }
+}
+
+void AutoStringCleanup(AutoString* autoStr)
+{
+    if (!autoStr) {
+        return;
+    }
+
+    if (autoStr->str) {
+        SafeFree(autoStr->str, autoStr->file, autoStr->line);
+        autoStr->str = NULL;
+    }
+}
+
+void AutoArrayCleanup(AutoArray* autoArray)
+{
+    if (!autoArray) {
+        return;
+    }
+
+    if (autoArray->array) {
+        // Clean up individual elements if cleanup function is provided
+        if (autoArray->elementCleanup) {
+            for (size_t i = 0; i < autoArray->count; i++) {
+                if (autoArray->array[i]) {
+                    autoArray->elementCleanup(autoArray->array[i]);
+                }
+            }
+        }
+
+        // Free the array itself
+        SafeFree(autoArray->array, autoArray->file, autoArray->line);
+        autoArray->array = NULL;
+        autoArray->count = 0;
+    }
+}
+
+// Generic cleanup wrapper for SafeFree
+void GenericSafeFreeCleanup(void* ptr)
+{
+    if (ptr) {
+        SafeFree(ptr, __FILE__, __LINE__);
+    }
+}
+
+// Cleanup functions for wrapped structures
+void CleanupYtDlpRequest(void* request)
+{
+    if (!request) {
+        return;
+    }
+
+    // Note: This is a placeholder implementation
+    // The actual cleanup would depend on the YtDlpRequest structure
+    // For now, we just free the memory assuming it's a simple allocation
+    SafeFree(request, __FILE__, __LINE__);
+}
+
+void CleanupCacheEntry(void* entry)
+{
+    if (!entry) {
+        return;
+    }
+
+    // Note: This is a placeholder implementation
+    // The actual cleanup would depend on the CacheEntry structure
+    // For now, we just free the memory assuming it's a simple allocation
+    SafeFree(entry, __FILE__, __LINE__);
+}
+
+// Factory functions for RAII-wrapped existing structures
+AutoYtDlpRequest* CreateAutoYtDlpRequest(void* request)
+{
+    if (!request) {
+        return NULL;
+    }
+
+    AutoYtDlpRequest* autoRequest = (AutoYtDlpRequest*)SAFE_MALLOC(sizeof(AutoYtDlpRequest));
+    if (!autoRequest) {
+        return NULL;
+    }
+
+    autoRequest->request = request;
+    autoRequest->autoRes.resource = request;
+    autoRequest->autoRes.cleanup = CleanupYtDlpRequest;
+    autoRequest->autoRes.file = __FILE__;
+    autoRequest->autoRes.line = __LINE__;
+
+    return autoRequest;
+}
+
+AutoCacheEntry* CreateAutoCacheEntry(void* entry)
+{
+    if (!entry) {
+        return NULL;
+    }
+
+    AutoCacheEntry* autoEntry = (AutoCacheEntry*)SAFE_MALLOC(sizeof(AutoCacheEntry));
+    if (!autoEntry) {
+        return NULL;
+    }
+
+    autoEntry->entry = entry;
+    autoEntry->autoRes.resource = entry;
+    autoEntry->autoRes.cleanup = CleanupCacheEntry;
+    autoEntry->autoRes.file = __FILE__;
+    autoEntry->autoRes.line = __LINE__;
+
+    return autoEntry;
 }
