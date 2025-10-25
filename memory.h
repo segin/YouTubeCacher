@@ -14,12 +14,27 @@ typedef struct {
     SYSTEMTIME allocTime;
 } AllocationInfo;
 
+// Hash table entry for fast allocation lookup
+typedef struct HashEntry {
+    AllocationInfo* allocation;
+    struct HashEntry* next;
+} HashEntry;
+
+// Hash table for allocation lookup
+typedef struct {
+    HashEntry** buckets;
+    size_t bucketCount;
+} AllocationHashTable;
+
 // Memory manager global state
 typedef struct {
     // Allocation tracking
     AllocationInfo* allocations;
     size_t allocationCount;
     size_t allocationCapacity;
+    
+    // Hash table for fast lookup
+    AllocationHashTable hashTable;
     
     // Statistics
     size_t totalAllocated;
@@ -58,8 +73,6 @@ void DumpMemoryLeaks(void);
 size_t GetCurrentMemoryUsage(void);
 int GetActiveAllocationCount(void);
 
-// Internal helper functions
-static BOOL AddAllocationRecord(void* address, size_t size, const char* file, int line);
-static void ExpandAllocationTable(void);
+
 
 #endif // MEMORY_H
