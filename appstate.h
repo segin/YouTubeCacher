@@ -13,6 +13,7 @@ typedef struct {
     BOOL isDownloading;
     BOOL programmaticChange;
     BOOL manualPaste;
+    BOOL downloadAfterInfo;
     
     // Configuration state
     BOOL enableDebug;
@@ -48,6 +49,8 @@ BOOL SetDownloadingState(BOOL isDownloading);
 BOOL GetDownloadingState(void);
 void SetProgrammaticChangeFlag(BOOL flag);
 BOOL GetProgrammaticChangeFlag(void);
+BOOL SetDownloadAfterInfoFlag(BOOL flag);
+BOOL GetDownloadAfterInfoFlag(void);
 void SetManualPasteFlag(BOOL flag);
 BOOL GetManualPasteFlag(void);
 

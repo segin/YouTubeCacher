@@ -89,6 +89,16 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
     // Classify the line type
     OutputLineType lineType = ClassifyOutputLine(line);
     
+    // Log line classification for debugging
+    const wchar_t* lineTypeNames[] = {
+        L"UNKNOWN", L"INFO_EXTRACTION", L"FORMAT_SELECTION", L"DOWNLOAD_PROGRESS",
+        L"POST_PROCESSING", L"FILE_DESTINATION", L"ERROR", L"WARNING", L"DEBUG", L"COMPLETION"
+    };
+    wchar_t debugMsg2[1024];
+    swprintf(debugMsg2, 1024, L"YouTubeCacher: ProcessYtDlpOutputLine - Line type: %ls for: %.100ls...", 
+            lineTypeNames[lineType], line);
+    DebugOutput(debugMsg2);
+    
     switch (lineType) {
         case LINE_TYPE_INFO_EXTRACTION:
             return ParseInfoExtractionLine(line, progress);
@@ -439,7 +449,10 @@ BOOL ParseInfoExtractionLine(const wchar_t* line, EnhancedProgressInfo* progress
     UpdateDownloadState(progress, DOWNLOAD_STATE_EXTRACTING_INFO, L"Extracting video information");
     
     // Check if this is a JSON metadata line (starts with '{' and contains video metadata)
-    if (line[0] == L'{' && wcsstr(line, L"\"title\"") && wcsstr(line, L"\"duration\"")) {
+    if (line[0] == L'{' && wcsstr(line, L"\"title\"")) {
+        wchar_t debugMsg[512];
+        swprintf(debugMsg, 512, L"YouTubeCacher: ParseInfoExtractionLine - Found JSON line with title: %.100ls...", line);
+        DebugOutput(debugMsg);
         return ParseJsonMetadataLine(line, progress);
     }
     

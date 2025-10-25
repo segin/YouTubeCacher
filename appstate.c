@@ -26,6 +26,7 @@ BOOL InitializeApplicationState(ApplicationState* state) {
     state->isDownloading = FALSE;
     state->programmaticChange = FALSE;
     state->manualPaste = FALSE;
+    state->downloadAfterInfo = FALSE;
     
     // Initialize configuration state with defaults
     state->enableDebug = FALSE;
@@ -419,4 +420,28 @@ void NotifyStateChange(const char* stateType, void* newValue) {
         }
         current = current->next;
     }
+}
+
+// Thread-safe download-after-info flag functions
+BOOL SetDownloadAfterInfoFlag(BOOL flag) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return FALSE;
+    
+    EnterCriticalSection(&state->stateLock);
+    state->downloadAfterInfo = flag;
+    LeaveCriticalSection(&state->stateLock);
+    
+    NotifyStateChange("downloadAfterInfo", &flag);
+    return TRUE;
+}
+
+BOOL GetDownloadAfterInfoFlag(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return FALSE;
+    
+    EnterCriticalSection(&state->stateLock);
+    BOOL result = state->downloadAfterInfo;
+    LeaveCriticalSection(&state->stateLock);
+    
+    return result;
 }
