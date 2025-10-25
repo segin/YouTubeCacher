@@ -1227,20 +1227,31 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     if (wcslen(url) == 0) {
                         // Use flexible dialog system with contextual content
                         UnifiedDialogConfig config = {0};
-                        config.dialogType = UNIFIED_DIALOG_WARNING;
-                        config.title = L"No URL Provided";
-                        config.message = L"Please enter a YouTube URL to download.";
-                        config.details = L"The URL field is blank. A valid YouTube URL is required to download videos.";
-                        config.tab1_name = L"Details";
-                        config.tab2_content = L"To download a video:\r\n\r\n"
-                                            L"1. Copy a YouTube URL from your web browser\r\n"
-                                            L"2. Paste it into the URL field above\r\n"
-                                            L"3. Click the Download button\r\n\r\n"
+                        config.dialogType = UNIFIED_DIALOG_INFO;
+                        config.title = L"Enter YouTube URL";
+                        config.message = L"Please enter a YouTube URL in the field above to start downloading.";
+                        config.details = L"YouTubeCacher downloads videos from YouTube and saves them to your computer. "
+                                        L"A valid YouTube URL is required to begin the download process.";
+                        config.tab1_name = L"About Download";
+                        config.tab2_content = L"How to download a video:\r\n\r\n"
+                                            L"1. Copy a YouTube URL from your browser\r\n"
+                                            L"   Example: https://www.youtube.com/watch?v=dQw4w9WgXcQ\r\n\r\n"
+                                            L"2. Paste it into the URL field at the top\r\n\r\n"
+                                            L"3. Click 'Download' to start the process\r\n\r\n"
                                             L"Supported URL formats:\r\n"
-                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
-                                            L"• https://youtu.be/VIDEO_ID\r\n"
+                                            L"• youtube.com/watch?v=VIDEO_ID\r\n"
+                                            L"• youtu.be/VIDEO_ID\r\n"
+                                            L"• youtube.com/shorts/VIDEO_ID\r\n"
                                             L"• YouTube playlist URLs";
-                        config.tab2_name = L"How to Fix";
+                        config.tab2_name = L"Instructions";
+                        config.tab3_content = L"Download Features:\r\n\r\n"
+                                            L"• Automatic video quality selection\r\n"
+                                            L"• Progress tracking with real-time updates\r\n"
+                                            L"• Subtitle download when available\r\n"
+                                            L"• Automatic file organization\r\n"
+                                            L"• Cache management for easy access\r\n\r\n"
+                                            L"Downloaded videos are saved to your configured download folder and added to the cache list for easy playback.";
+                        config.tab3_name = L"Features";
                         config.showDetailsButton = TRUE;
                         config.showCopyButton = FALSE;
                         
@@ -1338,17 +1349,29 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     if (wcslen(url) == 0) {
                         // Use flexible dialog system with contextual content
                         UnifiedDialogConfig config = {0};
-                        config.dialogType = UNIFIED_DIALOG_WARNING;
-                        config.title = L"No URL Provided";
-                        config.message = L"Please enter a YouTube URL to get video information.";
-                        config.details = L"The URL field is blank. A valid YouTube URL is required to retrieve video information.";
-                        config.tab1_name = L"Details";
-                        config.tab2_content = L"To get video information:\r\n\r\n"
-                                            L"1. Copy a YouTube URL from your web browser\r\n"
-                                            L"2. Paste it into the URL field above\r\n"
-                                            L"3. Click the Get Info button\r\n\r\n"
-                                            L"This will display the video title, duration, and other details without downloading the video.";
-                        config.tab2_name = L"How to Fix";
+                        config.dialogType = UNIFIED_DIALOG_INFO;
+                        config.title = L"Enter YouTube URL";
+                        config.message = L"Please enter a YouTube URL in the field above to get video information.";
+                        config.details = L"The Get Info feature retrieves video metadata (title, duration, etc.) without downloading the video. "
+                                        L"This is useful for previewing content before deciding to download.";
+                        config.tab1_name = L"About Get Info";
+                        config.tab2_content = L"How to use Get Info:\r\n\r\n"
+                                            L"1. Copy a YouTube URL from your browser\r\n"
+                                            L"   Example: https://www.youtube.com/watch?v=dQw4w9WgXcQ\r\n\r\n"
+                                            L"2. Paste it into the URL field at the top\r\n\r\n"
+                                            L"3. Click 'Get Info' to retrieve video details\r\n\r\n"
+                                            L"Supported URL formats:\r\n"
+                                            L"• youtube.com/watch?v=VIDEO_ID\r\n"
+                                            L"• youtu.be/VIDEO_ID\r\n"
+                                            L"• youtube.com/shorts/VIDEO_ID";
+                        config.tab2_name = L"Instructions";
+                        config.tab3_content = L"Get Info Benefits:\r\n\r\n"
+                                            L"• Preview video title and duration\r\n"
+                                            L"• Verify the URL is valid before downloading\r\n"
+                                            L"• Check if video is available in your region\r\n"
+                                            L"• Fast operation - no video data is downloaded\r\n\r\n"
+                                            L"This helps you make informed decisions about which videos to download.";
+                        config.tab3_name = L"Benefits";
                         config.showDetailsButton = TRUE;
                         config.showCopyButton = FALSE;
                         

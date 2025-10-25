@@ -514,21 +514,35 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
 }
 
 YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* request) {
-    if (!config || !request) return NULL;
+    if (!config || !request) {
+        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - NULL config or request parameter");
+        return NULL;
+    }
+    
+    wchar_t logBuffer[512];
+    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Starting execution for operation %d", request->operation);
+    DebugOutput(logBuffer);
     
     YtDlpResult* result = (YtDlpResult*)malloc(sizeof(YtDlpResult));
-    if (!result) return NULL;
+    if (!result) {
+        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Failed to allocate result structure");
+        return NULL;
+    }
     
     memset(result, 0, sizeof(YtDlpResult));
     
     // Build command line arguments
     wchar_t arguments[2048];
     if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, config, arguments, 2048)) {
+        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Failed to build yt-dlp arguments");
         result->success = FALSE;
         result->exitCode = 1;
         result->errorMessage = _wcsdup(L"Failed to build yt-dlp arguments");
         return result;
     }
+    
+    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %.200ls", arguments);
+    DebugOutput(logBuffer);
     
     // Execute yt-dlp using existing process creation logic
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
@@ -566,18 +580,27 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", config->ytDlpPath, arguments);
     
+    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %.200ls", cmdLine);
+    DebugOutput(logBuffer);
+    
     // Create process
     BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
     
     if (!processCreated) {
+        DWORD error = GetLastError();
+        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - FAILED to create process, error: %lu", error);
+        DebugOutput(logBuffer);
+        
         free(cmdLine);
         CloseHandle(hRead);
         CloseHandle(hWrite);
         result->success = FALSE;
-        result->exitCode = GetLastError();
+        result->exitCode = error;
         result->errorMessage = _wcsdup(L"Failed to start yt-dlp process");
         return result;
     }
+    
+    DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Process created successfully, reading output...");
     
     CloseHandle(hWrite);
     
@@ -701,12 +724,35 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     result->exitCode = exitCode;
     result->output = outputBuffer;
     
+    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Process completed with exit code: %lu, success: %s", 
+            exitCode, result->success ? L"TRUE" : L"FALSE");
+    DebugOutput(logBuffer);
+    
+    if (result->output && wcslen(result->output) > 0) {
+        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Output length: %zu characters", wcslen(result->output));
+        DebugOutput(logBuffer);
+    } else {
+        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output captured from process");
+    }
+    
     // For failed processes, extract meaningful error information from output
     if (!result->success) {
+        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Processing failure, extracting error information...");
         if (result->output && wcslen(result->output) > 0) {
+            DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Extracting error from yt-dlp output");
+            
+            // Log the first part of the output for debugging
+            swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output (first 200 chars): %.200ls", result->output);
+            DebugOutput(logBuffer);
+            
             // Extract a simple, user-friendly error message from yt-dlp output
             wchar_t* simpleError = ExtractSimpleErrorFromYtDlpOutput(result->output);
             result->errorMessage = simpleError ? simpleError : _wcsdup(L"yt-dlp process failed");
+            
+            if (result->errorMessage) {
+                swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Extracted error message: %ls", result->errorMessage);
+                DebugOutput(logBuffer);
+            }
             
             // Generate diagnostic information based on the output
             wchar_t* diagnostics = (wchar_t*)malloc(2048 * sizeof(wchar_t));
@@ -719,6 +765,8 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
                 result->diagnostics = diagnostics;
             }
         } else {
+            DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output from failed process, using fallback error");
+            
             // Fallback for cases with no output
             result->errorMessage = _wcsdup(L"yt-dlp process failed with no output");
             
@@ -740,6 +788,10 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     
     // Cleanup saved command line
     if (savedCmdLine) free(savedCmdLine);
+    
+    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Returning result: success=%s, exitCode=%lu", 
+            result->success ? L"TRUE" : L"FALSE", result->exitCode);
+    DebugOutput(logBuffer);
     
     return result;
 }
@@ -2604,15 +2656,56 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
 // Unified download worker thread - simplified version that delegates to subprocess worker
 DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread started\n");
+    DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting download execution");
     
     UnifiedDownloadContext* context = (UnifiedDownloadContext*)lpParam;
     if (!context) {
         OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Invalid context\n");
+        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - FAILED: Invalid context");
         return 1;
     }
     
+    wchar_t logBuffer[512];
+    swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Executing download for URL: %ls", 
+            context->request->url ? context->request->url : L"NULL");
+    DebugOutput(logBuffer);
+    
     // Execute the download using the synchronous method
     YtDlpResult* result = ExecuteYtDlpRequest(&context->config, context->request);
+    
+    // Log the result details
+    if (result) {
+        if (result->success) {
+            swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Download completed successfully");
+            DebugOutput(logBuffer);
+        } else {
+            swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Download FAILED with exit code: %lu", 
+                    result->exitCode);
+            DebugOutput(logBuffer);
+            
+            if (result->errorMessage) {
+                swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Error message: %ls", 
+                        result->errorMessage);
+                DebugOutput(logBuffer);
+            }
+            
+            if (result->output && wcslen(result->output) > 0) {
+                swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - yt-dlp output (first 200 chars): %.200ls", 
+                        result->output);
+                DebugOutput(logBuffer);
+            } else {
+                DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - No yt-dlp output captured");
+            }
+            
+            if (result->diagnostics) {
+                swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Diagnostics: %.200ls", 
+                        result->diagnostics);
+                DebugOutput(logBuffer);
+            }
+        }
+    } else {
+        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - CRITICAL: ExecuteYtDlpRequest returned NULL result");
+    }
     
     // Create completion context
     OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Creating download completion context\n");
