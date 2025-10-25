@@ -1,7 +1,7 @@
 # Makefile for native Windows C program
 
 # Source files
-SOURCES = main.c uri.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c ui.c dialogs.c
+SOURCES = main.c uri.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c ui.c dialogs.c memory.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object directories
@@ -20,6 +20,9 @@ TARGET64 = YouTubeCacher-x64.exe
 
 # Common compiler flags
 COMMON_CFLAGS = -Wall -Wextra -Werror -std=c99 -DUNICODE -D_UNICODE -static-libgcc
+
+# Debug flags for memory tracking
+DEBUG_CFLAGS = -g -DMEMORY_DEBUG -DLEAK_DETECTION
 COMMON_LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -static
 
 # MinGW32 settings
@@ -35,7 +38,7 @@ CFLAGS64 = $(COMMON_CFLAGS)
 LDFLAGS64 = $(COMMON_LDFLAGS)
 
 # Release flags
-RELEASE_CFLAGS = -Os -DNDEBUG -s
+RELEASE_CFLAGS = -Os -DNDEBUG -DMEMORY_RELEASE -s
 RELEASE_LDFLAGS = -s
 
 # Default target (32-bit debug)
@@ -46,7 +49,7 @@ debug32: export MSYSTEM := MINGW32
 debug32: export PATH := /mingw32/bin:$(PATH)
 debug32: CC = $(CC32)
 debug32: RC = $(RC32)
-debug32: CFLAGS = $(CFLAGS32)
+debug32: CFLAGS = $(CFLAGS32) $(DEBUG_CFLAGS)
 debug32: LDFLAGS = $(LDFLAGS32)
 debug32: $(OBJ32_DIR) $(TARGET32)
 
@@ -54,7 +57,7 @@ debug64: export MSYSTEM := MINGW64
 debug64: export PATH := /mingw64/bin:$(PATH)
 debug64: CC = $(CC64)
 debug64: RC = $(RC64)
-debug64: CFLAGS = $(CFLAGS64)
+debug64: CFLAGS = $(CFLAGS64) $(DEBUG_CFLAGS)
 debug64: LDFLAGS = $(LDFLAGS64)
 debug64: $(OBJ64_DIR) $(TARGET64)
 
@@ -133,18 +136,19 @@ run64: debug64
 
 # Dependency tracking for incremental compilation
 # Each source file depends on its corresponding header and YouTubeCacher.h
-$(OBJ32_DIR)/main.o $(OBJ64_DIR)/main.o: main.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h uri.h parser.h log.h cache.h base64.h resource.h
-$(OBJ32_DIR)/appstate.o $(OBJ64_DIR)/appstate.o: appstate.c appstate.h cache.h
-$(OBJ32_DIR)/settings.o $(OBJ64_DIR)/settings.o: settings.c settings.h appstate.h
-$(OBJ32_DIR)/threading.o $(OBJ64_DIR)/threading.o: threading.c threading.h appstate.h
-$(OBJ32_DIR)/ytdlp.o $(OBJ64_DIR)/ytdlp.o: ytdlp.c ytdlp.h appstate.h settings.h threading.h
-$(OBJ32_DIR)/ui.o $(OBJ64_DIR)/ui.o: ui.c ui.h appstate.h settings.h threading.h resource.h
-$(OBJ32_DIR)/dialogs.o $(OBJ64_DIR)/dialogs.o: dialogs.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h resource.h
-$(OBJ32_DIR)/uri.o $(OBJ64_DIR)/uri.o: uri.c uri.h
-$(OBJ32_DIR)/cache.o $(OBJ64_DIR)/cache.o: cache.c cache.h
-$(OBJ32_DIR)/base64.o $(OBJ64_DIR)/base64.o: base64.c base64.h
-$(OBJ32_DIR)/parser.o $(OBJ64_DIR)/parser.o: parser.c parser.h
-$(OBJ32_DIR)/log.o $(OBJ64_DIR)/log.o: log.c log.h
+$(OBJ32_DIR)/main.o $(OBJ64_DIR)/main.o: main.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h uri.h parser.h log.h cache.h base64.h memory.h resource.h
+$(OBJ32_DIR)/appstate.o $(OBJ64_DIR)/appstate.o: appstate.c appstate.h cache.h memory.h
+$(OBJ32_DIR)/settings.o $(OBJ64_DIR)/settings.o: settings.c settings.h appstate.h memory.h
+$(OBJ32_DIR)/threading.o $(OBJ64_DIR)/threading.o: threading.c threading.h appstate.h memory.h
+$(OBJ32_DIR)/ytdlp.o $(OBJ64_DIR)/ytdlp.o: ytdlp.c ytdlp.h appstate.h settings.h threading.h memory.h
+$(OBJ32_DIR)/ui.o $(OBJ64_DIR)/ui.o: ui.c ui.h appstate.h settings.h threading.h memory.h resource.h
+$(OBJ32_DIR)/dialogs.o $(OBJ64_DIR)/dialogs.o: dialogs.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h memory.h resource.h
+$(OBJ32_DIR)/uri.o $(OBJ64_DIR)/uri.o: uri.c uri.h memory.h
+$(OBJ32_DIR)/cache.o $(OBJ64_DIR)/cache.o: cache.c cache.h memory.h
+$(OBJ32_DIR)/base64.o $(OBJ64_DIR)/base64.o: base64.c base64.h memory.h
+$(OBJ32_DIR)/parser.o $(OBJ64_DIR)/parser.o: parser.c parser.h memory.h
+$(OBJ32_DIR)/log.o $(OBJ64_DIR)/log.o: log.c log.h memory.h
+$(OBJ32_DIR)/memory.o $(OBJ64_DIR)/memory.o: memory.c memory.h
 
 # Resource file dependencies
 $(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o: YouTubeCacher.rc resource.h
