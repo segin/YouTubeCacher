@@ -177,4 +177,56 @@ void CleanupCacheEntry(void* entry);
 #define INIT_AUTO_ARRAY(array_ptr, count_val, cleanup_func) \
     { array_ptr, count_val, cleanup_func, __FILE__, __LINE__ }
 
+// Memory Pool System for Frequent Allocations
+
+// Memory pool structure for efficient allocation of fixed-size objects
+typedef struct MemoryPool {
+    void* memory;               // Pre-allocated memory block
+    void** freeList;            // Stack of free objects (array of pointers)
+    size_t objectSize;          // Size of each object in bytes
+    size_t totalObjects;        // Total objects in pool
+    size_t freeCount;           // Number of free objects available
+    size_t allocatedCount;      // Number of currently allocated objects
+    CRITICAL_SECTION lock;      // Thread safety
+    const char* poolName;       // Name for debugging
+} MemoryPool;
+
+// Memory pool management functions
+MemoryPool* CreateMemoryPool(size_t objectSize, size_t initialCount, const char* poolName);
+void* AllocateFromPool(MemoryPool* pool);
+void ReturnToPool(MemoryPool* pool, void* object);
+void DestroyMemoryPool(MemoryPool* pool);
+
+// Global memory pools for common objects
+extern MemoryPool* g_stringPool;        // For small strings (< 256 chars)
+extern MemoryPool* g_cacheEntryPool;    // For CacheEntry structures
+extern MemoryPool* g_requestPool;       // For YtDlpRequest structures
+
+// Pool initialization and cleanup functions
+BOOL InitializeMemoryPools(void);
+void CleanupMemoryPools(void);
+
+// Pool allocation macros for convenience
+#define POOL_ALLOC_STRING() AllocateFromPool(g_stringPool)
+#define POOL_FREE_STRING(ptr) ReturnToPool(g_stringPool, ptr)
+#define POOL_ALLOC_CACHE_ENTRY() AllocateFromPool(g_cacheEntryPool)
+#define POOL_FREE_CACHE_ENTRY(ptr) ReturnToPool(g_cacheEntryPool, ptr)
+#define POOL_ALLOC_REQUEST() AllocateFromPool(g_requestPool)
+#define POOL_FREE_REQUEST(ptr) ReturnToPool(g_requestPool, ptr)
+
+// Pool statistics and monitoring
+typedef struct {
+    size_t totalPools;
+    size_t totalAllocatedObjects;
+    size_t totalFreeObjects;
+    size_t totalMemoryUsed;
+    size_t totalMemoryAllocated;
+} PoolStatistics;
+
+PoolStatistics GetPoolStatistics(void);
+void DumpPoolStatistics(void);
+
+// Test function for memory pool functionality
+BOOL TestMemoryPools(void);
+
 #endif // MEMORY_H

@@ -60,6 +60,16 @@ BOOL InitializeMemoryManager(void)
     g_memoryManager.verboseLogging = FALSE;
     g_memoryManager.initialized = TRUE;
 
+    // Initialize memory pools
+    if (!InitializeMemoryPools()) {
+        // Cleanup on failure
+        CleanupHashTable(&g_memoryManager.hashTable);
+        free(g_memoryManager.allocations);
+        DeleteCriticalSection(&g_memoryManager.lock);
+        g_memoryManager.initialized = FALSE;
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -75,6 +85,9 @@ void CleanupMemoryManager(void)
     if (g_memoryManager.leakDetectionEnabled && g_memoryManager.allocationCount > 0) {
         DumpMemoryLeaks();
     }
+
+    // Cleanup memory pools first
+    CleanupMemoryPools();
 
     // Cleanup hash table
     CleanupHashTable(&g_memoryManager.hashTable);
@@ -839,4 +852,353 @@ AutoCacheEntry* CreateAutoCacheEntry(void* entry)
     autoEntry->autoRes.line = __LINE__;
 
     return autoEntry;
+}
+
+// Memory Pool System Implementation
+
+// Global memory pools
+MemoryPool* g_stringPool = NULL;        // For small strings (< 256 chars)
+MemoryPool* g_cacheEntryPool = NULL;    // For CacheEntry structures  
+MemoryPool* g_requestPool = NULL;       // For YtDlpRequest structures
+
+// Pool configuration constants
+#define STRING_POOL_OBJECT_SIZE     (256 * sizeof(wchar_t))  // 256 wide chars
+#define STRING_POOL_INITIAL_COUNT   100
+#define CACHE_ENTRY_POOL_INITIAL_COUNT  50
+#define REQUEST_POOL_INITIAL_COUNT  20
+
+MemoryPool* CreateMemoryPool(size_t objectSize, size_t initialCount, const char* poolName)
+{
+    if (objectSize == 0 || initialCount == 0) {
+        return NULL;
+    }
+
+    MemoryPool* pool = (MemoryPool*)SAFE_MALLOC(sizeof(MemoryPool));
+    if (!pool) {
+        return NULL;
+    }
+
+    // Initialize critical section for thread safety
+    InitializeCriticalSection(&pool->lock);
+
+    // Allocate the main memory block
+    pool->memory = SAFE_MALLOC(objectSize * initialCount);
+    if (!pool->memory) {
+        DeleteCriticalSection(&pool->lock);
+        SAFE_FREE(pool);
+        return NULL;
+    }
+
+    // Allocate the free list (array of pointers to free objects)
+    pool->freeList = (void**)SAFE_MALLOC(sizeof(void*) * initialCount);
+    if (!pool->freeList) {
+        SAFE_FREE(pool->memory);
+        DeleteCriticalSection(&pool->lock);
+        SAFE_FREE(pool);
+        return NULL;
+    }
+
+    // Initialize pool properties
+    pool->objectSize = objectSize;
+    pool->totalObjects = initialCount;
+    pool->freeCount = initialCount;
+    pool->allocatedCount = 0;
+    pool->poolName = poolName;
+
+    // Initialize free list - all objects are initially free
+    char* memoryPtr = (char*)pool->memory;
+    for (size_t i = 0; i < initialCount; i++) {
+        pool->freeList[i] = memoryPtr + (i * objectSize);
+    }
+
+    return pool;
+}
+
+void* AllocateFromPool(MemoryPool* pool)
+{
+    if (!pool) {
+        return NULL;
+    }
+
+    EnterCriticalSection(&pool->lock);
+
+    void* object = NULL;
+    
+    if (pool->freeCount > 0) {
+        // Get object from free list (stack-like behavior - LIFO)
+        pool->freeCount--;
+        object = pool->freeList[pool->freeCount];
+        pool->allocatedCount++;
+        
+        // Clear the memory for safety
+        memset(object, 0, pool->objectSize);
+    }
+
+    LeaveCriticalSection(&pool->lock);
+
+    return object;
+}
+
+void ReturnToPool(MemoryPool* pool, void* object)
+{
+    if (!pool || !object) {
+        return;
+    }
+
+    EnterCriticalSection(&pool->lock);
+
+    // Verify the object belongs to this pool
+    char* memoryStart = (char*)pool->memory;
+    char* memoryEnd = memoryStart + (pool->totalObjects * pool->objectSize);
+    char* objectPtr = (char*)object;
+
+    if (objectPtr >= memoryStart && objectPtr < memoryEnd) {
+        // Check if the object is properly aligned
+        size_t offset = objectPtr - memoryStart;
+        if (offset % pool->objectSize == 0) {
+            // Object is valid, add it back to free list
+            if (pool->freeCount < pool->totalObjects) {
+                pool->freeList[pool->freeCount] = object;
+                pool->freeCount++;
+                pool->allocatedCount--;
+                
+                // Clear the memory for security
+                memset(object, 0, pool->objectSize);
+            }
+        }
+    }
+
+    LeaveCriticalSection(&pool->lock);
+}
+
+void DestroyMemoryPool(MemoryPool* pool)
+{
+    if (!pool) {
+        return;
+    }
+
+    EnterCriticalSection(&pool->lock);
+
+    // Free the memory block
+    if (pool->memory) {
+        SAFE_FREE(pool->memory);
+        pool->memory = NULL;
+    }
+
+    // Free the free list
+    if (pool->freeList) {
+        SAFE_FREE(pool->freeList);
+        pool->freeList = NULL;
+    }
+
+    LeaveCriticalSection(&pool->lock);
+    DeleteCriticalSection(&pool->lock);
+
+    // Free the pool structure itself
+    SAFE_FREE(pool);
+}
+
+BOOL InitializeMemoryPools(void)
+{
+    // Create string pool for small strings
+    g_stringPool = CreateMemoryPool(STRING_POOL_OBJECT_SIZE, STRING_POOL_INITIAL_COUNT, "StringPool");
+    if (!g_stringPool) {
+        return FALSE;
+    }
+
+    // Create cache entry pool
+    g_cacheEntryPool = CreateMemoryPool(sizeof(CacheEntry), CACHE_ENTRY_POOL_INITIAL_COUNT, "CacheEntryPool");
+    if (!g_cacheEntryPool) {
+        DestroyMemoryPool(g_stringPool);
+        g_stringPool = NULL;
+        return FALSE;
+    }
+
+    // Create request pool  
+    g_requestPool = CreateMemoryPool(sizeof(YtDlpRequest), REQUEST_POOL_INITIAL_COUNT, "RequestPool");
+    if (!g_requestPool) {
+        DestroyMemoryPool(g_stringPool);
+        DestroyMemoryPool(g_cacheEntryPool);
+        g_stringPool = NULL;
+        g_cacheEntryPool = NULL;
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+void CleanupMemoryPools(void)
+{
+    if (g_stringPool) {
+        DestroyMemoryPool(g_stringPool);
+        g_stringPool = NULL;
+    }
+
+    if (g_cacheEntryPool) {
+        DestroyMemoryPool(g_cacheEntryPool);
+        g_cacheEntryPool = NULL;
+    }
+
+    if (g_requestPool) {
+        DestroyMemoryPool(g_requestPool);
+        g_requestPool = NULL;
+    }
+}
+
+PoolStatistics GetPoolStatistics(void)
+{
+    PoolStatistics stats = {0};
+
+    if (g_stringPool) {
+        EnterCriticalSection(&g_stringPool->lock);
+        stats.totalPools++;
+        stats.totalAllocatedObjects += g_stringPool->allocatedCount;
+        stats.totalFreeObjects += g_stringPool->freeCount;
+        stats.totalMemoryUsed += g_stringPool->allocatedCount * g_stringPool->objectSize;
+        stats.totalMemoryAllocated += g_stringPool->totalObjects * g_stringPool->objectSize;
+        LeaveCriticalSection(&g_stringPool->lock);
+    }
+
+    if (g_cacheEntryPool) {
+        EnterCriticalSection(&g_cacheEntryPool->lock);
+        stats.totalPools++;
+        stats.totalAllocatedObjects += g_cacheEntryPool->allocatedCount;
+        stats.totalFreeObjects += g_cacheEntryPool->freeCount;
+        stats.totalMemoryUsed += g_cacheEntryPool->allocatedCount * g_cacheEntryPool->objectSize;
+        stats.totalMemoryAllocated += g_cacheEntryPool->totalObjects * g_cacheEntryPool->objectSize;
+        LeaveCriticalSection(&g_cacheEntryPool->lock);
+    }
+
+    if (g_requestPool) {
+        EnterCriticalSection(&g_requestPool->lock);
+        stats.totalPools++;
+        stats.totalAllocatedObjects += g_requestPool->allocatedCount;
+        stats.totalFreeObjects += g_requestPool->freeCount;
+        stats.totalMemoryUsed += g_requestPool->allocatedCount * g_requestPool->objectSize;
+        stats.totalMemoryAllocated += g_requestPool->totalObjects * g_requestPool->objectSize;
+        LeaveCriticalSection(&g_requestPool->lock);
+    }
+
+    return stats;
+}
+
+void DumpPoolStatistics(void)
+{
+    PoolStatistics stats = GetPoolStatistics();
+    
+    printf("=== MEMORY POOL STATISTICS ===\n");
+    printf("Total Pools: %zu\n", stats.totalPools);
+    printf("Total Allocated Objects: %zu\n", stats.totalAllocatedObjects);
+    printf("Total Free Objects: %zu\n", stats.totalFreeObjects);
+    printf("Total Memory Used: %zu bytes\n", stats.totalMemoryUsed);
+    printf("Total Memory Allocated: %zu bytes\n", stats.totalMemoryAllocated);
+    
+    if (stats.totalMemoryAllocated > 0) {
+        double efficiency = (double)stats.totalMemoryUsed / stats.totalMemoryAllocated * 100.0;
+        printf("Memory Efficiency: %.1f%%\n", efficiency);
+    }
+
+    // Individual pool statistics
+    if (g_stringPool) {
+        EnterCriticalSection(&g_stringPool->lock);
+        printf("\nString Pool:\n");
+        printf("  Object Size: %zu bytes\n", g_stringPool->objectSize);
+        printf("  Total Objects: %zu\n", g_stringPool->totalObjects);
+        printf("  Allocated: %zu\n", g_stringPool->allocatedCount);
+        printf("  Free: %zu\n", g_stringPool->freeCount);
+        LeaveCriticalSection(&g_stringPool->lock);
+    }
+
+    if (g_cacheEntryPool) {
+        EnterCriticalSection(&g_cacheEntryPool->lock);
+        printf("\nCache Entry Pool:\n");
+        printf("  Object Size: %zu bytes\n", g_cacheEntryPool->objectSize);
+        printf("  Total Objects: %zu\n", g_cacheEntryPool->totalObjects);
+        printf("  Allocated: %zu\n", g_cacheEntryPool->allocatedCount);
+        printf("  Free: %zu\n", g_cacheEntryPool->freeCount);
+        LeaveCriticalSection(&g_cacheEntryPool->lock);
+    }
+
+    if (g_requestPool) {
+        EnterCriticalSection(&g_requestPool->lock);
+        printf("\nRequest Pool:\n");
+        printf("  Object Size: %zu bytes\n", g_requestPool->objectSize);
+        printf("  Total Objects: %zu\n", g_requestPool->totalObjects);
+        printf("  Allocated: %zu\n", g_requestPool->allocatedCount);
+        printf("  Free: %zu\n", g_requestPool->freeCount);
+        LeaveCriticalSection(&g_requestPool->lock);
+    }
+
+    printf("==============================\n");
+}
+
+// Test function to verify memory pool functionality
+BOOL TestMemoryPools(void)
+{
+    printf("=== TESTING MEMORY POOLS ===\n");
+    
+    if (!g_stringPool || !g_cacheEntryPool || !g_requestPool) {
+        printf("ERROR: Memory pools not initialized\n");
+        return FALSE;
+    }
+
+    // Test string pool
+    printf("Testing String Pool...\n");
+    wchar_t* str1 = (wchar_t*)AllocateFromPool(g_stringPool);
+    wchar_t* str2 = (wchar_t*)AllocateFromPool(g_stringPool);
+    
+    if (!str1 || !str2) {
+        printf("ERROR: Failed to allocate from string pool\n");
+        return FALSE;
+    }
+
+    // Use the strings
+    wcscpy(str1, L"Test String 1");
+    wcscpy(str2, L"Test String 2");
+    printf("Allocated strings: '%ls' and '%ls'\n", str1, str2);
+
+    // Return to pool
+    ReturnToPool(g_stringPool, str1);
+    ReturnToPool(g_stringPool, str2);
+    printf("Returned strings to pool\n");
+
+    // Test cache entry pool
+    printf("Testing Cache Entry Pool...\n");
+    CacheEntry* entry1 = (CacheEntry*)AllocateFromPool(g_cacheEntryPool);
+    CacheEntry* entry2 = (CacheEntry*)AllocateFromPool(g_cacheEntryPool);
+    
+    if (!entry1 || !entry2) {
+        printf("ERROR: Failed to allocate from cache entry pool\n");
+        return FALSE;
+    }
+
+    printf("Allocated cache entries at %p and %p\n", (void*)entry1, (void*)entry2);
+
+    // Return to pool
+    ReturnToPool(g_cacheEntryPool, entry1);
+    ReturnToPool(g_cacheEntryPool, entry2);
+    printf("Returned cache entries to pool\n");
+
+    // Test request pool
+    printf("Testing Request Pool...\n");
+    YtDlpRequest* req1 = (YtDlpRequest*)AllocateFromPool(g_requestPool);
+    YtDlpRequest* req2 = (YtDlpRequest*)AllocateFromPool(g_requestPool);
+    
+    if (!req1 || !req2) {
+        printf("ERROR: Failed to allocate from request pool\n");
+        return FALSE;
+    }
+
+    printf("Allocated requests at %p and %p\n", (void*)req1, (void*)req2);
+
+    // Return to pool
+    ReturnToPool(g_requestPool, req1);
+    ReturnToPool(g_requestPool, req2);
+    printf("Returned requests to pool\n");
+
+    // Display pool statistics
+    DumpPoolStatistics();
+
+    printf("=== MEMORY POOL TESTS PASSED ===\n");
+    return TRUE;
 }
