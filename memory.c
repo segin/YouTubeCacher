@@ -505,3 +505,232 @@ static BOOL RemoveFromHashTable(AllocationHashTable* table, void* address)
 
     return FALSE;
 }
+
+// Safe string management function implementations
+wchar_t* SafeWcsDup(const wchar_t* str, const char* file, int line)
+{
+    if (!str) {
+        return NULL;
+    }
+
+    size_t len = wcslen(str);
+    size_t size = (len + 1) * sizeof(wchar_t);
+    
+    wchar_t* duplicate = (wchar_t*)SafeMalloc(size, file, line);
+    if (!duplicate) {
+        return NULL;
+    }
+
+    wcscpy(duplicate, str);
+    return duplicate;
+}
+
+wchar_t* SafeWcsNDup(const wchar_t* str, size_t maxLen, const char* file, int line)
+{
+    if (!str) {
+        return NULL;
+    }
+
+    // Find the actual length, limited by maxLen
+    size_t len = 0;
+    while (len < maxLen && str[len] != L'\0') {
+        len++;
+    }
+
+    size_t size = (len + 1) * sizeof(wchar_t);
+    
+    wchar_t* duplicate = (wchar_t*)SafeMalloc(size, file, line);
+    if (!duplicate) {
+        return NULL;
+    }
+
+    wcsncpy(duplicate, str, len);
+    duplicate[len] = L'\0'; // Ensure null termination
+    return duplicate;
+}
+
+wchar_t* SafeWcsConcat(const wchar_t* str1, const wchar_t* str2, const char* file, int line)
+{
+    if (!str1 && !str2) {
+        return NULL;
+    }
+
+    size_t len1 = str1 ? wcslen(str1) : 0;
+    size_t len2 = str2 ? wcslen(str2) : 0;
+    size_t totalLen = len1 + len2;
+    size_t size = (totalLen + 1) * sizeof(wchar_t);
+
+    wchar_t* result = (wchar_t*)SafeMalloc(size, file, line);
+    if (!result) {
+        return NULL;
+    }
+
+    result[0] = L'\0'; // Initialize as empty string
+
+    if (str1) {
+        wcscpy(result, str1);
+    }
+    if (str2) {
+        wcscat(result, str2);
+    }
+
+    return result;
+}
+
+BOOL SafeWcsReplace(wchar_t** target, const wchar_t* newValue, const char* file, int line)
+{
+    if (!target) {
+        return FALSE;
+    }
+
+    // Free the old string if it exists
+    if (*target) {
+        SafeFree(*target, file, line);
+        *target = NULL;
+    }
+
+    // Duplicate the new value if provided
+    if (newValue) {
+        *target = SafeWcsDup(newValue, file, line);
+        return (*target != NULL);
+    }
+
+    return TRUE; // Successfully set to NULL
+}
+
+// StringBuilder implementation
+StringBuilder* CreateStringBuilder(size_t initialCapacity, const char* file, int line)
+{
+    if (initialCapacity == 0) {
+        initialCapacity = 256; // Default initial capacity
+    }
+
+    StringBuilder* sb = (StringBuilder*)SafeMalloc(sizeof(StringBuilder), file, line);
+    if (!sb) {
+        return NULL;
+    }
+
+    sb->buffer = (wchar_t*)SafeMalloc(initialCapacity * sizeof(wchar_t), file, line);
+    if (!sb->buffer) {
+        SafeFree(sb, file, line);
+        return NULL;
+    }
+
+    sb->capacity = initialCapacity;
+    sb->length = 0;
+    sb->buffer[0] = L'\0';
+    sb->file = file;
+    sb->line = line;
+
+    return sb;
+}
+
+BOOL AppendToStringBuilder(StringBuilder* sb, const wchar_t* str)
+{
+    if (!sb || !str) {
+        return FALSE;
+    }
+
+    size_t strLen = wcslen(str);
+    size_t newLength = sb->length + strLen;
+
+    // Expand buffer if necessary
+    if (newLength >= sb->capacity) {
+        size_t newCapacity = sb->capacity;
+        while (newCapacity <= newLength) {
+            newCapacity *= 2;
+        }
+
+        wchar_t* newBuffer = (wchar_t*)SafeRealloc(sb->buffer, 
+            newCapacity * sizeof(wchar_t), sb->file, sb->line);
+        if (!newBuffer) {
+            return FALSE;
+        }
+
+        sb->buffer = newBuffer;
+        sb->capacity = newCapacity;
+    }
+
+    // Append the string
+    wcscat(sb->buffer, str);
+    sb->length = newLength;
+
+    return TRUE;
+}
+
+BOOL AppendFormatToStringBuilder(StringBuilder* sb, const wchar_t* format, ...)
+{
+    if (!sb || !format) {
+        return FALSE;
+    }
+
+    va_list args;
+    va_start(args, format);
+
+    // First, determine how much space we need
+    int requiredLen = _vscwprintf(format, args);
+    if (requiredLen < 0) {
+        va_end(args);
+        return FALSE;
+    }
+
+    size_t newLength = sb->length + (size_t)requiredLen;
+
+    // Expand buffer if necessary
+    if (newLength >= sb->capacity) {
+        size_t newCapacity = sb->capacity;
+        while (newCapacity <= newLength) {
+            newCapacity *= 2;
+        }
+
+        wchar_t* newBuffer = (wchar_t*)SafeRealloc(sb->buffer, 
+            newCapacity * sizeof(wchar_t), sb->file, sb->line);
+        if (!newBuffer) {
+            va_end(args);
+            return FALSE;
+        }
+
+        sb->buffer = newBuffer;
+        sb->capacity = newCapacity;
+    }
+
+    // Format and append the string
+    int written = vswprintf(sb->buffer + sb->length, 
+        sb->capacity - sb->length, format, args);
+    
+    va_end(args);
+
+    if (written < 0) {
+        return FALSE;
+    }
+
+    sb->length = newLength;
+    return TRUE;
+}
+
+wchar_t* FinalizeStringBuilder(StringBuilder* sb)
+{
+    if (!sb) {
+        return NULL;
+    }
+
+    wchar_t* result = sb->buffer;
+    sb->buffer = NULL; // Transfer ownership
+    sb->capacity = 0;
+    sb->length = 0;
+
+    return result;
+}
+
+void FreeStringBuilder(StringBuilder* sb)
+{
+    if (!sb) {
+        return;
+    }
+
+    if (sb->buffer) {
+        SafeFree(sb->buffer, sb->file, sb->line);
+    }
+
+    SafeFree(sb, sb->file, sb->line);
+}

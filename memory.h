@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 // Memory allocation tracking structure
 typedef struct {
@@ -73,6 +74,35 @@ void DumpMemoryLeaks(void);
 size_t GetCurrentMemoryUsage(void);
 int GetActiveAllocationCount(void);
 
+// Safe string management functions
+wchar_t* SafeWcsDup(const wchar_t* str, const char* file, int line);
+wchar_t* SafeWcsNDup(const wchar_t* str, size_t maxLen, const char* file, int line);
+wchar_t* SafeWcsConcat(const wchar_t* str1, const wchar_t* str2, const char* file, int line);
+BOOL SafeWcsReplace(wchar_t** target, const wchar_t* newValue, const char* file, int line);
 
+// Convenience macros for string functions
+#define SAFE_WCSDUP(str) SafeWcsDup(str, __FILE__, __LINE__)
+#define SAFE_WCSNDUP(str, len) SafeWcsNDup(str, len, __FILE__, __LINE__)
+#define SAFE_WCSCONCAT(str1, str2) SafeWcsConcat(str1, str2, __FILE__, __LINE__)
+#define SAFE_WCSREPLACE(target, newValue) SafeWcsReplace(target, newValue, __FILE__, __LINE__)
+
+// StringBuilder structure for efficient string concatenation
+typedef struct {
+    wchar_t* buffer;
+    size_t capacity;
+    size_t length;
+    const char* file;
+    int line;
+} StringBuilder;
+
+// StringBuilder functions
+StringBuilder* CreateStringBuilder(size_t initialCapacity, const char* file, int line);
+BOOL AppendToStringBuilder(StringBuilder* sb, const wchar_t* str);
+BOOL AppendFormatToStringBuilder(StringBuilder* sb, const wchar_t* format, ...);
+wchar_t* FinalizeStringBuilder(StringBuilder* sb); // Returns ownership of buffer
+void FreeStringBuilder(StringBuilder* sb);
+
+// StringBuilder convenience macro
+#define CREATE_STRING_BUILDER(capacity) CreateStringBuilder(capacity, __FILE__, __LINE__)
 
 #endif // MEMORY_H
