@@ -1202,3 +1202,287 @@ BOOL TestMemoryPools(void)
     printf("=== MEMORY POOL TESTS PASSED ===\n");
     return TRUE;
 }
+
+// Error-Safe Allocation Patterns Implementation
+
+// Initial capacity for allocation sets and bulk cleanup structures
+#define INITIAL_ALLOCATION_SET_CAPACITY 16
+#define INITIAL_BULK_CLEANUP_CAPACITY 32
+#define ALLOCATION_SET_GROWTH_FACTOR 2
+
+AllocationSet* CreateAllocationSet(const char* file, int line)
+{
+    AllocationSet* set = (AllocationSet*)SafeMalloc(sizeof(AllocationSet), file, line);
+    if (!set) {
+        return NULL;
+    }
+
+    set->allocations = (void**)SafeMalloc(
+        INITIAL_ALLOCATION_SET_CAPACITY * sizeof(void*), file, line);
+    if (!set->allocations) {
+        SafeFree(set, file, line);
+        return NULL;
+    }
+
+    set->count = 0;
+    set->capacity = INITIAL_ALLOCATION_SET_CAPACITY;
+    set->file = file;
+    set->line = line;
+
+    return set;
+}
+
+BOOL AddToAllocationSet(AllocationSet* set, void* ptr)
+{
+    if (!set || !ptr) {
+        return FALSE;
+    }
+
+    // Expand capacity if needed
+    if (set->count >= set->capacity) {
+        size_t newCapacity = set->capacity * ALLOCATION_SET_GROWTH_FACTOR;
+        void** newAllocations = (void**)SafeRealloc(set->allocations, 
+            newCapacity * sizeof(void*), set->file, set->line);
+        
+        if (!newAllocations) {
+            return FALSE; // Failed to expand, allocation not added
+        }
+
+        set->allocations = newAllocations;
+        set->capacity = newCapacity;
+    }
+
+    // Add the pointer to the set
+    set->allocations[set->count] = ptr;
+    set->count++;
+
+    return TRUE;
+}
+
+void CommitAllocationSet(AllocationSet* set)
+{
+    if (!set) {
+        return;
+    }
+
+    // Committing transfers ownership - just clear the set without freeing
+    set->count = 0;
+    // Note: We don't free the allocations array to allow reuse of the set
+}
+
+void RollbackAllocationSet(AllocationSet* set)
+{
+    if (!set) {
+        return;
+    }
+
+    // Free all allocations in the set
+    for (size_t i = 0; i < set->count; i++) {
+        if (set->allocations[i]) {
+            SafeFree(set->allocations[i], set->file, set->line);
+            set->allocations[i] = NULL;
+        }
+    }
+
+    // Clear the set
+    set->count = 0;
+}
+
+void FreeAllocationSet(AllocationSet* set)
+{
+    if (!set) {
+        return;
+    }
+
+    // First rollback any uncommitted allocations
+    RollbackAllocationSet(set);
+
+    // Free the allocations array
+    if (set->allocations) {
+        SafeFree(set->allocations, set->file, set->line);
+        set->allocations = NULL;
+    }
+
+    // Free the set structure itself
+    SafeFree(set, set->file, set->line);
+}
+
+BulkCleanup* CreateBulkCleanup(size_t initialCapacity)
+{
+    if (initialCapacity == 0) {
+        initialCapacity = INITIAL_BULK_CLEANUP_CAPACITY;
+    }
+
+    BulkCleanup* cleanup = (BulkCleanup*)SAFE_MALLOC(sizeof(BulkCleanup));
+    if (!cleanup) {
+        return NULL;
+    }
+
+    cleanup->pointers = (void**)SAFE_MALLOC(initialCapacity * sizeof(void*));
+    if (!cleanup->pointers) {
+        SAFE_FREE(cleanup);
+        return NULL;
+    }
+
+    cleanup->count = 0;
+    cleanup->capacity = initialCapacity;
+
+    return cleanup;
+}
+
+BOOL AddToBulkCleanup(BulkCleanup* cleanup, void* ptr)
+{
+    if (!cleanup || !ptr) {
+        return FALSE;
+    }
+
+    // Expand capacity if needed
+    if (cleanup->count >= cleanup->capacity) {
+        size_t newCapacity = cleanup->capacity * ALLOCATION_SET_GROWTH_FACTOR;
+        void** newPointers = (void**)SAFE_REALLOC(cleanup->pointers, 
+            newCapacity * sizeof(void*));
+        
+        if (!newPointers) {
+            return FALSE; // Failed to expand
+        }
+
+        cleanup->pointers = newPointers;
+        cleanup->capacity = newCapacity;
+    }
+
+    // Add the pointer to the cleanup set
+    cleanup->pointers[cleanup->count] = ptr;
+    cleanup->count++;
+
+    return TRUE;
+}
+
+void BulkFree(BulkCleanup* cleanup)
+{
+    if (!cleanup) {
+        return;
+    }
+
+    // Free all pointers in the cleanup set
+    for (size_t i = 0; i < cleanup->count; i++) {
+        if (cleanup->pointers[i]) {
+            SAFE_FREE(cleanup->pointers[i]);
+            cleanup->pointers[i] = NULL;
+        }
+    }
+
+    // Clear the set for reuse
+    cleanup->count = 0;
+}
+
+void FreeBulkCleanup(BulkCleanup* cleanup)
+{
+    if (!cleanup) {
+        return;
+    }
+
+    // First free all remaining pointers
+    BulkFree(cleanup);
+
+    // Free the pointers array
+    if (cleanup->pointers) {
+        SAFE_FREE(cleanup->pointers);
+        cleanup->pointers = NULL;
+    }
+
+    // Free the cleanup structure itself
+    SAFE_FREE(cleanup);
+}
+
+// Test function for error-safe allocation patterns
+BOOL TestErrorSafeAllocationPatterns(void)
+{
+    printf("=== TESTING ERROR-SAFE ALLOCATION PATTERNS ===\n");
+
+    // Test AllocationSet functionality
+    printf("Testing AllocationSet...\n");
+    
+    AllocationSet* set = CREATE_ALLOCATION_SET();
+    if (!set) {
+        printf("ERROR: Failed to create AllocationSet\n");
+        return FALSE;
+    }
+
+    // Test successful allocation and commit
+    wchar_t* str1 = SAFE_WCSDUP_AND_ADD(set, L"Test String 1");
+    wchar_t* str2 = SAFE_WCSDUP_AND_ADD(set, L"Test String 2");
+    void* buffer = SAFE_ALLOC_AND_ADD(set, 1024);
+
+    if (!str1 || !str2 || !buffer) {
+        printf("ERROR: Failed to allocate and add to set\n");
+        RollbackAllocationSet(set);
+        FreeAllocationSet(set);
+        return FALSE;
+    }
+
+    printf("Successfully allocated %zu items in set\n", set->count);
+    
+    // Test commit (transfers ownership)
+    CommitAllocationSet(set);
+    printf("Committed allocation set (count now: %zu)\n", set->count);
+
+    // Manually free the committed allocations
+    SAFE_FREE(str1);
+    SAFE_FREE(str2);
+    SAFE_FREE(buffer);
+
+    // Test rollback functionality
+    printf("Testing rollback functionality...\n");
+    wchar_t* str3 = SAFE_WCSDUP_AND_ADD(set, L"Test String 3");
+    wchar_t* str4 = SAFE_WCSDUP_AND_ADD(set, L"Test String 4");
+    
+    if (!str3 || !str4) {
+        printf("ERROR: Failed to allocate for rollback test\n");
+        FreeAllocationSet(set);
+        return FALSE;
+    }
+
+    printf("Allocated %zu items for rollback test\n", set->count);
+    
+    // Rollback should free all allocations
+    RollbackAllocationSet(set);
+    printf("Rolled back allocation set (count now: %zu)\n", set->count);
+
+    // Clean up the set
+    FreeAllocationSet(set);
+
+    // Test BulkCleanup functionality
+    printf("Testing BulkCleanup...\n");
+    
+    BulkCleanup* cleanup = CreateBulkCleanup(0); // Use default capacity
+    if (!cleanup) {
+        printf("ERROR: Failed to create BulkCleanup\n");
+        return FALSE;
+    }
+
+    // Allocate several items and add to bulk cleanup
+    for (int i = 0; i < 10; i++) {
+        wchar_t* testStr = SAFE_MALLOC(256 * sizeof(wchar_t));
+        if (testStr) {
+            swprintf(testStr, 256, L"Bulk Test String %d", i);
+            if (!AddToBulkCleanup(cleanup, testStr)) {
+                printf("ERROR: Failed to add item %d to bulk cleanup\n", i);
+                SAFE_FREE(testStr);
+                FreeBulkCleanup(cleanup);
+                return FALSE;
+            }
+        }
+    }
+
+    printf("Added %zu items to bulk cleanup\n", cleanup->count);
+
+    // Test bulk free
+    BulkFree(cleanup);
+    printf("Bulk freed all items (count now: %zu)\n", cleanup->count);
+
+    // Clean up the bulk cleanup structure
+    FreeBulkCleanup(cleanup);
+
+    printf("=== ERROR-SAFE ALLOCATION PATTERN TESTS PASSED ===\n");
+    return TRUE;
+}

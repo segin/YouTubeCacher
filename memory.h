@@ -229,4 +229,63 @@ void DumpPoolStatistics(void);
 // Test function for memory pool functionality
 BOOL TestMemoryPools(void);
 
+// Test function for error-safe allocation patterns
+BOOL TestErrorSafeAllocationPatterns(void);
+
+// Error-Safe Allocation Patterns
+
+// Multi-allocation transaction structure for atomic allocation operations
+typedef struct {
+    void** allocations;         // Array of allocated pointers
+    size_t count;              // Number of allocations in the set
+    size_t capacity;           // Capacity of the allocations array
+    const char* file;          // File where the set was created
+    int line;                  // Line where the set was created
+} AllocationSet;
+
+// Bulk cleanup structure for efficient bulk deallocation
+typedef struct {
+    void** pointers;           // Array of pointers to free
+    size_t count;             // Number of pointers in the cleanup set
+    size_t capacity;          // Capacity of the pointers array
+} BulkCleanup;
+
+// AllocationSet functions for transaction-based allocation
+AllocationSet* CreateAllocationSet(const char* file, int line);
+BOOL AddToAllocationSet(AllocationSet* set, void* ptr);
+void CommitAllocationSet(AllocationSet* set);  // Transfers ownership, clears set
+void RollbackAllocationSet(AllocationSet* set); // Frees all allocations, clears set
+void FreeAllocationSet(AllocationSet* set);    // Frees the set structure itself
+
+// BulkCleanup functions for efficient bulk operations
+BulkCleanup* CreateBulkCleanup(size_t initialCapacity);
+BOOL AddToBulkCleanup(BulkCleanup* cleanup, void* ptr);
+void BulkFree(BulkCleanup* cleanup);           // Frees all pointers and clears set
+void FreeBulkCleanup(BulkCleanup* cleanup);    // Frees the cleanup structure itself
+
+// Convenience macros for error-safe allocation patterns
+#define CREATE_ALLOCATION_SET() CreateAllocationSet(__FILE__, __LINE__)
+
+// Helper macros for common allocation patterns
+#define SAFE_ALLOC_AND_ADD(set, size) \
+    ({ void* _ptr = SAFE_MALLOC(size); \
+       if (_ptr && !AddToAllocationSet(set, _ptr)) { \
+           SAFE_FREE(_ptr); _ptr = NULL; \
+       } \
+       _ptr; })
+
+#define SAFE_CALLOC_AND_ADD(set, count, size) \
+    ({ void* _ptr = SAFE_CALLOC(count, size); \
+       if (_ptr && !AddToAllocationSet(set, _ptr)) { \
+           SAFE_FREE(_ptr); _ptr = NULL; \
+       } \
+       _ptr; })
+
+#define SAFE_WCSDUP_AND_ADD(set, str) \
+    ({ wchar_t* _ptr = SAFE_WCSDUP(str); \
+       if (_ptr && !AddToAllocationSet(set, _ptr)) { \
+           SAFE_FREE(_ptr); _ptr = NULL; \
+       } \
+       _ptr; })
+
 #endif // MEMORY_H
