@@ -920,8 +920,10 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             if (url && outputPath) {
                 // Machine-parseable progress format with pipe delimiters and raw numeric values
                 // Format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
+                // Also extract metadata (title, duration) and write info JSON for parsing
                 swprintf(operationArgs, 1024, 
                     L"--newline --no-colors --force-overwrites "
+                    L"--write-info-json --print-json "
                     L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
                     L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);

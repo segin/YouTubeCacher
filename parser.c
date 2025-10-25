@@ -438,6 +438,11 @@ BOOL ParseInfoExtractionLine(const wchar_t* line, EnhancedProgressInfo* progress
     
     UpdateDownloadState(progress, DOWNLOAD_STATE_EXTRACTING_INFO, L"Extracting video information");
     
+    // Check if this is a JSON metadata line (starts with '{' and contains video metadata)
+    if (line[0] == L'{' && wcsstr(line, L"\"title\"") && wcsstr(line, L"\"duration\"")) {
+        return ParseJsonMetadataLine(line, progress);
+    }
+    
     // Look for video ID in the line
     if (wcsstr(line, L"[info] ") && wcslen(line) > 20) {
         const wchar_t* infoStart = wcsstr(line, L"[info] ") + 7;
@@ -542,6 +547,140 @@ BOOL AddTrackedFile(EnhancedProgressInfo* progress, const wchar_t* filePath, BOO
     DebugOutput(debugMsg);
     
     return TRUE;
+}
+
+// Parse JSON metadata line to extract video title and duration
+BOOL ParseJsonMetadataLine(const wchar_t* line, EnhancedProgressInfo* progress) {
+    if (!line || !progress) return FALSE;
+    
+    wchar_t debugMsg[1024];
+    swprintf(debugMsg, 1024, L"YouTubeCacher: ParseJsonMetadataLine - Processing JSON: %.200ls...", line);
+    DebugOutput(debugMsg);
+    
+    // Simple JSON parsing for title and duration
+    // Look for "title": "..." pattern
+    const wchar_t* titleStart = wcsstr(line, L"\"title\":");
+    if (titleStart && !progress->videoTitle) {
+        titleStart += 8; // Skip "title":
+        
+        // Skip whitespace and opening quote
+        while (*titleStart && (*titleStart == L' ' || *titleStart == L'\t')) titleStart++;
+        if (*titleStart == L'"') {
+            titleStart++;
+            
+            // Find closing quote
+            const wchar_t* titleEnd = titleStart;
+            while (*titleEnd && *titleEnd != L'"') {
+                if (*titleEnd == L'\\' && *(titleEnd + 1)) {
+                    titleEnd += 2; // Skip escaped character
+                } else {
+                    titleEnd++;
+                }
+            }
+            
+            if (*titleEnd == L'"') {
+                size_t titleLen = titleEnd - titleStart;
+                if (titleLen > 0 && titleLen < 512) {
+                    wchar_t* title = (wchar_t*)malloc((titleLen + 1) * sizeof(wchar_t));
+                    if (title) {
+                        wcsncpy(title, titleStart, titleLen);
+                        title[titleLen] = L'\0';
+                        
+                        // Simple unescape for common characters
+                        wchar_t* unescaped = UnescapeJsonString(title);
+                        free(title);
+                        
+                        if (unescaped) {
+                            progress->videoTitle = unescaped;
+                            swprintf(debugMsg, 1024, L"YouTubeCacher: ParseJsonMetadataLine - Extracted title: %ls", progress->videoTitle);
+                            DebugOutput(debugMsg);
+                            
+                            // Send title update to UI
+                            IPCContext* ipc = GetGlobalIPCContext();
+                            if (ipc && progress->parentWindow) {
+                                SendTitleUpdate(ipc, progress->parentWindow, progress->videoTitle);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Look for "duration": number pattern
+    const wchar_t* durationStart = wcsstr(line, L"\"duration\":");
+    if (durationStart && !progress->videoDuration) {
+        durationStart += 11; // Skip "duration":
+        
+        // Skip whitespace
+        while (*durationStart && (*durationStart == L' ' || *durationStart == L'\t')) durationStart++;
+        
+        // Parse number (could be integer or float)
+        wchar_t durationStr[32];
+        int i = 0;
+        while (*durationStart && (iswdigit(*durationStart) || *durationStart == L'.') && i < 31) {
+            durationStr[i++] = *durationStart++;
+        }
+        durationStr[i] = L'\0';
+        
+        if (i > 0) {
+            double durationSeconds = wcstod(durationStr, NULL);
+            if (durationSeconds > 0) {
+                // Convert to MM:SS or HH:MM:SS format
+                int hours = (int)(durationSeconds / 3600);
+                int minutes = (int)((durationSeconds - hours * 3600) / 60);
+                int seconds = (int)(durationSeconds - hours * 3600 - minutes * 60);
+                
+                wchar_t formattedDuration[32];
+                if (hours > 0) {
+                    swprintf(formattedDuration, 32, L"%d:%02d:%02d", hours, minutes, seconds);
+                } else {
+                    swprintf(formattedDuration, 32, L"%d:%02d", minutes, seconds);
+                }
+                
+                progress->videoDuration = _wcsdup(formattedDuration);
+                swprintf(debugMsg, 1024, L"YouTubeCacher: ParseJsonMetadataLine - Extracted duration: %ls", progress->videoDuration);
+                DebugOutput(debugMsg);
+                
+                // Send duration update to UI
+                IPCContext* ipc = GetGlobalIPCContext();
+                if (ipc && progress->parentWindow) {
+                    SendDurationUpdate(ipc, progress->parentWindow, progress->videoDuration);
+                }
+            }
+        }
+    }
+    
+    return TRUE;
+}
+
+// Simple JSON string unescaping for common characters
+wchar_t* UnescapeJsonString(const wchar_t* escaped) {
+    if (!escaped) return NULL;
+    
+    size_t len = wcslen(escaped);
+    wchar_t* unescaped = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
+    if (!unescaped) return NULL;
+    
+    size_t i = 0, j = 0;
+    while (i < len) {
+        if (escaped[i] == L'\\' && i + 1 < len) {
+            switch (escaped[i + 1]) {
+                case L'"':  unescaped[j++] = L'"'; i += 2; break;
+                case L'\\': unescaped[j++] = L'\\'; i += 2; break;
+                case L'/':  unescaped[j++] = L'/'; i += 2; break;
+                case L'n':  unescaped[j++] = L'\n'; i += 2; break;
+                case L'r':  unescaped[j++] = L'\r'; i += 2; break;
+                case L't':  unescaped[j++] = L'\t'; i += 2; break;
+                default:    unescaped[j++] = escaped[i++]; break;
+            }
+        } else {
+            unescaped[j++] = escaped[i++];
+        }
+    }
+    unescaped[j] = L'\0';
+    
+    return unescaped;
 }
 
 // Add a pre-download message
@@ -724,6 +863,9 @@ EnhancedSubprocessContext* CreateEnhancedSubprocessContext(const YtDlpConfig* co
         free(context);
         return NULL;
     }
+    
+    // Set parent window for UI updates
+    context->enhancedProgress->parentWindow = parentWindow;
     
     // Initialize critical section for thread safety
     InitializeCriticalSection(&context->progressLock);

@@ -50,6 +50,9 @@ typedef struct {
     wchar_t* videoFormat;
     wchar_t* finalVideoFile;
     
+    // UI communication
+    HWND parentWindow;
+    
     // Download statistics
     long long downloadedBytes;
     long long totalBytes;
@@ -100,6 +103,8 @@ OutputLineType ClassifyOutputLine(const wchar_t* line);
 BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress);
 BOOL ParseFileDestinationLine(const wchar_t* line, EnhancedProgressInfo* progress);
 BOOL ParseInfoExtractionLine(const wchar_t* line, EnhancedProgressInfo* progress);
+BOOL ParseJsonMetadataLine(const wchar_t* line, EnhancedProgressInfo* progress);
+wchar_t* UnescapeJsonString(const wchar_t* escaped);
 BOOL ParsePostProcessingLine(const wchar_t* line, EnhancedProgressInfo* progress);
 BOOL AddTrackedFile(EnhancedProgressInfo* progress, const wchar_t* filePath, BOOL isMainVideo);
 BOOL AddPreDownloadMessage(EnhancedProgressInfo* progress, const wchar_t* message);
