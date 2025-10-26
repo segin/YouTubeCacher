@@ -532,8 +532,8 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     memset(result, 0, sizeof(YtDlpResult));
     
     // Build command line arguments
-    wchar_t arguments[2048];
-    if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, config, arguments, 2048)) {
+    wchar_t arguments[4096];
+    if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, config, arguments, 4096)) {
         DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Failed to build yt-dlp arguments");
         result->success = FALSE;
         result->exitCode = 1;
@@ -1027,12 +1027,12 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     }
     
     // Build operation-specific arguments
-    wchar_t operationArgs[1024];
+    wchar_t operationArgs[4096];
     switch (operation) {
         case YTDLP_OP_GET_INFO:
             if (url && wcslen(url) > 0) {
                 // Use JSON output for structured data extraction
-                swprintf(operationArgs, 1024, L"--dump-json --no-download --no-warnings \"%ls\"", url);
+                swprintf(operationArgs, 4096, L"--dump-json --no-download --no-warnings \"%ls\"", url);
             } else {
                 wcscpy(operationArgs, L"--version");
             }
@@ -1040,7 +1040,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_TITLE:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-title --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+                swprintf(operationArgs, 4096, L"--get-title --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
             } else {
                 return FALSE;
             }
@@ -1048,7 +1048,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_DURATION:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+                swprintf(operationArgs, 4096, L"--get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
             } else {
                 return FALSE;
             }
@@ -1056,7 +1056,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_TITLE_DURATION:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 1024, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+                swprintf(operationArgs, 4096, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
             } else {
                 return FALSE;
             }
@@ -1067,7 +1067,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
                 // Machine-parseable progress format with pipe delimiters and raw numeric values
                 // Format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
                 // Also extract metadata (title, duration) and write info JSON for parsing
-                swprintf(operationArgs, 1024, 
+                swprintf(operationArgs, 4096, 
                     L"--newline --no-colors --force-overwrites "
                     L"--write-info-json --print-json "
                     L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
@@ -2596,9 +2596,9 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     
     // Build command line arguments
     DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Building command line arguments");
-    wchar_t arguments[2048];
+    wchar_t arguments[4096];
     if (!GetYtDlpArgsForOperation(context->request->operation, context->request->url, 
-                                 context->request->outputPath, context->config, arguments, 2048)) {
+                                 context->request->outputPath, context->config, arguments, 4096)) {
         DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - FAILED to build yt-dlp arguments");
         context->result->success = FALSE;
         context->result->exitCode = 1;

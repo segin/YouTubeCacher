@@ -65,7 +65,6 @@
 
 - [x] 8. Migrate existing memory allocations to safe wrappers
 
-
   - Replace malloc/free calls in main.c with SAFE_MALLOC/SAFE_FREE macros
   - Replace _wcsdup calls with SAFE_WCSDUP macro
   - Update YtDlpRequest creation/destruction to use safe functions
@@ -74,8 +73,7 @@
 
   - _Requirements: 1.1, 1.2, 1.3, 6.1, 6.2_
 
-- [-] 9. Update build system and integrate memory manager
-
+- [x] 9. Update build system and integrate memory manager
 
 
   - Update Makefile to include memory.c in build process

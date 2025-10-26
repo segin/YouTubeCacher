@@ -953,9 +953,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     }
     
     // Build command line arguments
-    wchar_t arguments[2048];
+    wchar_t arguments[4096];
     if (!GetYtDlpArgsForOperation(context->request->operation, context->request->url, 
-                                 context->request->outputPath, context->config, arguments, 2048)) {
+                                 context->request->outputPath, context->config, arguments, 4096)) {
         DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to build yt-dlp arguments");
         context->result->success = FALSE;
         context->result->exitCode = 1;

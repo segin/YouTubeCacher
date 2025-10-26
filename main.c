@@ -187,6 +187,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     // Initialize error logging
     InitializeErrorLogging();
     
+    // Initialize memory manager for leak detection and safe allocation
+    if (!InitializeMemoryManager()) {
+        MessageBoxW(NULL, L"Failed to initialize memory management system.", 
+                   L"Initialization Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    
     // Force visual styles activation before anything else
     ForceVisualStylesActivation();
     
@@ -290,6 +297,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     
     // Cleanup the global IPC system
     CleanupGlobalIPC();
+    
+    // Cleanup memory manager
+    CleanupMemoryManager();
     
     // Cleanup error logging
     CleanupErrorLogging();
