@@ -1962,12 +1962,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)originalProc);
             }
             
-            // Clean up application state (including brushes)
-            ApplicationState* appState = GetApplicationState();
-            if (appState) {
-                CleanupApplicationState(appState);
-            }
-            
+            // Just destroy the window - cleanup will happen in WM_DESTROY
             DestroyWindow(hDlg);
             return TRUE;
             
@@ -2224,13 +2219,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             // Write session end marker for clean shutdown
             WriteSessionEndToLogfile(L"Clean program shutdown");
             
-            // Clean up cache manager
-            CleanupCacheManager(GetCacheManager());
-            
             // Clean up ListView item data
             CleanupListViewItemData(GetDlgItem(hDlg, IDC_LIST));
             
-            // Clean up application state (including brushes)
+            // Clean up application state (this includes cache manager cleanup)
             ApplicationState* state = GetApplicationState();
             if (state) {
                 CleanupApplicationState(state);
