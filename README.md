@@ -1,170 +1,83 @@
 # YouTubeCacher
 
-A modern Windows GUI application for downloading and managing YouTube videos with advanced caching, organization, and offline viewing capabilities.
+A Windows GUI application for downloading YouTube videos with basic caching functionality.
 
 ![Windows](https://img.shields.io/badge/Windows-10%2B-blue?logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-0.0.0-orange)
+![Version](https://img.shields.io/badge/Version-0.0.1-orange)
 
 ## Overview
 
-YouTubeCacher provides a robust, user-friendly solution for downloading YouTube videos with intelligent caching and management features. Built with modern Windows APIs and designed for reliability, it offers seamless integration with your workflow while maintaining high performance and data integrity.
+YouTubeCacher is a simple Windows desktop application that provides a graphical interface for downloading YouTube videos using yt-dlp. It includes basic caching to track downloaded videos and avoid duplicates.
 
-## Key Features
+**Note**: This is version 0.0.1 - early development release with core functionality.
 
-### 🎥 Video Download System
-- **YouTube URL Support**: Download videos from standard YouTube URLs, youtu.be short links, and YouTube Shorts
-- **yt-dlp Integration**: Powered by yt-dlp for reliable video extraction and downloading
-- **Quality Selection**: Automatic best quality selection with fallback options
-- **Subtitle Support**: Automatic download of available subtitles in multiple formats (SRT, VTT, ASS, SSA, SUB)
-- **Progress Tracking**: Real-time download progress with detailed status updates
+## Current Features
 
-### 💾 Advanced Cache Management
-- **Bulletproof Cache System**: Robust cache index with comprehensive error handling and recovery
-- **File Validation**: Automatic validation of downloaded files and cache integrity
-- **Metadata Storage**: Persistent storage of video titles, durations, file paths, and subtitle information
-- **Cache Scanning**: Automatic detection of existing videos in download folder
-- **Thread-Safe Operations**: Multi-threaded cache operations with proper synchronization
-
-### 🖥️ Modern Windows Interface
-- **Native Windows GUI**: Clean, modern interface following Windows design guidelines
-- **Resizable Layout**: Adaptive UI that scales properly with window resizing
-- **ListView Integration**: Organized display of cached videos with sortable columns
-- **Color-Coded Input**: Visual feedback for different URL input sources (manual, clipboard, autopaste)
-- **Settings Dialog**: Comprehensive configuration options for all application features
-
-### 🔧 Configuration & Settings
-- **Registry Integration**: Persistent settings storage in Windows registry
-- **Download Path Management**: Configurable download directory with automatic creation
-- **yt-dlp Path Configuration**: Flexible yt-dlp executable location settings
-- **Custom Arguments**: Support for custom yt-dlp command-line arguments
-- **Debug & Logging**: Comprehensive logging system with configurable debug output
-
-### 📋 Clipboard Integration
-- **Auto-paste Detection**: Automatic detection and processing of YouTube URLs from clipboard
-- **Manual Paste Support**: Traditional Ctrl+V paste functionality
-- **URL Validation**: Real-time validation of YouTube URL formats
-- **Smart URL Processing**: Handles various YouTube URL formats and parameters
-
-### 🎮 Media Player Integration
-- **External Player Support**: Launch cached videos in configured media player (VLC, etc.)
-- **File Association**: Direct integration with Windows file associations
-- **Subtitle Handling**: Automatic subtitle file detection and loading
-
-## Technical Architecture
-
-### 🏗️ Modular Design
-- **Separation of Concerns**: Clean separation between UI, cache, download, and settings modules
-- **Header Organization**: Centralized constants and configuration in master header
-- **Resource Management**: Proper Windows resource handling and cleanup
-
-### 🔒 Thread Safety
-- **Critical Sections**: Thread-safe cache operations and state management
-- **Background Downloads**: Non-blocking download operations with progress callbacks
-- **UI Thread Safety**: Proper UI updates from background threads
-
-### 🛡️ Error Handling
-- **Comprehensive Validation**: Input validation, file system checks, and error recovery
-- **Graceful Degradation**: Application continues functioning even with partial failures
-- **Detailed Logging**: Extensive debug output for troubleshooting and diagnostics
-
-### 🌐 Unicode Support
-- **Full Unicode Compliance**: UTF-16 APIs throughout for international character support
-- **Modern Windows APIs**: Exclusive use of Unicode Windows API functions
-- **Proper Text Encoding**: UTF-8 file handling with fallback support
+- **YouTube URL Support**: Download videos from YouTube URLs and youtu.be short links
+- **yt-dlp Integration**: Uses yt-dlp as the backend for video downloading
+- **Basic Cache System**: Tracks downloaded videos to prevent duplicates
+- **Windows GUI**: Native Windows interface with resizable layout
+- **Settings Management**: Configure download paths and yt-dlp location
+- **URL Validation**: Validates YouTube URLs before processing
+- **Unicode Support**: Full Unicode support for international characters
 
 ## System Requirements
 
-- **Operating System**: Windows 10 or later (Windows 11 recommended)
-- **Architecture**: 32-bit and 64-bit support
-- **Dependencies**: 
-  - yt-dlp (automatically detected or manually configured)
-  - Windows Media Foundation (for video file handling)
-  - Visual C++ Redistributable (statically linked)
+- Windows 10 or later
+- yt-dlp executable (can be configured in settings)
 
 ## Installation
 
-1. Download the appropriate executable for your system architecture
-2. Run the application - no installation required (portable)
-3. Configure download path and yt-dlp location in Settings
-4. Start downloading and caching YouTube videos
+1. Download `YouTubeCacher.exe` from the releases
+2. Run the executable (no installation required)
+3. Configure your download folder and yt-dlp path in Settings menu
+4. Start downloading videos
 
-## Configuration
+## Usage
 
-### First Run Setup
-1. **Download Folder**: Set your preferred download directory (defaults to `Downloads\YouTubeCacher`)
-2. **yt-dlp Path**: Configure path to yt-dlp executable (auto-detected if in PATH)
-3. **Media Player**: Set preferred video player for cached content playback
-4. **Logging**: Enable debug logging for troubleshooting if needed
+1. **First Run**: Go to Settings to configure your download folder and yt-dlp path
+2. **Download Videos**: Paste a YouTube URL in the input field and click Download
+3. **View Cache**: Downloaded videos are tracked in the cache list
+4. **Settings**: Access File > Settings to modify configuration
 
-### Advanced Options
-- **Custom yt-dlp Arguments**: Add specialized download parameters
-- **Auto-paste Settings**: Configure clipboard monitoring behavior
-- **Debug Output**: Enable detailed logging for development and troubleshooting
+## Building from Source
 
-## Known Limitations
+Requires MSYS2/MinGW development environment:
 
-- **Single Download**: Currently supports one download at a time
-- **Basic Playlist Support**: Individual video downloads only (no playlist batch processing)
-- **Windows Only**: Native Windows application, not cross-platform
-
-## Development Notes
-
-### Build System
-- **MSYS2/MinGW**: Built with MinGW-w64 toolchain
-- **Static Linking**: Self-contained executable with minimal dependencies
-- **Resource Compilation**: Integrated Windows resource compilation
-
-### Code Quality
-- **Strict Compilation**: Built with `-Wall -Wextra -Werror` for maximum code quality
-- **Memory Safety**: Comprehensive memory management and leak prevention
-- **Error Handling**: Defensive programming with extensive error checking
-
-## Getting Started
-
-### Quick Start
-1. Download the latest release from the [Releases](../../releases) page
-2. Run `YouTubeCacher.exe` (no installation required)
-3. Configure your download folder and yt-dlp path in Settings
-4. Paste a YouTube URL and start downloading!
-
-### Building from Source
 ```bash
-# Clone the repository
 git clone https://github.com/segin/YouTubeCacher.git
 cd YouTubeCacher
-
-# Build with MSYS2/MinGW
-export MSYSTEM=MINGW32
 make clean && make
 ```
 
+## Current Limitations
+
+- Single download at a time
+- No playlist support
+- No subtitle downloading
+- Basic cache management only
+- Windows only
+
+## Planned Features
+
+- **Subtitle Support**: Download subtitles in multiple formats
+- **Playlist Support**: Batch download from playlists
+- **Progress Tracking**: Real-time download progress display
+- **Media Player Integration**: Launch videos in external players
+- **Advanced Cache Management**: Better organization and search
+- **Auto-paste Detection**: Automatic clipboard URL detection
+- **Download Queue**: Multiple simultaneous downloads
+
 ## Contributing
 
-We welcome contributions! Please feel free to:
-- Report bugs and issues
-- Suggest new features
-- Submit pull requests
-- Improve documentation
+This project is in early development. Contributions welcome:
 
-## Future Roadmap
-
-- **Playlist Support**: Batch downloading of YouTube playlists
-- **Download Queue**: Multiple simultaneous downloads with queue management
-- **Video Conversion**: Built-in format conversion capabilities
-- **Search Integration**: Search and browse cached videos
-- **Export/Import**: Cache backup and restore functionality
+- Report bugs via GitHub Issues
+- Submit feature requests
+- Contribute code improvements
+- Help with testing
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- **Issues**: [GitHub Issues](../../issues)
-- **Discussions**: [GitHub Discussions](../../discussions)
-- **Wiki**: [Project Wiki](../../wiki)
-
----
-
-**YouTubeCacher** - A robust, modern solution for YouTube video caching and management on Windows.
+MIT License - see [LICENSE](LICENSE) file for details.
