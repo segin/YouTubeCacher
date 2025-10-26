@@ -1043,7 +1043,7 @@ MemoryPool* CreateMemoryPool(size_t objectSize, size_t initialCount, const char*
         return NULL;
     }
 
-    MemoryPool* pool = (MemoryPool*)SAFE_MALLOC(sizeof(MemoryPool));
+    MemoryPool* pool = (MemoryPool*)malloc(sizeof(MemoryPool));
     if (!pool) {
         return NULL;
     }
@@ -1052,19 +1052,19 @@ MemoryPool* CreateMemoryPool(size_t objectSize, size_t initialCount, const char*
     InitializeCriticalSection(&pool->lock);
 
     // Allocate the main memory block
-    pool->memory = SAFE_MALLOC(objectSize * initialCount);
+    pool->memory = malloc(objectSize * initialCount);
     if (!pool->memory) {
         DeleteCriticalSection(&pool->lock);
-        SAFE_FREE(pool);
+        free(pool);
         return NULL;
     }
 
     // Allocate the free list (array of pointers to free objects)
-    pool->freeList = (void**)SAFE_MALLOC(sizeof(void*) * initialCount);
+    pool->freeList = (void**)malloc(sizeof(void*) * initialCount);
     if (!pool->freeList) {
-        SAFE_FREE(pool->memory);
+        free(pool->memory);
         DeleteCriticalSection(&pool->lock);
-        SAFE_FREE(pool);
+        free(pool);
         return NULL;
     }
 
