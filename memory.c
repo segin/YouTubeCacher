@@ -308,31 +308,76 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
     }
 
     size_t oldSize = 0;
-    void* oldPtr = ptr;
+    BOOL wasTracked = FALSE;
     
     // Get old size and remove record before realloc if tracking is enabled
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
         
         // Use hash table for fast lookup and removal
-        if (!RemoveAllocationRecord(ptr, &oldSize)) {
-            // Allocation not found - this might be an error
-            oldSize = 0;
+        if (RemoveAllocationRecord(ptr, &oldSize)) {
+            wasTracked = TRUE;
         }
         
         LeaveCriticalSection(&g_memoryManager.lock);
     }
 
-    void* newPtr = realloc(oldPtr, size);
-    if (!newPtr) {
+#ifdef MEMORY_DEBUG
+    // Handle buffer overrun detection - need to adjust pointers and sizes
+    void* rawPtr = ptr;
+    size_t totalSize = size;
+    
+    if (g_bufferOverrunDetectionEnabled && wasTracked) {
+        // Convert user pointer back to raw pointer
+        rawPtr = (char*)ptr - GUARD_SIZE;
+        // Add space for guard patterns
+        totalSize = size + (2 * GUARD_SIZE);
+    }
+    
+    void* newRawPtr = realloc(rawPtr, totalSize);
+    if (!newRawPtr) {
         // Realloc failed, need to restore the old allocation record
-        if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled && oldSize > 0) {
+        if (wasTracked) {
             EnterCriticalSection(&g_memoryManager.lock);
-            AddAllocationRecord(oldPtr, oldSize, file, line);
+            AddAllocationRecord(ptr, oldSize, file, line);
             LeaveCriticalSection(&g_memoryManager.lock);
         }
         return NULL;
     }
+    
+    void* newPtr = newRawPtr;
+    if (g_bufferOverrunDetectionEnabled && wasTracked) {
+        // Set up guard patterns in the new allocation
+        char* guardBefore = (char*)newRawPtr;
+        char* userArea = guardBefore + GUARD_SIZE;
+        char* guardAfter = userArea + size;
+        
+        // Fill guard areas with pattern
+        FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
+        FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
+        
+        // If we're expanding, fill new area with uninitialized pattern
+        if (size > oldSize) {
+            FillMemoryPattern(userArea + oldSize, size - oldSize, UNINITIALIZED_PATTERN);
+        }
+        
+        newPtr = userArea;
+    } else if (size > oldSize) {
+        // Fill expanded area with uninitialized pattern
+        FillMemoryPattern((char*)newPtr + oldSize, size - oldSize, UNINITIALIZED_PATTERN);
+    }
+#else
+    void* newPtr = realloc(ptr, size);
+    if (!newPtr) {
+        // Realloc failed, need to restore the old allocation record
+        if (wasTracked) {
+            EnterCriticalSection(&g_memoryManager.lock);
+            AddAllocationRecord(ptr, oldSize, file, line);
+            LeaveCriticalSection(&g_memoryManager.lock);
+        }
+        return NULL;
+    }
+#endif
 
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
@@ -344,7 +389,7 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
         g_memoryManager.totalAllocated += size;
         g_memoryManager.currentUsage = g_memoryManager.currentUsage - oldSize + size;
         
-        if (g_memoryManager.currentUsage > g_memoryManager.peakUsage) {
+        if (g_memoryManager.peakUsage < g_memoryManager.currentUsage) {
             g_memoryManager.peakUsage = g_memoryManager.currentUsage;
         }
         

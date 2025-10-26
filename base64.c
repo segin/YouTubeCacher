@@ -140,17 +140,13 @@ wchar_t* Base64DecodeWide(const wchar_t* input) {
     
     if (!decoded_data) return NULL;
     
-    // Create a new buffer with null terminator instead of reallocating
-    unsigned char* null_terminated = (unsigned char*)SAFE_MALLOC(decoded_length + 1);
+    // Add null terminator to decoded data
+    unsigned char* null_terminated = (unsigned char*)SAFE_REALLOC(decoded_data, decoded_length + 1);
     if (!null_terminated) {
         SAFE_FREE(decoded_data);
         return NULL;
     }
-    
-    // Copy the decoded data and add null terminator
-    memcpy(null_terminated, decoded_data, decoded_length);
     null_terminated[decoded_length] = '\0';
-    SAFE_FREE(decoded_data);
     
     // Convert back to wide string
     int wide_size = MultiByteToWideChar(CP_UTF8, 0, (char*)null_terminated, -1, NULL, 0);
