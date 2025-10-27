@@ -1095,11 +1095,11 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             if (url && outputPath) {
                 // Machine-parseable progress format with pipe delimiters and raw numeric values
                 // Format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-                // Also extract metadata (title, duration) and write info JSON for parsing
+                // Fixed progress template syntax for current yt-dlp versions
                 swprintf(operationArgs, 4096, 
                     L"--newline --no-colors --force-overwrites "
                     L"--write-info-json --print-json "
-                    L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
+                    L"--progress-template \"download:%%(_downloaded_bytes)d|%%(_total_bytes)d|%%(_speed)d|%%(_eta)d\" "
                     L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);
             } else {
@@ -2699,85 +2699,21 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
             context->request->url ? context->request->url : L"NULL");
     DebugOutput(logBuffer);
     
-    // Execute the download using the synchronous method
-    YtDlpResult* result = ExecuteYtDlpRequest(&context->config, context->request);
-    
-    // Log the result details
-    if (result) {
-        if (result->success) {
-            swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Download completed successfully");
-            DebugOutput(logBuffer);
-        } else {
-            swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Download FAILED with exit code: %lu", 
-                    result->exitCode);
-            DebugOutput(logBuffer);
-            
-            if (result->errorMessage) {
-                swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Error message: %ls", 
-                        result->errorMessage);
-                DebugOutput(logBuffer);
-            }
-            
-            if (result->output && wcslen(result->output) > 0) {
-                size_t outputLogLen = wcslen(result->output) + 100;
-                wchar_t* outputLogBuffer = (wchar_t*)SAFE_MALLOC(outputLogLen * sizeof(wchar_t));
-                if (outputLogBuffer) {
-                    swprintf(outputLogBuffer, outputLogLen, L"YouTubeCacher: UnifiedDownloadWorkerThread - yt-dlp output: %ls", result->output);
-                    DebugOutput(outputLogBuffer);
-                    SAFE_FREE(outputLogBuffer);
-                } else {
-                    // Fallback to truncated version if allocation fails
-                    swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - yt-dlp output (first 200 chars): %.200ls", 
-                            result->output);
-                    DebugOutput(logBuffer);
-                }
-            } else {
-                DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - No yt-dlp output captured");
-            }
-            
-            if (result->diagnostics) {
-                size_t diagLogLen = wcslen(result->diagnostics) + 100;
-                wchar_t* diagLogBuffer = (wchar_t*)SAFE_MALLOC(diagLogLen * sizeof(wchar_t));
-                if (diagLogBuffer) {
-                    swprintf(diagLogBuffer, diagLogLen, L"YouTubeCacher: UnifiedDownloadWorkerThread - Diagnostics: %ls", result->diagnostics);
-                    DebugOutput(diagLogBuffer);
-                    SAFE_FREE(diagLogBuffer);
-                } else {
-                    // Fallback to truncated version if allocation fails
-                    swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Diagnostics: %.200ls", 
-                            result->diagnostics);
-                    DebugOutput(logBuffer);
-                }
-            }
-        }
-    } else {
-        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - CRITICAL: ExecuteYtDlpRequest returned NULL result");
+    // Execute the download using the enhanced method for real-time progress
+    // Use the existing StartNonBlockingDownload which already uses enhanced execution
+    if (!StartNonBlockingDownload(&context->config, context->request, context->hDialog)) {
+        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
+        PostMessageW(context->hDialog, WM_DOWNLOAD_COMPLETE, (WPARAM)NULL, (LPARAM)NULL);
+        SAFE_FREE(context);
+        return 1;
     }
     
-    // Create completion context
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Creating download completion context\n");
-    NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)SAFE_MALLOC(sizeof(NonBlockingDownloadContext));
-    if (downloadContext) {
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Download context allocated successfully\n");
-        memcpy(&downloadContext->config, &context->config, sizeof(YtDlpConfig));
-        downloadContext->request = context->request; // Transfer ownership
-        downloadContext->parentWindow = context->hDialog;
-        wcscpy(downloadContext->tempDir, context->tempDir);
-        wcscpy(downloadContext->url, context->url);
-        
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Posting WM_DOWNLOAD_COMPLETE message\n");
-        PostMessageW(context->hDialog, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
-    } else {
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to allocate download context\n");
-        if (result) {
-            OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Freeing result due to context allocation failure\n");
-            FreeYtDlpResult(result);
-        }
-    }
+    // The enhanced execution is now running asynchronously
+    // The completion will be handled by the existing WM_DOWNLOAD_COMPLETE message system
+    // No need to wait here - just clean up and exit
+    DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Enhanced download started, delegating to async system");
     
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Freeing worker context\n");
     SAFE_FREE(context);
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - EXITING with success\n");
     return 0;
 }
 

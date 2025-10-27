@@ -1040,6 +1040,10 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     CloseHandle(context->hOutputWrite);
     SAFE_FREE(cmdLine);
     
+    // Register the download process with application state for cancellation support
+    SetActiveDownload(pi.hProcess, pi.dwProcessId, context->request->tempDir);
+    CloseHandle(pi.hThread); // We don't need the thread handle
+    
     // Initialize output buffer
     context->outputBufferSize = 8192;
     context->accumulatedOutput = (wchar_t*)SAFE_MALLOC(context->outputBufferSize * sizeof(wchar_t));

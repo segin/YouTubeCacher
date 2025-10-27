@@ -60,6 +60,13 @@ BOOL InitializeApplicationState(ApplicationState* state) {
         OutputDebugStringW(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate cached video metadata");
     }
     
+    // Initialize download tracking
+    state->isDownloadActive = FALSE;
+    state->hDownloadProcess = NULL;
+    state->downloadProcessId = 0;
+    state->downloadTempDir[0] = L'\0';
+    state->downloadCancelled = FALSE;
+    
     // Initialize window procedure pointer
     state->originalTextFieldProc = NULL;
     
@@ -457,4 +464,112 @@ BOOL GetDownloadAfterInfoFlag(void) {
     LeaveCriticalSection(&state->stateLock);
     
     return result;
+}
+
+// Download management functions
+BOOL SetActiveDownload(HANDLE hProcess, DWORD processId, const wchar_t* tempDir) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return FALSE;
+    
+    EnterCriticalSection(&state->stateLock);
+    
+    // Clear any existing download first
+    if (state->isDownloadActive && state->hDownloadProcess) {
+        CloseHandle(state->hDownloadProcess);
+    }
+    
+    state->isDownloadActive = TRUE;
+    state->hDownloadProcess = hProcess;
+    state->downloadProcessId = processId;
+    state->downloadCancelled = FALSE;
+    
+    if (tempDir) {
+        wcscpy(state->downloadTempDir, tempDir);
+    } else {
+        state->downloadTempDir[0] = L'\0';
+    }
+    
+    LeaveCriticalSection(&state->stateLock);
+    return TRUE;
+}
+
+void ClearActiveDownload(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return;
+    
+    EnterCriticalSection(&state->stateLock);
+    
+    if (state->hDownloadProcess) {
+        CloseHandle(state->hDownloadProcess);
+        state->hDownloadProcess = NULL;
+    }
+    
+    state->isDownloadActive = FALSE;
+    state->downloadProcessId = 0;
+    state->downloadTempDir[0] = L'\0';
+    state->downloadCancelled = FALSE;
+    
+    LeaveCriticalSection(&state->stateLock);
+}
+
+BOOL CancelActiveDownload(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return FALSE;
+    
+    BOOL success = FALSE;
+    
+    EnterCriticalSection(&state->stateLock);
+    
+    if (state->isDownloadActive && state->hDownloadProcess) {
+        // Mark as cancelled first
+        state->downloadCancelled = TRUE;
+        
+        // Terminate the process
+        if (TerminateProcess(state->hDownloadProcess, 1)) {
+            success = TRUE;
+            DebugOutput(L"YouTubeCacher: CancelActiveDownload - Process terminated successfully");
+        } else {
+            DWORD error = GetLastError();
+            wchar_t debugMsg[256];
+            swprintf(debugMsg, 256, L"YouTubeCacher: CancelActiveDownload - Failed to terminate process, error: %lu", error);
+            DebugOutput(debugMsg);
+        }
+        
+        // Clean up temporary files if temp directory is set
+        if (state->downloadTempDir[0] != L'\0') {
+            wchar_t debugMsg[512];
+            swprintf(debugMsg, 512, L"YouTubeCacher: CancelActiveDownload - Cleaning up temp directory: %ls", state->downloadTempDir);
+            DebugOutput(debugMsg);
+            
+            // Remove temporary files
+            CleanupTempDirectory(state->downloadTempDir);
+        }
+    }
+    
+    LeaveCriticalSection(&state->stateLock);
+    return success;
+}
+
+BOOL IsDownloadActive(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return FALSE;
+    
+    BOOL active;
+    EnterCriticalSection(&state->stateLock);
+    active = state->isDownloadActive;
+    LeaveCriticalSection(&state->stateLock);
+    
+    return active;
+}
+
+BOOL IsDownloadCancelled(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return FALSE;
+    
+    BOOL cancelled;
+    EnterCriticalSection(&state->stateLock);
+    cancelled = state->downloadCancelled;
+    LeaveCriticalSection(&state->stateLock);
+    
+    return cancelled;
 }

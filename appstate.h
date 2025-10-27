@@ -31,6 +31,13 @@ typedef struct {
     CacheManager* cacheManager;
     CachedVideoMetadata* cachedVideoMetadata;
     
+    // Download tracking
+    BOOL isDownloadActive;
+    HANDLE hDownloadProcess;
+    DWORD downloadProcessId;
+    wchar_t downloadTempDir[MAX_EXTENDED_PATH];
+    BOOL downloadCancelled;
+    
     // Original window procedures for subclassing
     WNDPROC originalTextFieldProc;
     
@@ -48,6 +55,13 @@ ApplicationState* GetApplicationState(void);
 BOOL SetDownloadingState(BOOL isDownloading);
 BOOL GetDownloadingState(void);
 void SetProgrammaticChangeFlag(BOOL flag);
+
+// Download management functions
+BOOL SetActiveDownload(HANDLE hProcess, DWORD processId, const wchar_t* tempDir);
+void ClearActiveDownload(void);
+BOOL CancelActiveDownload(void);
+BOOL IsDownloadActive(void);
+BOOL IsDownloadCancelled(void);
 BOOL GetProgrammaticChangeFlag(void);
 BOOL SetDownloadAfterInfoFlag(BOOL flag);
 BOOL GetDownloadAfterInfoFlag(void);

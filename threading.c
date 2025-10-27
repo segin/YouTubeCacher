@@ -420,7 +420,8 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
     
     if (result && result->success) {
         UpdateMainProgressBar(hDlg, 100, L"Download completed successfully");
-        // Re-enable UI controls
+        // Clear active download state and re-enable UI controls
+        ClearActiveDownload();
         SetDownloadUIState(hDlg, FALSE);
         // Keep progress bar visible - don't hide it
         
@@ -530,7 +531,8 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
         }
     } else {
         UpdateMainProgressBar(hDlg, 0, L"Download failed");
-        // Re-enable UI controls
+        // Clear active download state and re-enable UI controls
+        ClearActiveDownload();
         SetDownloadUIState(hDlg, FALSE);
         Sleep(500);
         ShowMainProgressBar(hDlg, FALSE);

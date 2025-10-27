@@ -117,8 +117,17 @@ void SetDownloadUIState(HWND hDlg, BOOL isDownloading) {
     // Disable/enable Get Info button
     EnableWindow(GetDlgItem(hDlg, IDC_GETINFO_BTN), !isDownloading);
     
-    // Disable/enable Download button
-    EnableWindow(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), !isDownloading);
+    // Change Download button text and keep it enabled
+    HWND hDownloadBtn = GetDlgItem(hDlg, IDC_DOWNLOAD_BTN);
+    if (hDownloadBtn) {
+        if (isDownloading) {
+            SetWindowTextW(hDownloadBtn, L"Cancel");
+        } else {
+            SetWindowTextW(hDownloadBtn, L"Download");
+        }
+        // Keep the button enabled so user can cancel
+        EnableWindow(hDownloadBtn, TRUE);
+    }
     
     // Update global state
     SetDownloadingState(isDownloading);
@@ -1220,6 +1229,37 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     break;    
             case IDC_DOWNLOAD_BTN: {
+                    // Check if we're currently downloading (button shows "Cancel")
+                    if (IsDownloadActive()) {
+                        // Cancel the active download
+                        if (CancelActiveDownload()) {
+                            // Clear download state and reset UI
+                            ClearActiveDownload();
+                            SetDownloadUIState(hDlg, FALSE);
+                            UpdateMainProgressBar(hDlg, 0, L"Download cancelled");
+                            
+                            // Hide progress bar after a brief delay
+                            Sleep(1000);
+                            ShowMainProgressBar(hDlg, FALSE);
+                            
+                            DebugOutput(L"YouTubeCacher: Download cancelled by user");
+                        } else {
+                            // Failed to cancel - show error
+                            UnifiedDialogConfig config = {0};
+                            config.dialogType = UNIFIED_DIALOG_ERROR;
+                            config.title = L"Cancel Failed";
+                            config.message = L"Unable to cancel the download process.";
+                            config.details = L"The download process could not be terminated. It may have already completed or encountered an error.";
+                            config.tab1_name = L"Details";
+                            config.showDetailsButton = TRUE;
+                            config.showCopyButton = FALSE;
+                            
+                            ShowUnifiedDialog(hDlg, &config);
+                        }
+                        break;
+                    }
+                    
+                    // Not downloading - handle normal download start
                     // Get URL from text field
                     wchar_t url[MAX_URL_LENGTH];
                     GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
@@ -1283,7 +1323,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         ShowMainProgressBar(hDlg, TRUE);
                         SetProgressBarMarquee(hDlg, TRUE);
                         UpdateMainProgressBar(hDlg, -1, L"Getting video information...");
-                        SetDownloadUIState(hDlg, TRUE);  // Disable UI controls during metadata retrieval
+                        SetDownloadUIState(hDlg, TRUE);  // Change button to "Cancel" during metadata retrieval
                         
                         // Set flag to indicate we want to download after getting info
                         SetDownloadAfterInfoFlag(TRUE);
@@ -1294,6 +1334,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             SetDownloadAfterInfoFlag(FALSE);
                             SetProgressBarMarquee(hDlg, FALSE);
                             ShowMainProgressBar(hDlg, FALSE);
+                            ClearActiveDownload();
                             SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls on failure
                             ShowConfigurationError(hDlg, L"Failed to start video information retrieval. Please check your yt-dlp configuration.");
                         }
@@ -1302,6 +1343,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     }
                     break;
                 }
+                
+
                     
                 case IDC_GETINFO_BTN: {
                     // Check if download is in progress
@@ -2102,6 +2145,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         // Failed to start download
                         SetProgressBarMarquee(hDlg, FALSE);
                         ShowMainProgressBar(hDlg, FALSE);
+                        ClearActiveDownload();
                         SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls
                         ShowConfigurationError(hDlg, L"Failed to start download. Please check your yt-dlp configuration.");
                     }
@@ -2109,11 +2153,13 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 } else {
                     // Failed to get metadata, can't download
                     ShowMainProgressBar(hDlg, FALSE);
+                    ClearActiveDownload();
                     SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls
                 }
             } else {
                 // This was just a Get Info operation, hide progress bar and re-enable UI
                 ShowMainProgressBar(hDlg, FALSE);
+                ClearActiveDownload();
                 SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls
             }
             
@@ -2217,6 +2263,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 case 7: { // Download failed
                     UpdateMainProgressBar(hDlg, 0, L"Download failed");
+                    ClearActiveDownload();
                     SetDownloadUIState(hDlg, FALSE);
                     Sleep(500);
                     ShowMainProgressBar(hDlg, FALSE);
