@@ -1278,43 +1278,27 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             ShowConfigurationError(hDlg, L"Failed to start download. Please check your yt-dlp configuration.");
                         }
                     } else {
-                        // No cached metadata - get info synchronously first, then download
-                        // Show progress bar for the info retrieval phase
+                        // No cached metadata - get info asynchronously first, then download
+                        // Show progress bar and disable UI for the info retrieval phase
                         ShowMainProgressBar(hDlg, TRUE);
                         SetProgressBarMarquee(hDlg, TRUE);
                         UpdateMainProgressBar(hDlg, -1, L"Getting video information...");
+                        SetDownloadUIState(hDlg, TRUE);  // Disable UI controls during metadata retrieval
                         
-                        // Get metadata synchronously using the existing sync function
-                        VideoMetadata metadata;
+                        // Set flag to indicate we want to download after getting info
+                        SetDownloadAfterInfoFlag(TRUE);
                         
-                        if (GetVideoMetadata(url, &metadata)) {
-                            // Successfully got metadata - update UI and cache it
-                            if (metadata.title) {
-                                SetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, metadata.title);
-                            }
-                            if (metadata.duration) {
-                                SetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, metadata.duration);
-                            }
-                            
-                            // Store in cache for future use
-                            StoreCachedMetadata(GetCachedVideoMetadata(), url, &metadata);
-                            
-                            // Now start the download
-                            UpdateMainProgressBar(hDlg, -1, L"Starting download...");
-                            
-                            if (!StartUnifiedDownload(hDlg, url)) {
-                                SetProgressBarMarquee(hDlg, FALSE);
-                                ShowMainProgressBar(hDlg, FALSE);
-                                ShowConfigurationError(hDlg, L"Failed to start download. Please check your yt-dlp configuration.");
-                            }
-                        } else {
-                            // Failed to get metadata
+                        // Start asynchronous metadata retrieval
+                        if (!StartNonBlockingGetInfo(hDlg, url, GetCachedVideoMetadata())) {
+                            // Failed to start async get info
+                            SetDownloadAfterInfoFlag(FALSE);
                             SetProgressBarMarquee(hDlg, FALSE);
                             ShowMainProgressBar(hDlg, FALSE);
-                            ShowConfigurationError(hDlg, L"Failed to get video information. Please check the URL and your yt-dlp configuration.");
+                            SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls on failure
+                            ShowConfigurationError(hDlg, L"Failed to start video information retrieval. Please check your yt-dlp configuration.");
                         }
-                        
-                        FreeVideoMetadata(&metadata);
+                        // Note: The actual download will be triggered by the WM_USER + 103 message handler
+                        // when the async get info completes successfully
                     }
                     break;
                 }
@@ -2102,9 +2086,36 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 }
             }
             
-            // Always hide progress bar after Get Info completes
-            // Get Info button NEVER triggers downloads - it only retrieves and caches metadata
-            ShowMainProgressBar(hDlg, FALSE);
+            // Check if we need to start download after getting info
+            BOOL shouldDownload = GetDownloadAfterInfoFlag();
+            if (shouldDownload) {
+                SetDownloadAfterInfoFlag(FALSE);  // Clear the flag
+                
+                if (success && metadata && metadata->success) {
+                    // Successfully got metadata, now start download
+                    wchar_t url[MAX_URL_LENGTH];
+                    GetDlgItemTextW(hDlg, IDC_TEXT_FIELD, url, MAX_URL_LENGTH);
+                    
+                    UpdateMainProgressBar(hDlg, -1, L"Starting download...");
+                    
+                    if (!StartUnifiedDownload(hDlg, url)) {
+                        // Failed to start download
+                        SetProgressBarMarquee(hDlg, FALSE);
+                        ShowMainProgressBar(hDlg, FALSE);
+                        SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls
+                        ShowConfigurationError(hDlg, L"Failed to start download. Please check your yt-dlp configuration.");
+                    }
+                    // Note: UI state will be managed by StartUnifiedDownload and the download process
+                } else {
+                    // Failed to get metadata, can't download
+                    ShowMainProgressBar(hDlg, FALSE);
+                    SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls
+                }
+            } else {
+                // This was just a Get Info operation, hide progress bar and re-enable UI
+                ShowMainProgressBar(hDlg, FALSE);
+                SetDownloadUIState(hDlg, FALSE);  // Re-enable UI controls
+            }
             
             // Cleanup metadata (it was allocated by the worker thread)
             if (metadata) {

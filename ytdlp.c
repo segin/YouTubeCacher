@@ -541,8 +541,18 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
         return result;
     }
     
-    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %.200ls", arguments);
-    DebugOutput(logBuffer);
+    // Log the full arguments - allocate buffer based on actual arguments length
+    size_t fullArgsLogLen = wcslen(arguments) + 100; // Extra space for prefix
+    wchar_t* fullArgsLogBuffer = (wchar_t*)SAFE_MALLOC(fullArgsLogLen * sizeof(wchar_t));
+    if (fullArgsLogBuffer) {
+        swprintf(fullArgsLogBuffer, fullArgsLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %ls", arguments);
+        DebugOutput(fullArgsLogBuffer);
+        SAFE_FREE(fullArgsLogBuffer);
+    } else {
+        // Fallback to truncated version if allocation fails
+        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %.200ls", arguments);
+        DebugOutput(logBuffer);
+    }
     
     // Execute yt-dlp using existing process creation logic
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
@@ -580,8 +590,18 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", config->ytDlpPath, arguments);
     
-    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %.200ls", cmdLine);
-    DebugOutput(logBuffer);
+    // Log the full command - allocate buffer based on actual command length
+    size_t fullLogLen = wcslen(cmdLine) + 100; // Extra space for prefix
+    wchar_t* fullLogBuffer = (wchar_t*)SAFE_MALLOC(fullLogLen * sizeof(wchar_t));
+    if (fullLogBuffer) {
+        swprintf(fullLogBuffer, fullLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %ls", cmdLine);
+        DebugOutput(fullLogBuffer);
+        SAFE_FREE(fullLogBuffer);
+    } else {
+        // Fallback to truncated version if allocation fails
+        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %.200ls", cmdLine);
+        DebugOutput(logBuffer);
+    }
     
     // Create process
     BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
@@ -741,9 +761,18 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
         if (result->output && wcslen(result->output) > 0) {
             DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Extracting error from yt-dlp output");
             
-            // Log the first part of the output for debugging
-            swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output (first 200 chars): %.200ls", result->output);
-            DebugOutput(logBuffer);
+            // Log the full output for debugging
+            size_t outputLogLen = wcslen(result->output) + 100;
+            wchar_t* outputLogBuffer = (wchar_t*)SAFE_MALLOC(outputLogLen * sizeof(wchar_t));
+            if (outputLogBuffer) {
+                swprintf(outputLogBuffer, outputLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output: %ls", result->output);
+                DebugOutput(outputLogBuffer);
+                SAFE_FREE(outputLogBuffer);
+            } else {
+                // Fallback to truncated version if allocation fails
+                swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output (first 200 chars): %.200ls", result->output);
+                DebugOutput(logBuffer);
+            }
             
             // Extract a simple, user-friendly error message from yt-dlp output
             wchar_t* simpleError = ExtractSimpleErrorFromYtDlpOutput(result->output);
@@ -2690,17 +2719,35 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
             }
             
             if (result->output && wcslen(result->output) > 0) {
-                swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - yt-dlp output (first 200 chars): %.200ls", 
-                        result->output);
-                DebugOutput(logBuffer);
+                size_t outputLogLen = wcslen(result->output) + 100;
+                wchar_t* outputLogBuffer = (wchar_t*)SAFE_MALLOC(outputLogLen * sizeof(wchar_t));
+                if (outputLogBuffer) {
+                    swprintf(outputLogBuffer, outputLogLen, L"YouTubeCacher: UnifiedDownloadWorkerThread - yt-dlp output: %ls", result->output);
+                    DebugOutput(outputLogBuffer);
+                    SAFE_FREE(outputLogBuffer);
+                } else {
+                    // Fallback to truncated version if allocation fails
+                    swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - yt-dlp output (first 200 chars): %.200ls", 
+                            result->output);
+                    DebugOutput(logBuffer);
+                }
             } else {
                 DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - No yt-dlp output captured");
             }
             
             if (result->diagnostics) {
-                swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Diagnostics: %.200ls", 
-                        result->diagnostics);
-                DebugOutput(logBuffer);
+                size_t diagLogLen = wcslen(result->diagnostics) + 100;
+                wchar_t* diagLogBuffer = (wchar_t*)SAFE_MALLOC(diagLogLen * sizeof(wchar_t));
+                if (diagLogBuffer) {
+                    swprintf(diagLogBuffer, diagLogLen, L"YouTubeCacher: UnifiedDownloadWorkerThread - Diagnostics: %ls", result->diagnostics);
+                    DebugOutput(diagLogBuffer);
+                    SAFE_FREE(diagLogBuffer);
+                } else {
+                    // Fallback to truncated version if allocation fails
+                    swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Diagnostics: %.200ls", 
+                            result->diagnostics);
+                    DebugOutput(logBuffer);
+                }
             }
         }
     } else {
