@@ -359,8 +359,72 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
 BOOL CleanupTempDirectory(const wchar_t* tempDir) {
     if (!tempDir || wcslen(tempDir) == 0) return FALSE;
     
-    // Simple cleanup - remove directory if empty
-    return RemoveDirectoryW(tempDir);
+    wchar_t logMsg[512];
+    swprintf(logMsg, 512, L"Cleaning up temporary directory: %ls", tempDir);
+    WriteToLogfile(logMsg);
+    
+    // Find and delete all files in the temp directory
+    wchar_t searchPattern[MAX_EXTENDED_PATH];
+    swprintf(searchPattern, MAX_EXTENDED_PATH, L"%ls\\*", tempDir);
+    
+    WIN32_FIND_DATAW findData;
+    HANDLE hFind = FindFirstFileW(searchPattern, &findData);
+    
+    int filesDeleted = 0;
+    int filesSkipped = 0;
+    
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            // Skip . and .. entries
+            if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0) {
+                continue;
+            }
+            
+            wchar_t fullPath[MAX_EXTENDED_PATH];
+            swprintf(fullPath, MAX_EXTENDED_PATH, L"%ls\\%ls", tempDir, findData.cFileName);
+            
+            if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                // Skip subdirectories for now (could be enhanced to recurse)
+                filesSkipped++;
+                wchar_t skipMsg[512];
+                swprintf(skipMsg, 512, L"Skipped subdirectory during temp cleanup: %ls", fullPath);
+                WriteToLogfile(skipMsg);
+            } else {
+                // Delete file
+                if (DeleteFileW(fullPath)) {
+                    filesDeleted++;
+                    wchar_t deleteMsg[512];
+                    swprintf(deleteMsg, 512, L"Deleted temporary file: %ls", fullPath);
+                    WriteToLogfile(deleteMsg);
+                } else {
+                    DWORD error = GetLastError();
+                    filesSkipped++;
+                    wchar_t errorMsg[512];
+                    swprintf(errorMsg, 512, L"Failed to delete temporary file: %ls (Error: %lu)", fullPath, error);
+                    WriteToLogfile(errorMsg);
+                }
+            }
+        } while (FindNextFileW(hFind, &findData));
+        
+        FindClose(hFind);
+    }
+    
+    // Try to remove the directory itself
+    BOOL dirRemoved = RemoveDirectoryW(tempDir);
+    if (dirRemoved) {
+        wchar_t successMsg[512];
+        swprintf(successMsg, 512, L"Temporary directory cleanup completed: %ls (%d files deleted, %d skipped)", 
+                tempDir, filesDeleted, filesSkipped);
+        WriteToLogfile(successMsg);
+    } else {
+        DWORD error = GetLastError();
+        wchar_t errorMsg[512];
+        swprintf(errorMsg, 512, L"Failed to remove temporary directory: %ls (Error: %lu, %d files deleted, %d skipped)", 
+                tempDir, error, filesDeleted, filesSkipped);
+        WriteToLogfile(errorMsg);
+    }
+    
+    return dirRemoved;
 }
 
 ProgressDialog* CreateProgressDialog(HWND parent, const wchar_t* title) {

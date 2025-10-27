@@ -680,8 +680,19 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
             result->errors[result->errorCount].fileName = SAFE_WCSDUP(entry->mainVideoFile);
             result->errors[result->errorCount].errorCode = error;
             result->errorCount++;
+            
+            // Log deletion failure
+            wchar_t logMsg[1024];
+            swprintf(logMsg, 1024, L"Failed to delete video file: %ls (Error: %lu)", 
+                    entry->mainVideoFile, error);
+            WriteToLogfile(logMsg);
         } else {
             result->successfulDeletes++;
+            
+            // Log successful deletion
+            wchar_t logMsg[1024];
+            swprintf(logMsg, 1024, L"Deleted video file: %ls", entry->mainVideoFile);
+            WriteToLogfile(logMsg);
         }
     }
     
@@ -693,8 +704,19 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
                 result->errors[result->errorCount].fileName = SAFE_WCSDUP(entry->subtitleFiles[i]);
                 result->errors[result->errorCount].errorCode = error;
                 result->errorCount++;
+                
+                // Log deletion failure
+                wchar_t logMsg[1024];
+                swprintf(logMsg, 1024, L"Failed to delete subtitle file: %ls (Error: %lu)", 
+                        entry->subtitleFiles[i], error);
+                WriteToLogfile(logMsg);
             } else {
                 result->successfulDeletes++;
+                
+                // Log successful deletion
+                wchar_t logMsg[1024];
+                swprintf(logMsg, 1024, L"Deleted subtitle file: %ls", entry->subtitleFiles[i]);
+                WriteToLogfile(logMsg);
             }
         }
     }
@@ -703,6 +725,16 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     
     // Remove from cache if all files were deleted successfully
     if (result->errorCount == 0) {
+        // Log cache entry removal
+        wchar_t logMsg[512];
+        if (entry->title) {
+            swprintf(logMsg, 512, L"Removed cache entry for video: %ls (ID: %ls)", 
+                    entry->title, videoId);
+        } else {
+            swprintf(logMsg, 512, L"Removed cache entry for video ID: %ls", videoId);
+        }
+        WriteToLogfile(logMsg);
+        
         RemoveCacheEntry(manager, videoId);
     }
     

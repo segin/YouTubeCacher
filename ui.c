@@ -1631,6 +1631,21 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
                     
                     if (result == IDYES) {
+                        // Log the start of delete operation
+                        wchar_t logMsg[512];
+                        if (selectedCount == 1) {
+                            CacheEntry* entry = FindCacheEntry(GetCacheManager(), selectedVideoIds[0]);
+                            if (entry && entry->title) {
+                                swprintf(logMsg, 512, L"Starting delete operation for video: %ls (ID: %ls)", 
+                                        entry->title, selectedVideoIds[0]);
+                            } else {
+                                swprintf(logMsg, 512, L"Starting delete operation for video ID: %ls", selectedVideoIds[0]);
+                            }
+                        } else {
+                            swprintf(logMsg, 512, L"Starting delete operation for %d selected videos", selectedCount);
+                        }
+                        WriteToLogfile(logMsg);
+                        
                         // Delete all selected videos
                         int totalErrors = 0;
                         int totalSuccessful = 0;
@@ -1752,6 +1767,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         if (combinedErrorDetails) {
                             SAFE_FREE(combinedErrorDetails);
                         }
+                        
+                        // Log delete operation summary
+                        wchar_t summaryMsg[256];
+                        swprintf(summaryMsg, 256, L"Delete operation completed: %d videos processed, %d successful, %d failed", 
+                                selectedCount, totalSuccessful, selectedCount - totalSuccessful);
+                        WriteToLogfile(summaryMsg);
                         
                         // Refresh the list to show current state
                         RefreshCacheList(hListView, GetCacheManager());
