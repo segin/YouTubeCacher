@@ -27,7 +27,8 @@
 #define ID_FILE_EXIT      2001
 #define ID_EDIT_SELECTALL 2002
 #define ID_HELP_INSTALL_YTDLP 2003
-#define ID_HELP_ABOUT     2004
+#define ID_HELP_VIEW_LOG  2004
+#define ID_HELP_ABOUT     2005
 
 // Settings Dialog
 #define IDD_SETTINGS      103

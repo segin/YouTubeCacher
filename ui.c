@@ -1188,6 +1188,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     InstallYtDlpWithWinget(hDlg);
                     return TRUE;
                     
+                case ID_HELP_VIEW_LOG:
+                    // TODO: Implement View Log dialog
+                    MessageBoxW(hDlg, L"View Log functionality will be implemented in a future update.", 
+                               L"View Log", MB_OK | MB_ICONINFORMATION);
+                    return TRUE;
+                    
                 case ID_HELP_ABOUT:
                     ShowAboutDialog(hDlg);
                     return TRUE;

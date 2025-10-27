@@ -808,6 +808,12 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     result->exitCode = exitCode;
     result->output = outputBuffer;
     
+    // Save output to global buffer (clear previous run first)
+    ClearYtDlpOutputBuffer();
+    if (outputBuffer && wcslen(outputBuffer) > 0) {
+        AppendToYtDlpOutputBuffer(outputBuffer);
+    }
+    
     swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Process completed with exit code: %lu, success: %s", 
             exitCode, result->success ? L"TRUE" : L"FALSE");
     DebugOutput(logBuffer);

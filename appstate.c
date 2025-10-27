@@ -73,6 +73,17 @@ BOOL InitializeApplicationState(ApplicationState* state) {
     // Initialize command line URL as empty
     state->cmdLineURL[0] = L'\0';
     
+    // Initialize yt-dlp output buffer
+    state->ytdlpOutputBufferSize = 64 * 1024; // 64KB initial size
+    state->ytdlpOutputBuffer = (wchar_t*)SAFE_MALLOC(state->ytdlpOutputBufferSize * sizeof(wchar_t));
+    if (state->ytdlpOutputBuffer) {
+        state->ytdlpOutputBuffer[0] = L'\0';
+        InitializeCriticalSection(&state->ytdlpOutputLock);
+    } else {
+        OutputDebugStringW(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate yt-dlp output buffer");
+        state->ytdlpOutputBufferSize = 0;
+    }
+    
     // Mark as initialized
     state->isInitialized = TRUE;
     
@@ -121,6 +132,15 @@ void CleanupApplicationState(ApplicationState* state) {
         FreeCachedMetadata(state->cachedVideoMetadata);
         SAFE_FREE(state->cachedVideoMetadata);
         state->cachedVideoMetadata = NULL;
+    }
+    
+    // Clean up yt-dlp output buffer
+    if (state->ytdlpOutputBuffer) {
+        OutputDebugStringW(L"YouTubeCacher: CleanupApplicationState - Cleaning up yt-dlp output buffer");
+        SAFE_FREE(state->ytdlpOutputBuffer);
+        state->ytdlpOutputBuffer = NULL;
+        state->ytdlpOutputBufferSize = 0;
+        DeleteCriticalSection(&state->ytdlpOutputLock);
     }
     
     // Mark as uninitialized
@@ -572,4 +592,72 @@ BOOL IsDownloadCancelled(void) {
     LeaveCriticalSection(&state->stateLock);
     
     return cancelled;
+}
+
+// yt-dlp output buffer management functions
+void ClearYtDlpOutputBuffer(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpOutputBuffer) return;
+    
+    EnterCriticalSection(&state->ytdlpOutputLock);
+    state->ytdlpOutputBuffer[0] = L'\0';
+    LeaveCriticalSection(&state->ytdlpOutputLock);
+}
+
+void AppendToYtDlpOutputBuffer(const wchar_t* output) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpOutputBuffer || !output) return;
+    
+    EnterCriticalSection(&state->ytdlpOutputLock);
+    
+    size_t currentLen = wcslen(state->ytdlpOutputBuffer);
+    size_t outputLen = wcslen(output);
+    size_t requiredSize = currentLen + outputLen + 1;
+    
+    // Check if we need to expand the buffer
+    if (requiredSize > state->ytdlpOutputBufferSize) {
+        // Double the buffer size or use required size, whichever is larger
+        size_t newSize = (state->ytdlpOutputBufferSize * 2 > requiredSize) ? 
+                         state->ytdlpOutputBufferSize * 2 : requiredSize;
+        
+        wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(state->ytdlpOutputBuffer, newSize * sizeof(wchar_t));
+        if (newBuffer) {
+            state->ytdlpOutputBuffer = newBuffer;
+            state->ytdlpOutputBufferSize = newSize;
+        } else {
+            // Reallocation failed, truncate to fit in current buffer
+            size_t maxAppend = state->ytdlpOutputBufferSize - currentLen - 1;
+            if (maxAppend > 0) {
+                wcsncat(state->ytdlpOutputBuffer, output, maxAppend);
+            }
+            LeaveCriticalSection(&state->ytdlpOutputLock);
+            return;
+        }
+    }
+    
+    // Append the output
+    wcscat(state->ytdlpOutputBuffer, output);
+    
+    LeaveCriticalSection(&state->ytdlpOutputLock);
+}
+
+const wchar_t* GetYtDlpOutputBuffer(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpOutputBuffer) return L"";
+    
+    // Note: This returns a pointer to the buffer. The caller should not modify it
+    // and should be aware that the content may change if other threads call
+    // AppendToYtDlpOutputBuffer or ClearYtDlpOutputBuffer
+    return state->ytdlpOutputBuffer;
+}
+
+size_t GetYtDlpOutputBufferSize(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpOutputBuffer) return 0;
+    
+    EnterCriticalSection(&state->ytdlpOutputLock);
+    size_t len = wcslen(state->ytdlpOutputBuffer);
+    LeaveCriticalSection(&state->ytdlpOutputLock);
+    
+    return len;
 }

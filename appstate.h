@@ -31,6 +31,11 @@ typedef struct {
     CacheManager* cacheManager;
     CachedVideoMetadata* cachedVideoMetadata;
     
+    // yt-dlp output buffer for logging
+    wchar_t* ytdlpOutputBuffer;
+    size_t ytdlpOutputBufferSize;
+    CRITICAL_SECTION ytdlpOutputLock;
+    
     // Download tracking
     BOOL isDownloadActive;
     HANDLE hDownloadProcess;
@@ -90,6 +95,12 @@ const wchar_t* GetCommandLineURL(void);
 // Cache and metadata access functions
 CacheManager* GetCacheManager(void);
 CachedVideoMetadata* GetCachedVideoMetadata(void);
+
+// yt-dlp output buffer functions
+void ClearYtDlpOutputBuffer(void);
+void AppendToYtDlpOutputBuffer(const wchar_t* output);
+const wchar_t* GetYtDlpOutputBuffer(void);
+size_t GetYtDlpOutputBufferSize(void);
 
 // State change notification
 typedef void (*StateChangeCallback)(const char* stateType, void* newValue, void* userData);
