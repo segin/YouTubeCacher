@@ -57,7 +57,6 @@ make clean && make
 - No playlist support
 - No subtitle downloading
 - Basic cache management only
-- Windows only
 
 ## Planned Features
 
