@@ -387,3 +387,181 @@ void ClearRecoveryStrategies(ErrorHandler* handler) {
     handler->strategies->actionCount = 0;
     LeaveCriticalSection(&handler->strategies->lock);
 }
+
+/**
+ * Create a new error context with automatic context population
+ * Allocates and initializes an ErrorContext structure with basic information
+ */
+ErrorContext* CreateErrorContext(StandardErrorCode code, ErrorSeverity severity,
+                                const wchar_t* function, const wchar_t* file, int line) {
+    ErrorContext* context = (ErrorContext*)malloc(sizeof(ErrorContext));
+    if (!context) {
+        return NULL;
+    }
+
+    // Initialize all fields to zero
+    ZeroMemory(context, sizeof(ErrorContext));
+
+    // Set basic error information
+    context->errorCode = code;
+    context->severity = severity;
+    context->lineNumber = line;
+    context->systemErrorCode = GetLastError();
+    context->threadId = GetCurrentThreadId();
+    context->contextVariableCount = 0;
+
+    // Get current timestamp
+    GetSystemTime(&context->timestamp);
+
+    // Copy function name safely
+    if (function) {
+        wcsncpy(context->functionName, function, 127);
+        context->functionName[127] = L'\0';
+    } else {
+        wcscpy(context->functionName, L"Unknown");
+    }
+
+    // Copy file name safely (extract just the filename, not full path)
+    if (file) {
+        const wchar_t* fileName = wcsrchr(file, L'\\');
+        if (fileName) {
+            fileName++; // Skip the backslash
+        } else {
+            fileName = file;
+        }
+        wcsncpy(context->fileName, fileName, 255);
+        context->fileName[255] = L'\0';
+    } else {
+        wcscpy(context->fileName, L"Unknown");
+    }
+
+    // Set default technical message based on error code
+    const wchar_t* errorDescription = GetErrorCodeString(code);
+    wcsncpy(context->technicalMessage, errorDescription, 511);
+    context->technicalMessage[511] = L'\0';
+
+    // Set default user message (will be overridden by SetUserFriendlyMessage if called)
+    wcscpy(context->userMessage, L"An error occurred. Please try again.");
+
+    // Initialize additional context with basic system information
+    swprintf(context->additionalContext, 1024,
+        L"Process ID: %lu\r\n"
+        L"Thread ID: %lu\r\n"
+        L"System Error: %lu\r\n"
+        L"Timestamp: %04d-%02d-%02d %02d:%02d:%02d.%03d UTC\r\n",
+        GetCurrentProcessId(),
+        context->threadId,
+        context->systemErrorCode,
+        context->timestamp.wYear, context->timestamp.wMonth, context->timestamp.wDay,
+        context->timestamp.wHour, context->timestamp.wMinute, context->timestamp.wSecond,
+        context->timestamp.wMilliseconds);
+
+    return context;
+}
+
+/**
+ * Add a context variable to the error context for debugging
+ * Stores name-value pairs that can be used for detailed error analysis
+ */
+void AddContextVariable(ErrorContext* context, const wchar_t* name, const wchar_t* value) {
+    if (!context || !name || !value) {
+        return;
+    }
+
+    // Check if we have room for more variables
+    if (context->contextVariableCount >= 16) {
+        return; // No more room
+    }
+
+    int index = context->contextVariableCount;
+
+    // Copy name safely
+    wcsncpy(context->contextVariables[index].name, name, 63);
+    context->contextVariables[index].name[63] = L'\0';
+
+    // Copy value safely
+    wcsncpy(context->contextVariables[index].value, value, 255);
+    context->contextVariables[index].value[255] = L'\0';
+
+    context->contextVariableCount++;
+
+    // Update additional context with the new variable
+    wchar_t variableInfo[384];
+    swprintf(variableInfo, 384, L"%ls: %ls\r\n", name, value);
+
+    // Append to additional context if there's room
+    size_t currentLen = wcslen(context->additionalContext);
+    size_t newLen = wcslen(variableInfo);
+    if (currentLen + newLen < 1023) {
+        wcscat(context->additionalContext, variableInfo);
+    }
+}
+
+/**
+ * Set a user-friendly message for dialog display
+ * Replaces the default user message with a more descriptive, user-facing message
+ */
+void SetUserFriendlyMessage(ErrorContext* context, const wchar_t* message) {
+    if (!context || !message) {
+        return;
+    }
+
+    wcsncpy(context->userMessage, message, 511);
+    context->userMessage[511] = L'\0';
+}
+
+/**
+ * Capture call stack information for debugging
+ * Uses Windows API to capture the current call stack and store it in the context
+ */
+void CaptureCallStack(ErrorContext* context) {
+    if (!context) {
+        return;
+    }
+
+    // Initialize call stack buffer
+    wcscpy(context->callStack, L"Call Stack:\r\n");
+
+    // Use Windows API to capture stack trace
+    // Note: This is a simplified implementation. A full implementation would use
+    // SymInitialize, SymFromAddr, etc. from dbghelp.dll for detailed stack traces
+    
+    // For now, we'll capture basic information about the current function context
+    wchar_t stackInfo[1024];
+    swprintf(stackInfo, 1024,
+        L"  Function: %ls\r\n"
+        L"  File: %ls:%d\r\n"
+        L"  Thread: %lu\r\n"
+        L"  Process: %lu\r\n",
+        context->functionName,
+        context->fileName,
+        context->lineNumber,
+        context->threadId,
+        GetCurrentProcessId());
+
+    // Append to call stack if there's room
+    size_t currentLen = wcslen(context->callStack);
+    size_t newLen = wcslen(stackInfo);
+    if (currentLen + newLen < 2047) {
+        wcscat(context->callStack, stackInfo);
+    }
+
+    // Add a note about limited stack trace capability
+    const wchar_t* note = L"  (Detailed stack trace requires debug symbols)\r\n";
+    currentLen = wcslen(context->callStack);
+    if (currentLen + wcslen(note) < 2047) {
+        wcscat(context->callStack, note);
+    }
+}
+
+/**
+ * Free an error context and clean up its memory
+ * Safely deallocates the ErrorContext structure
+ */
+void FreeErrorContext(ErrorContext* context) {
+    if (context) {
+        // Clear sensitive information before freeing
+        ZeroMemory(context, sizeof(ErrorContext));
+        free(context);
+    }
+}

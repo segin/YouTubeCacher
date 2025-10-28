@@ -40,6 +40,7 @@ typedef enum {
 // Forward declarations
 typedef struct ErrorStatistics ErrorStatistics;
 typedef struct RecoveryStrategy RecoveryStrategy;
+typedef struct ErrorContext ErrorContext;
 
 // Error statistics structure for tracking and analysis
 typedef struct ErrorStatistics {
@@ -100,6 +101,35 @@ void ClearRecoveryStrategies(ErrorHandler* handler);
 const wchar_t* GetErrorCodeString(StandardErrorCode code);
 const wchar_t* GetSeverityString(ErrorSeverity severity);
 BOOL IsRecoverableError(StandardErrorCode code);
+
+// Error context structure for detailed error information
+typedef struct ErrorContext {
+    StandardErrorCode errorCode;
+    ErrorSeverity severity;
+    wchar_t functionName[128];
+    wchar_t fileName[256];
+    int lineNumber;
+    wchar_t technicalMessage[512];
+    wchar_t userMessage[512];
+    wchar_t additionalContext[1024];
+    DWORD systemErrorCode;
+    SYSTEMTIME timestamp;
+    DWORD threadId;
+    wchar_t callStack[2048];
+    struct {
+        wchar_t name[64];
+        wchar_t value[256];
+    } contextVariables[16];
+    int contextVariableCount;
+} ErrorContext;
+
+// Error context management functions
+ErrorContext* CreateErrorContext(StandardErrorCode code, ErrorSeverity severity,
+                                const wchar_t* function, const wchar_t* file, int line);
+void AddContextVariable(ErrorContext* context, const wchar_t* name, const wchar_t* value);
+void SetUserFriendlyMessage(ErrorContext* context, const wchar_t* message);
+void CaptureCallStack(ErrorContext* context);
+void FreeErrorContext(ErrorContext* context);
 
 // Global error handler instance
 extern ErrorHandler g_ErrorHandler;
