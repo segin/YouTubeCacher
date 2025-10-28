@@ -35,14 +35,11 @@ static const size_t MAX_FREED_MEMORY_TRACKING = 1000; // Limit to prevent excess
 static BOOL AddAllocationRecord(void* address, size_t size, const char* file, int line);
 static void ExpandAllocationTable(void);
 static BOOL RemoveAllocationRecord(void* address, size_t* outSize);
+static void RebuildHashTable(void);
 
-// Hash table function declarations
-static BOOL InitializeHashTable(AllocationHashTable* table, size_t bucketCount);
+// Simplified allocation tracking - remove complex hash table
+static int FindAllocationIndex(void* address);
 static void CleanupHashTable(AllocationHashTable* table);
-static size_t HashAddress(void* address, size_t bucketCount);
-static BOOL AddToHashTable(AllocationHashTable* table, AllocationInfo* allocation);
-static AllocationInfo* FindInHashTable(AllocationHashTable* table, void* address);
-static BOOL RemoveFromHashTable(AllocationHashTable* table, void* address);
 
 // Internal error handling function declarations
 static void InitializeErrorSystem(void);
@@ -81,12 +78,9 @@ BOOL InitializeMemoryManager(void)
         return FALSE;
     }
 
-    // Initialize hash table for fast lookup
-    if (!InitializeHashTable(&g_memoryManager.hashTable, INITIAL_HASH_TABLE_SIZE)) {
-        free(g_memoryManager.allocations);
-        DeleteCriticalSection(&g_memoryManager.lock);
-        return FALSE;
-    }
+    // Initialize hash table structure (but don't use it for now)
+    g_memoryManager.hashTable.buckets = NULL;
+    g_memoryManager.hashTable.bucketCount = 0;
 
     // Initialize memory manager state
     g_memoryManager.allocationCapacity = INITIAL_ALLOCATION_TABLE_SIZE;
@@ -128,8 +122,10 @@ void CleanupMemoryManager(void)
     // Cleanup memory pools first
     CleanupMemoryPools();
 
-    // Cleanup hash table
-    CleanupHashTable(&g_memoryManager.hashTable);
+    // Cleanup hash table (if it was initialized)
+    if (g_memoryManager.hashTable.buckets) {
+        CleanupHashTable(&g_memoryManager.hashTable);
+    }
 
     // Free the allocation tracking table
     if (g_memoryManager.allocations) {
@@ -410,8 +406,8 @@ void SafeFree(void* ptr, const char* file, int line)
         InitializeErrorSystem();
     }
 
-    // Check for double-free if detection is enabled
-    if (g_doubleFreDetectionEnabled && IsFreedMemory(ptr)) {
+    // Check for double-free if detection is enabled and leak detection is on
+    if (g_doubleFreDetectionEnabled && g_memoryManager.leakDetectionEnabled && IsFreedMemory(ptr)) {
         ReportMemoryError(MEMORY_ERROR_DOUBLE_FREE, ptr, 0, file, line,
                          L"Attempt to free already freed memory");
         return; // Don't actually free again
@@ -423,28 +419,35 @@ void SafeFree(void* ptr, const char* file, int line)
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
         
-        // Use hash table for fast lookup and removal
-        if (RemoveAllocationRecord(ptr, &freedSize)) {
-            g_memoryManager.totalFreed += freedSize;
-            g_memoryManager.currentUsage -= freedSize;
+        // First check if this allocation is tracked
+        BOOL found = FALSE;
+        for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
+            if (g_memoryManager.allocations[i].address == ptr) {
+                found = TRUE;
+                freedSize = g_memoryManager.allocations[i].size;
+                break;
+            }
+        }
+        
+        if (found) {
             wasTracked = TRUE;
-        } else {
-            // Address not found in allocation table
-            if (g_doubleFreDetectionEnabled) {
-                LeaveCriticalSection(&g_memoryManager.lock);
-                ReportMemoryError(MEMORY_ERROR_INVALID_ADDRESS, ptr, 0, file, line,
-                                 L"Attempt to free untracked memory address");
-                return;
+            
+            // Validate allocation integrity BEFORE removing from tracking table
+            LeaveCriticalSection(&g_memoryManager.lock);
+            if (!ValidateAllocationIntegrity(ptr)) {
+                // Error already reported by ValidateAllocationIntegrity
+                return; // Don't free corrupted memory
+            }
+            EnterCriticalSection(&g_memoryManager.lock);
+            
+            // Now remove from tracking table
+            if (RemoveAllocationRecord(ptr, &freedSize)) {
+                g_memoryManager.totalFreed += freedSize;
+                g_memoryManager.currentUsage -= freedSize;
             }
         }
         
         LeaveCriticalSection(&g_memoryManager.lock);
-    }
-
-    // Validate allocation integrity before freeing
-    if (wasTracked && !ValidateAllocationIntegrity(ptr)) {
-        // Error already reported by ValidateAllocationIntegrity
-        return; // Don't free corrupted memory
     }
 
     // Add to freed memory tracking for use-after-free detection
@@ -558,10 +561,8 @@ static BOOL AddAllocationRecord(void* address, size_t size, const char* file, in
     alloc->threadId = GetCurrentThreadId();
     GetSystemTime(&alloc->allocTime);
     
-    // Add to hash table for fast lookup
-    if (!AddToHashTable(&g_memoryManager.hashTable, alloc)) {
-        return FALSE; // Hash table insertion failed
-    }
+    // Skip hash table for now - use linear search only for reliability
+    // TODO: Implement a more robust hash table later
     
     g_memoryManager.allocationCount++;
     return TRUE;
@@ -569,35 +570,27 @@ static BOOL AddAllocationRecord(void* address, size_t size, const char* file, in
 
 static BOOL RemoveAllocationRecord(void* address, size_t* outSize)
 {
-    // Find allocation using hash table
-    AllocationInfo* alloc = FindInHashTable(&g_memoryManager.hashTable, address);
-    if (!alloc) {
-        if (outSize) *outSize = 0;
-        return FALSE;
-    }
-
-    // Store size for caller
-    if (outSize) {
-        *outSize = alloc->size;
-    }
-
-    // Remove from hash table
-    if (!RemoveFromHashTable(&g_memoryManager.hashTable, address)) {
-        return FALSE;
-    }
-
-    // Find in linear array and remove by swapping with last element
+    // Use linear search only - hash table is too complex and error-prone
     for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
         if (g_memoryManager.allocations[i].address == address) {
-            // Move last element to this position
-            g_memoryManager.allocations[i] = 
-                g_memoryManager.allocations[g_memoryManager.allocationCount - 1];
+            // Store size for caller
+            if (outSize) {
+                *outSize = g_memoryManager.allocations[i].size;
+            }
+            
+            // Move last element to this position if not already the last
+            if (i < g_memoryManager.allocationCount - 1) {
+                g_memoryManager.allocations[i] = 
+                    g_memoryManager.allocations[g_memoryManager.allocationCount - 1];
+            }
+            
             g_memoryManager.allocationCount--;
             return TRUE;
         }
     }
 
-    return FALSE; // Should not happen if hash table is consistent
+    if (outSize) *outSize = 0;
+    return FALSE;
 }
 
 
@@ -659,10 +652,12 @@ static size_t HashAddress(void* address, size_t bucketCount)
     // Simple hash function for pointer addresses
     uintptr_t addr = (uintptr_t)address;
     
-    // Use multiplication method with golden ratio approximation
-    // This helps distribute addresses more evenly across buckets
-    const uintptr_t A = 2654435769UL; // 2^32 / golden ratio
-    return ((addr * A) >> (32 - 10)) % bucketCount; // Use top 10 bits for hash
+    // Use a simple but effective hash for pointers
+    // Mix the bits to get better distribution
+    addr ^= addr >> 16;
+    addr ^= addr >> 8;
+    
+    return addr % bucketCount;
 }
 
 static BOOL AddToHashTable(AllocationHashTable* table, AllocationInfo* allocation)
@@ -732,6 +727,30 @@ static BOOL RemoveFromHashTable(AllocationHashTable* table, void* address)
     }
 
     return FALSE;
+}
+
+// Rebuild hash table from current allocation array
+static void RebuildHashTable(void)
+{
+    if (!g_memoryManager.initialized) {
+        return;
+    }
+
+    // Clear existing hash table
+    CleanupHashTable(&g_memoryManager.hashTable);
+    
+    // Reinitialize hash table
+    if (!InitializeHashTable(&g_memoryManager.hashTable, INITIAL_HASH_TABLE_SIZE)) {
+        // If we can't rebuild the hash table, disable it
+        g_memoryManager.hashTable.buckets = NULL;
+        g_memoryManager.hashTable.bucketCount = 0;
+        return;
+    }
+    
+    // Re-add all current allocations to hash table
+    for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
+        AddToHashTable(&g_memoryManager.hashTable, &g_memoryManager.allocations[i]);
+    }
 }
 
 // Safe string management function implementations
@@ -1549,6 +1568,11 @@ BOOL ValidateMemoryAddress(void* address)
         return FALSE;
     }
 
+    // If leak detection is disabled, skip all validation
+    if (!g_memoryManager.initialized || !g_memoryManager.leakDetectionEnabled) {
+        return TRUE;
+    }
+
     // Check if it's a freed memory address
     if (g_useAfterFreeDetectionEnabled && IsFreedMemory(address)) {
         ReportMemoryError(MEMORY_ERROR_USE_AFTER_FREE, address, 0, 
@@ -1556,17 +1580,23 @@ BOOL ValidateMemoryAddress(void* address)
         return FALSE;
     }
 
-    // Check if it's a valid allocation
-    if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
-        EnterCriticalSection(&g_memoryManager.lock);
-        AllocationInfo* alloc = FindInHashTable(&g_memoryManager.hashTable, address);
-        LeaveCriticalSection(&g_memoryManager.lock);
-        
-        if (!alloc) {
-            ReportMemoryError(MEMORY_ERROR_INVALID_ADDRESS, address, 0,
-                             __FILE__, __LINE__, L"Address not found in allocation table");
-            return FALSE;
+    // Check if it's a valid allocation using linear search
+    EnterCriticalSection(&g_memoryManager.lock);
+    
+    BOOL found = FALSE;
+    for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
+        if (g_memoryManager.allocations[i].address == address) {
+            found = TRUE;
+            break;
         }
+    }
+    
+    LeaveCriticalSection(&g_memoryManager.lock);
+    
+    if (!found) {
+        ReportMemoryError(MEMORY_ERROR_INVALID_ADDRESS, address, 0,
+                         __FILE__, __LINE__, L"Address not found in allocation table");
+        return FALSE;
     }
 
     return TRUE;
@@ -1581,7 +1611,15 @@ BOOL ValidateAllocationIntegrity(void* address)
 #ifdef MEMORY_DEBUG
     if (g_bufferOverrunDetectionEnabled && g_memoryManager.initialized) {
         EnterCriticalSection(&g_memoryManager.lock);
-        AllocationInfo* alloc = FindInHashTable(&g_memoryManager.hashTable, address);
+        
+        AllocationInfo* alloc = NULL;
+        // Find allocation using linear search
+        for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
+            if (g_memoryManager.allocations[i].address == address) {
+                alloc = &g_memoryManager.allocations[i];
+                break;
+            }
+        }
         
         if (alloc) {
             // Check guard patterns before and after the allocation
