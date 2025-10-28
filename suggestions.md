@@ -4,39 +4,6 @@ Based on my analysis of the YouTubeCacher codebase, here are the key areas for i
 
 ## Code Quality & Architecture
 
-### 1. **Monolithic main.c File (5,804 lines)**
-**Issue**: The main.c file is extremely large and handles too many responsibilities.
-
-**Improvements**:
-- Split into separate modules: `ui.c`, `ytdlp.c`, `settings.c`, `threading.c`
-- Extract window procedure logic into dedicated UI handling functions
-- Move yt-dlp execution logic to a separate module
-- Create a proper application state management system
-
-### 2. **Memory Management Concerns**
-**Issues Found**:
-- Many `malloc()` calls with corresponding `free()` calls, but complex error paths
-- Some potential leaks in error handling scenarios
-- Manual memory management throughout
-
-**Improvements**:
-- Implement RAII-style resource management patterns
-- Create wrapper functions for common allocation patterns
-- Add memory leak detection in debug builds
-- Consider using memory pools for frequent allocations
-
-### 3. **Error Handling Inconsistency**
-**Issues**:
-- Mix of return codes, NULL returns, and exception-like patterns
-- Inconsistent error propagation
-- Some functions don't check all allocation failures
-
-**Improvements**:
-- Standardize error handling with consistent return types
-- Implement proper error context propagation
-- Add comprehensive input validation
-- Create error handling macros for common patterns
-
 ## Threading & Concurrency
 
 ### 4. **Thread Safety Issues**
@@ -171,8 +138,8 @@ Based on my analysis of the YouTubeCacher codebase, here are the key areas for i
 
 ## Recommended Priority Order:
 
-1. **High Priority**: Split main.c, fix memory management, standardize error handling
-2. **Medium Priority**: Improve threading safety, enhance subprocess management
+1. **High Priority**: Standardize error handling, improve threading safety
+2. **Medium Priority**: Enhance subprocess management, improve dialog system
 3. **Low Priority**: Add testing, improve build system, enhance logging
 
 The codebase shows good attention to Windows-specific details and Unicode support, but would benefit significantly from modularization and more robust error handling patterns.
