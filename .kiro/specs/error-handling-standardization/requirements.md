@@ -65,15 +65,15 @@ This feature addresses the inconsistent error handling patterns throughout the Y
 
 ### Requirement 5
 
-**User Story:** As a YouTubeCacher user, I want error dialogs to display meaningful and detailed information so that I can understand what went wrong and take appropriate action.
+**User Story:** As a YouTubeCacher user, I want error dialogs to display meaningful and detailed information using the existing unified dialog system so that I can understand what went wrong and take appropriate action.
 
 #### Acceptance Criteria
 
-1. WHEN an error occurs, THE Error_Handler SHALL collect detailed error information automatically
-2. THE Error_Handler SHALL format error messages for user-friendly display in dialogs
-3. WHEN displaying error dialogs, THE Error_Handler SHALL include relevant context without technical jargon
-4. THE Error_Handler SHALL provide both brief and detailed error descriptions for different user needs
-5. WHEN multiple errors occur, THE Error_Handler SHALL aggregate and prioritize error information for dialog display
+1. WHEN an error occurs, THE Error_Handler SHALL populate UnifiedDialogConfig structures automatically with error information
+2. THE Error_Handler SHALL format error messages for display in the existing UnifiedDialog system
+3. WHEN displaying error dialogs, THE Error_Handler SHALL utilize the tabbed interface for technical details, diagnostics, and solutions
+4. THE Error_Handler SHALL map error severity levels to appropriate UnifiedDialogType values (INFO, WARNING, ERROR, SUCCESS)
+5. WHEN multiple errors occur, THE Error_Handler SHALL aggregate error information into the unified dialog's multi-tab structure
 
 ### Requirement 6
 

@@ -95,26 +95,32 @@ void CaptureCallStack(ErrorContext* context);
 void FreeErrorContext(ErrorContext* context);
 ```
 
-### 3. Error Dialog Manager
+### 3. Error Dialog Manager (Unified Dialog Integration)
 
 ```c
-// Dialog data structure for user presentation
-typedef struct ErrorDialogData {
-    wchar_t title[128];
-    wchar_t briefMessage[256];
-    wchar_t detailedMessage[1024];
-    wchar_t technicalDetails[2048];
-    wchar_t suggestedActions[1024];
-    ErrorSeverity severity;
-    BOOL showTechnicalDetails;
-    BOOL allowRetry;
-} ErrorDialogData;
+// Error dialog integration with existing UnifiedDialog system
+typedef struct ErrorDialogBuilder {
+    wchar_t* title;
+    wchar_t* message;
+    wchar_t* technicalDetails;
+    wchar_t* diagnostics;
+    wchar_t* solutions;
+    UnifiedDialogType dialogType;
+    BOOL showCopyButton;
+    BOOL showDetailsButton;
+} ErrorDialogBuilder;
 
-// Dialog management functions
-ErrorDialogData* CreateErrorDialogData(const ErrorContext* context);
-void PopulateDialogFromContext(ErrorDialogData* dialogData, const ErrorContext* context);
-INT_PTR ShowErrorDialog(HWND parent, const ErrorDialogData* dialogData);
-void FreeErrorDialogData(ErrorDialogData* dialogData);
+// Dialog management functions that integrate with UnifiedDialog
+ErrorDialogBuilder* CreateErrorDialogBuilder(const ErrorContext* context);
+UnifiedDialogConfig* BuildUnifiedDialogConfig(const ErrorDialogBuilder* builder);
+INT_PTR ShowErrorDialog(HWND parent, const ErrorContext* context);
+void FreeErrorDialogBuilder(ErrorDialogBuilder* builder);
+
+// Utility functions for dialog content generation
+UnifiedDialogType MapSeverityToDialogType(ErrorSeverity severity);
+void FormatTechnicalDetails(const ErrorContext* context, wchar_t* buffer, size_t bufferSize);
+void FormatDiagnosticInfo(const ErrorContext* context, wchar_t* buffer, size_t bufferSize);
+void FormatSolutionSuggestions(StandardErrorCode errorCode, wchar_t* buffer, size_t bufferSize);
 ```
 
 ### 4. Validation Framework
@@ -242,14 +248,16 @@ Errors are classified into categories for appropriate handling:
 3. **User Intervention** - Prompt user for corrective action
 4. **Safe Termination** - Save state and exit cleanly for fatal errors
 
-### Error Dialog Population
+### Error Dialog Population (UnifiedDialog Integration)
 
-The system automatically collects error data behind-the-scenes:
+The system automatically populates the existing UnifiedDialog system with structured error information:
 
-1. **Context Collection** - Function name, file, line number, variable values
-2. **System State** - Memory usage, thread status, file system state
-3. **User-Friendly Translation** - Convert technical errors to understandable messages
-4. **Actionable Guidance** - Provide specific steps users can take to resolve issues
+1. **Main Message Tab** - User-friendly error description and immediate context
+2. **Technical Details Tab** - Function name, file, line number, call stack, and variable values  
+3. **Diagnostics Tab** - System state information, memory usage, thread status, file system state
+4. **Solutions Tab** - Actionable guidance and specific steps users can take to resolve issues
+5. **Dialog Type Mapping** - Automatic mapping of error severity to UnifiedDialogType (INFO, WARNING, ERROR, SUCCESS)
+6. **Copy Button Integration** - Leverages existing copy functionality for technical support
 
 ## Testing Strategy
 

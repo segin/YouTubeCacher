@@ -2,7 +2,6 @@
 
 - [x] 1. Create core error handling infrastructure
 
-
   - Create error.h header file with all error handling types, enums, and function prototypes
   - Create error.c source file with core error handler implementation
   - Define StandardErrorCode enum with all application-specific error codes
@@ -11,11 +10,6 @@
   - _Requirements: 1.1, 1.2, 1.3_
 
 - [x] 2. Implement error context system
-
-
-
-
-
   - Create ErrorContext structure with all required fields (function, file, line, messages, etc.)
   - Implement CreateErrorContext function with automatic context population
   - Implement AddContextVariable function for dynamic context data
@@ -24,12 +18,16 @@
   - Implement FreeErrorContext function with proper memory cleanup
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 3. Create error dialog management system
-  - Create ErrorDialogData structure for user-facing error information
-  - Implement CreateErrorDialogData function to convert ErrorContext to dialog data
-  - Implement PopulateDialogFromContext function for automatic dialog population
-  - Implement ShowErrorDialog function integrated with existing UnifiedDialog system
-  - Implement FreeErrorDialogData function for proper cleanup
+- [x] 3. Create error dialog management system integrated with UnifiedDialog
+
+
+  - Create ErrorDialogBuilder structure for building UnifiedDialogConfig from ErrorContext
+  - Implement CreateErrorDialogBuilder function to convert ErrorContext to dialog builder
+  - Implement BuildUnifiedDialogConfig function to create UnifiedDialogConfig from builder
+  - Implement ShowErrorDialog function that uses existing ShowUnifiedDialog with error context
+  - Implement MapSeverityToDialogType function to map ErrorSeverity to UnifiedDialogType
+  - Implement FormatTechnicalDetails, FormatDiagnosticInfo, and FormatSolutionSuggestions functions
+  - Implement FreeErrorDialogBuilder function for proper cleanup
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
 - [ ] 4. Implement validation framework
@@ -94,11 +92,12 @@
   - Add threading error recovery strategies
   - _Requirements: 4.5, 6.1, 6.2_
 
-- [ ] 12. Update UI error handling integration
-  - Modify existing error dialog creation to use ErrorDialogData
-  - Update UnifiedDialog system to handle ErrorDialogData structures
-  - Ensure all error dialogs display Windows line endings correctly
-  - Implement error dialog customization based on error severity
+- [ ] 12. Update UI error handling integration with existing UnifiedDialog system
+  - Replace manual UnifiedDialogConfig creation with ErrorDialogBuilder-based approach
+  - Update existing error dialog calls to use new ShowErrorDialog function with ErrorContext
+  - Ensure all error dialogs maintain Windows line endings in multi-line content
+  - Verify error dialog tab content displays correctly in existing UnifiedDialog interface
+  - Test error severity mapping to UnifiedDialogType for proper visual styling
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
 - [ ] 13. Replace existing error handling patterns
