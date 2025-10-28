@@ -131,6 +131,13 @@ void SetUserFriendlyMessage(ErrorContext* context, const wchar_t* message);
 void CaptureCallStack(ErrorContext* context);
 void FreeErrorContext(ErrorContext* context);
 
+// Error dialog functions (implemented in error.c, requires YouTubeCacher.h)
+// These functions integrate with the existing UnifiedDialog system
+INT_PTR ShowErrorDialog(HWND parent, const ErrorContext* context);
+void FormatTechnicalDetails(const ErrorContext* context, wchar_t* buffer, size_t bufferSize);
+void FormatDiagnosticInfo(const ErrorContext* context, wchar_t* buffer, size_t bufferSize);
+void FormatSolutionSuggestions(StandardErrorCode errorCode, wchar_t* buffer, size_t bufferSize);
+
 // Global error handler instance
 extern ErrorHandler g_ErrorHandler;
 
@@ -146,6 +153,17 @@ extern ErrorHandler g_ErrorHandler;
         wchar_t _msg[512]; \
         swprintf(_msg, 512, (format), __VA_ARGS__); \
         ReportError((severity), (code), __FUNCTIONW__, __FILEW__, __LINE__, _msg); \
+    } while(0)
+
+// Convenience macro for showing error dialogs
+#define SHOW_ERROR_DIALOG(parent, severity, code, message) \
+    do { \
+        ErrorContext* _ctx = CreateErrorContext((code), (severity), __FUNCTIONW__, __FILEW__, __LINE__); \
+        if (_ctx) { \
+            SetUserFriendlyMessage(_ctx, (message)); \
+            ShowErrorDialog((parent), _ctx); \
+            FreeErrorContext(_ctx); \
+        } \
     } while(0)
 
 #endif // ERROR_H

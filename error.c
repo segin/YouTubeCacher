@@ -1,4 +1,4 @@
-#include "error.h"
+#include "YouTubeCacher.h"
 #include <stdio.h>
 #include <wchar.h>
 #include <time.h>
@@ -564,4 +564,377 @@ void FreeErrorContext(ErrorContext* context) {
         ZeroMemory(context, sizeof(ErrorContext));
         free(context);
     }
+}
+
+// ============================================================================
+// Error Dialog Management System (UnifiedDialog Integration)
+// ============================================================================
+
+// Local structure for building error dialogs (not exposed in header)
+typedef struct ErrorDialogBuilder {
+    wchar_t* title;
+    wchar_t* message;
+    wchar_t* technicalDetails;
+    wchar_t* diagnostics;
+    wchar_t* solutions;
+    UnifiedDialogType dialogType;
+    BOOL showCopyButton;
+    BOOL showDetailsButton;
+} ErrorDialogBuilder;
+
+// Local function declarations
+static ErrorDialogBuilder* CreateErrorDialogBuilder(const ErrorContext* context);
+static UnifiedDialogConfig* BuildUnifiedDialogConfig(const ErrorDialogBuilder* builder);
+static void FreeErrorDialogBuilder(ErrorDialogBuilder* builder);
+static UnifiedDialogType MapSeverityToDialogType(ErrorSeverity severity);
+
+/**
+ * Map error severity to UnifiedDialogType for proper visual styling
+ */
+static UnifiedDialogType MapSeverityToDialogType(ErrorSeverity severity) {
+    switch (severity) {
+        case YTC_SEVERITY_INFO:
+            return UNIFIED_DIALOG_INFO;
+        case YTC_SEVERITY_WARNING:
+            return UNIFIED_DIALOG_WARNING;
+        case YTC_SEVERITY_ERROR:
+        case YTC_SEVERITY_FATAL:
+            return UNIFIED_DIALOG_ERROR;
+        default:
+            return UNIFIED_DIALOG_ERROR;
+    }
+}
+
+/**
+ * Format technical details from error context for display in dialog
+ */
+void FormatTechnicalDetails(const ErrorContext* context, wchar_t* buffer, size_t bufferSize) {
+    if (!context || !buffer || bufferSize == 0) {
+        return;
+    }
+
+    swprintf(buffer, bufferSize,
+        L"Error Code: %d (%ls)\r\n"
+        L"Severity: %ls\r\n"
+        L"Function: %ls\r\n"
+        L"File: %ls (Line %d)\r\n"
+        L"System Error: %lu\r\n"
+        L"Thread ID: %lu\r\n"
+        L"Timestamp: %04d-%02d-%02d %02d:%02d:%02d UTC\r\n"
+        L"\r\n"
+        L"Technical Message:\r\n"
+        L"%ls\r\n",
+        context->errorCode,
+        GetErrorCodeString(context->errorCode),
+        GetSeverityString(context->severity),
+        context->functionName,
+        context->fileName,
+        context->lineNumber,
+        context->systemErrorCode,
+        context->threadId,
+        context->timestamp.wYear, context->timestamp.wMonth, context->timestamp.wDay,
+        context->timestamp.wHour, context->timestamp.wMinute, context->timestamp.wSecond,
+        context->technicalMessage);
+
+    // Add context variables if any
+    if (context->contextVariableCount > 0) {
+        wcscat(buffer, L"\r\nContext Variables:\r\n");
+        for (int i = 0; i < context->contextVariableCount; i++) {
+            wchar_t varInfo[384];
+            swprintf(varInfo, 384, L"  %ls: %ls\r\n", 
+                context->contextVariables[i].name, 
+                context->contextVariables[i].value);
+            wcscat(buffer, varInfo);
+        }
+    }
+}
+
+/**
+ * Format diagnostic information for display in dialog
+ */
+void FormatDiagnosticInfo(const ErrorContext* context, wchar_t* buffer, size_t bufferSize) {
+    if (!context || !buffer || bufferSize == 0) {
+        return;
+    }
+
+    // Get memory status
+    MEMORYSTATUSEX memStatus = {0};
+    memStatus.dwLength = sizeof(memStatus);
+    GlobalMemoryStatusEx(&memStatus);
+
+    // Get disk space for current directory
+    ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
+    GetDiskFreeSpaceExW(L".", &freeBytesAvailable, &totalBytes, &totalFreeBytes);
+
+    swprintf(buffer, bufferSize,
+        L"System Diagnostics:\r\n"
+        L"\r\n"
+        L"Memory Status:\r\n"
+        L"  Physical Memory: %llu MB used / %llu MB total\r\n"
+        L"  Virtual Memory: %llu MB used / %llu MB total\r\n"
+        L"  Memory Load: %lu%%\r\n"
+        L"\r\n"
+        L"Disk Space:\r\n"
+        L"  Available: %llu MB\r\n"
+        L"  Total: %llu MB\r\n"
+        L"\r\n"
+        L"Process Information:\r\n"
+        L"  Process ID: %lu\r\n"
+        L"  Thread ID: %lu\r\n"
+        L"\r\n"
+        L"Additional Context:\r\n"
+        L"%ls\r\n"
+        L"\r\n"
+        L"Call Stack:\r\n"
+        L"%ls",
+        (memStatus.ullTotalPhys - memStatus.ullAvailPhys) / (1024 * 1024),
+        memStatus.ullTotalPhys / (1024 * 1024),
+        (memStatus.ullTotalVirtual - memStatus.ullAvailVirtual) / (1024 * 1024),
+        memStatus.ullTotalVirtual / (1024 * 1024),
+        memStatus.dwMemoryLoad,
+        freeBytesAvailable.QuadPart / (1024 * 1024),
+        totalBytes.QuadPart / (1024 * 1024),
+        GetCurrentProcessId(),
+        context->threadId,
+        context->additionalContext,
+        context->callStack);
+}
+
+/**
+ * Format solution suggestions based on error code
+ */
+void FormatSolutionSuggestions(StandardErrorCode errorCode, wchar_t* buffer, size_t bufferSize) {
+    if (!buffer || bufferSize == 0) {
+        return;
+    }
+
+    const wchar_t* suggestions = L"";
+
+    switch (errorCode) {
+        case YTC_ERROR_MEMORY_ALLOCATION:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Close other applications to free memory\r\n"
+                         L"• Restart YouTubeCacher to clear memory leaks\r\n"
+                         L"• Check available system memory\r\n"
+                         L"• Consider reducing cache size in settings";
+            break;
+
+        case YTC_ERROR_FILE_NOT_FOUND:
+        case YTC_ERROR_FILE_ACCESS:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Verify the file path is correct\r\n"
+                         L"• Check file permissions\r\n"
+                         L"• Ensure the file is not in use by another program\r\n"
+                         L"• Try running YouTubeCacher as administrator";
+            break;
+
+        case YTC_ERROR_NETWORK_FAILURE:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Check your internet connection\r\n"
+                         L"• Verify proxy settings if applicable\r\n"
+                         L"• Try again in a few minutes\r\n"
+                         L"• Check if YouTube is accessible in your browser";
+            break;
+
+        case YTC_ERROR_YTDLP_EXECUTION:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Update yt-dlp to the latest version\r\n"
+                         L"• Check if the video URL is valid and accessible\r\n"
+                         L"• Verify yt-dlp is properly installed\r\n"
+                         L"• Try a different video URL to test";
+            break;
+
+        case YTC_ERROR_DISK_FULL:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Free up disk space by deleting unnecessary files\r\n"
+                         L"• Clear the cache directory\r\n"
+                         L"• Move cache to a different drive with more space\r\n"
+                         L"• Check disk cleanup utilities";
+            break;
+
+        case YTC_ERROR_PERMISSION_DENIED:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Run YouTubeCacher as administrator\r\n"
+                         L"• Check folder permissions for cache directory\r\n"
+                         L"• Ensure antivirus is not blocking the operation\r\n"
+                         L"• Try changing the cache directory location";
+            break;
+
+        case YTC_ERROR_URL_INVALID:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Verify the URL is a valid YouTube link\r\n"
+                         L"• Check for typos in the URL\r\n"
+                         L"• Try copying the URL directly from YouTube\r\n"
+                         L"• Ensure the video is publicly accessible";
+            break;
+
+        case YTC_ERROR_TIMEOUT:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Check your internet connection speed\r\n"
+                         L"• Try again when network conditions improve\r\n"
+                         L"• Consider increasing timeout settings\r\n"
+                         L"• Verify the server is responding";
+            break;
+
+        default:
+            suggestions = L"Suggested Actions:\r\n"
+                         L"• Try the operation again\r\n"
+                         L"• Restart YouTubeCacher if the problem persists\r\n"
+                         L"• Check the log file for additional details\r\n"
+                         L"• Contact support if the issue continues";
+            break;
+    }
+
+    wcsncpy(buffer, suggestions, bufferSize - 1);
+    buffer[bufferSize - 1] = L'\0';
+}
+
+/**
+ * Create an ErrorDialogBuilder from an ErrorContext
+ */
+static ErrorDialogBuilder* CreateErrorDialogBuilder(const ErrorContext* context) {
+    if (!context) {
+        return NULL;
+    }
+
+    ErrorDialogBuilder* builder = (ErrorDialogBuilder*)malloc(sizeof(ErrorDialogBuilder));
+    if (!builder) {
+        return NULL;
+    }
+
+    ZeroMemory(builder, sizeof(ErrorDialogBuilder));
+
+    // Allocate and set title
+    builder->title = (wchar_t*)malloc(256 * sizeof(wchar_t));
+    if (builder->title) {
+        swprintf(builder->title, 256, L"%ls - %ls", 
+            GetSeverityString(context->severity), 
+            GetErrorCodeString(context->errorCode));
+    }
+
+    // Allocate and set main message (user-friendly)
+    builder->message = (wchar_t*)malloc(1024 * sizeof(wchar_t));
+    if (builder->message) {
+        wcsncpy(builder->message, context->userMessage, 1023);
+        builder->message[1023] = L'\0';
+    }
+
+    // Allocate and format technical details
+    builder->technicalDetails = (wchar_t*)malloc(4096 * sizeof(wchar_t));
+    if (builder->technicalDetails) {
+        FormatTechnicalDetails(context, builder->technicalDetails, 4096);
+    }
+
+    // Allocate and format diagnostics
+    builder->diagnostics = (wchar_t*)malloc(8192 * sizeof(wchar_t));
+    if (builder->diagnostics) {
+        FormatDiagnosticInfo(context, builder->diagnostics, 8192);
+    }
+
+    // Allocate and format solutions
+    builder->solutions = (wchar_t*)malloc(2048 * sizeof(wchar_t));
+    if (builder->solutions) {
+        FormatSolutionSuggestions(context->errorCode, builder->solutions, 2048);
+    }
+
+    // Set dialog properties
+    builder->dialogType = MapSeverityToDialogType(context->severity);
+    builder->showCopyButton = TRUE;
+    builder->showDetailsButton = TRUE;
+
+    return builder;
+}
+
+/**
+ * Build a UnifiedDialogConfig from an ErrorDialogBuilder
+ */
+static UnifiedDialogConfig* BuildUnifiedDialogConfig(const ErrorDialogBuilder* builder) {
+    if (!builder) {
+        return NULL;
+    }
+
+    UnifiedDialogConfig* config = (UnifiedDialogConfig*)malloc(sizeof(UnifiedDialogConfig));
+    if (!config) {
+        return NULL;
+    }
+
+    ZeroMemory(config, sizeof(UnifiedDialogConfig));
+
+    // Set basic properties
+    config->dialogType = builder->dialogType;
+    config->title = builder->title;
+    config->message = builder->message;
+    config->details = builder->technicalDetails;
+    config->showDetailsButton = builder->showDetailsButton;
+    config->showCopyButton = builder->showCopyButton;
+
+    // Set up tabs for additional information
+    config->tab1_name = L"Technical Details";
+    config->tab2_content = builder->diagnostics;
+    config->tab2_name = L"Diagnostics";
+    config->tab3_content = builder->solutions;
+    config->tab3_name = L"Solutions";
+
+    return config;
+}
+
+/**
+ * Show an error dialog using the existing UnifiedDialog system
+ */
+INT_PTR ShowErrorDialog(HWND parent, const ErrorContext* context) {
+    if (!context) {
+        return IDCANCEL;
+    }
+
+    // Create dialog builder from error context
+    ErrorDialogBuilder* builder = CreateErrorDialogBuilder(context);
+    if (!builder) {
+        return IDCANCEL;
+    }
+
+    // Build unified dialog config
+    UnifiedDialogConfig* config = BuildUnifiedDialogConfig(builder);
+    if (!config) {
+        FreeErrorDialogBuilder(builder);
+        return IDCANCEL;
+    }
+
+    // Show the dialog using existing UnifiedDialog system
+    INT_PTR result = ShowUnifiedDialog(parent, config);
+
+    // Clean up
+    free(config);
+    FreeErrorDialogBuilder(builder);
+
+    return result;
+}
+
+/**
+ * Free an ErrorDialogBuilder and its allocated memory
+ */
+static void FreeErrorDialogBuilder(ErrorDialogBuilder* builder) {
+    if (!builder) {
+        return;
+    }
+
+    // Free all allocated strings
+    if (builder->title) {
+        free(builder->title);
+    }
+    if (builder->message) {
+        free(builder->message);
+    }
+    if (builder->technicalDetails) {
+        free(builder->technicalDetails);
+    }
+    if (builder->diagnostics) {
+        free(builder->diagnostics);
+    }
+    if (builder->solutions) {
+        free(builder->solutions);
+    }
+
+    // Clear and free the builder itself
+    ZeroMemory(builder, sizeof(ErrorDialogBuilder));
+    free(builder);
 }

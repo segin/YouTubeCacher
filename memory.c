@@ -35,10 +35,8 @@ static const size_t MAX_FREED_MEMORY_TRACKING = 1000; // Limit to prevent excess
 static BOOL AddAllocationRecord(void* address, size_t size, const char* file, int line);
 static void ExpandAllocationTable(void);
 static BOOL RemoveAllocationRecord(void* address, size_t* outSize);
-static void RebuildHashTable(void);
-
 // Simplified allocation tracking - remove complex hash table
-static int FindAllocationIndex(void* address);
+// static int FindAllocationIndex(void* address); // Unused function
 static void CleanupHashTable(AllocationHashTable* table);
 
 // Internal error handling function declarations
@@ -610,6 +608,7 @@ static void ExpandAllocationTable(void)
     }
 }
 
+/* Unused function - commented out to fix compilation warnings
 // Hash table implementation functions
 static BOOL InitializeHashTable(AllocationHashTable* table, size_t bucketCount)
 {
@@ -625,6 +624,7 @@ static BOOL InitializeHashTable(AllocationHashTable* table, size_t bucketCount)
     table->bucketCount = bucketCount;
     return TRUE;
 }
+*/
 
 static void CleanupHashTable(AllocationHashTable* table)
 {
@@ -647,6 +647,7 @@ static void CleanupHashTable(AllocationHashTable* table)
     table->bucketCount = 0;
 }
 
+/* Unused function - commented out to fix compilation warnings
 static size_t HashAddress(void* address, size_t bucketCount)
 {
     // Simple hash function for pointer addresses
@@ -659,7 +660,9 @@ static size_t HashAddress(void* address, size_t bucketCount)
     
     return addr % bucketCount;
 }
+*/
 
+/* Unused function - commented out to fix compilation warnings
 static BOOL AddToHashTable(AllocationHashTable* table, AllocationInfo* allocation)
 {
     if (!table || !table->buckets || !allocation) {
@@ -680,7 +683,9 @@ static BOOL AddToHashTable(AllocationHashTable* table, AllocationInfo* allocatio
 
     return TRUE;
 }
+*/
 
+/* Unused function - commented out to fix compilation warnings
 static AllocationInfo* FindInHashTable(AllocationHashTable* table, void* address)
 {
     if (!table || !table->buckets || !address) {
@@ -699,7 +704,9 @@ static AllocationInfo* FindInHashTable(AllocationHashTable* table, void* address
 
     return NULL;
 }
+*/
 
+/* Unused function - commented out to fix compilation warnings
 static BOOL RemoveFromHashTable(AllocationHashTable* table, void* address)
 {
     if (!table || !table->buckets || !address) {
@@ -728,7 +735,9 @@ static BOOL RemoveFromHashTable(AllocationHashTable* table, void* address)
 
     return FALSE;
 }
+*/
 
+/* Unused function - commented out to fix compilation warnings
 // Rebuild hash table from current allocation array
 static void RebuildHashTable(void)
 {
@@ -752,6 +761,7 @@ static void RebuildHashTable(void)
         AddToHashTable(&g_memoryManager.hashTable, &g_memoryManager.allocations[i]);
     }
 }
+*/
 
 // Safe string management function implementations
 wchar_t* SafeWcsDup(const wchar_t* str, const char* file, int line)

@@ -19,6 +19,7 @@
 #include "cache.h"
 #include "base64.h"
 #include "memory.h"
+#include "error.h"
 
 // Application constants
 #define APP_NAME            L"YouTube Cacher"
