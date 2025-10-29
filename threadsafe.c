@@ -1,0 +1,141 @@
+#include "YouTubeCacher.h"
+
+// Global synchronization objects for coordinated access to global systems
+static CRITICAL_SECTION g_errorHandlerLock;
+static CRITICAL_SECTION g_memoryManagerLock;
+static CRITICAL_SECTION g_appStateLock;
+static BOOL g_threadSafetyInitialized = FALSE;
+
+// External global variable declarations (for direct access when needed)
+extern ErrorHandler g_ErrorHandler;
+
+/**
+ * Initialize the thread safety system
+ * Sets up critical sections for protecting global variables
+ */
+BOOL InitializeThreadSafety(void) {
+    if (g_threadSafetyInitialized) {
+        return TRUE; // Already initialized
+    }
+
+    // Initialize critical sections for each global variable
+    InitializeCriticalSection(&g_errorHandlerLock);
+    InitializeCriticalSection(&g_memoryManagerLock);
+    InitializeCriticalSection(&g_appStateLock);
+
+    g_threadSafetyInitialized = TRUE;
+    return TRUE;
+}
+
+/**
+ * Clean up the thread safety system
+ * Releases all critical sections
+ */
+void CleanupThreadSafety(void) {
+    if (!g_threadSafetyInitialized) {
+        return;
+    }
+
+    // Delete critical sections
+    DeleteCriticalSection(&g_errorHandlerLock);
+    DeleteCriticalSection(&g_memoryManagerLock);
+    DeleteCriticalSection(&g_appStateLock);
+
+    g_threadSafetyInitialized = FALSE;
+}
+
+/**
+ * Lock the global error handler for exclusive access
+ */
+void LockErrorHandler(void) {
+    if (!g_threadSafetyInitialized) {
+        InitializeThreadSafety();
+    }
+    EnterCriticalSection(&g_errorHandlerLock);
+}
+
+/**
+ * Unlock the global error handler
+ */
+void UnlockErrorHandler(void) {
+    if (g_threadSafetyInitialized) {
+        LeaveCriticalSection(&g_errorHandlerLock);
+    }
+}
+
+/**
+ * Get a pointer to the global error handler
+ * Note: Caller must call LockErrorHandler() before using and UnlockErrorHandler() when done
+ */
+void* GetErrorHandler(void) {
+    return &g_ErrorHandler;
+}
+
+/**
+ * Lock the global memory manager for coordinated access
+ * This provides an additional layer of synchronization for operations that need
+ * to coordinate between memory management and other systems
+ */
+void LockMemoryManager(void) {
+    if (!g_threadSafetyInitialized) {
+        InitializeThreadSafety();
+    }
+    EnterCriticalSection(&g_memoryManagerLock);
+}
+
+/**
+ * Unlock the global memory manager
+ */
+void UnlockMemoryManager(void) {
+    if (g_threadSafetyInitialized) {
+        LeaveCriticalSection(&g_memoryManagerLock);
+    }
+}
+
+/**
+ * Get access to memory manager functions
+ * Note: The memory manager itself is accessed through its API functions,
+ * not through direct pointer access. This function is for coordination only.
+ */
+void* GetMemoryManager(void) {
+    // Memory manager is accessed through its API functions (SAFE_MALLOC, etc.)
+    // This function exists for interface consistency but should not be used directly
+    return NULL;
+}
+
+/**
+ * Lock the global application state for coordinated access
+ * This provides an additional layer of synchronization for operations that need
+ * to coordinate between application state and other systems
+ */
+void LockAppState(void) {
+    if (!g_threadSafetyInitialized) {
+        InitializeThreadSafety();
+    }
+    EnterCriticalSection(&g_appStateLock);
+}
+
+/**
+ * Unlock the global application state
+ */
+void UnlockAppState(void) {
+    if (g_threadSafetyInitialized) {
+        LeaveCriticalSection(&g_appStateLock);
+    }
+}
+
+/**
+ * Get a pointer to the global application state
+ * Note: Caller must call LockAppState() before using and UnlockAppState() when done
+ * This provides coordinated access - the application state has its own internal locking
+ */
+void* GetAppState(void) {
+    return GetApplicationState();
+}
+
+/**
+ * Check if the thread safety system is initialized
+ */
+BOOL IsThreadSafetyInitialized(void) {
+    return g_threadSafetyInitialized;
+}

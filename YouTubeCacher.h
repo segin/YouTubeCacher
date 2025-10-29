@@ -188,6 +188,7 @@ typedef struct {
 #include "appstate.h"
 #include "settings.h"
 #include "threading.h"
+#include "threadsafe.h"
 
 // Process options structure
 typedef struct {
