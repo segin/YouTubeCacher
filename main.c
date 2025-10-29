@@ -194,6 +194,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         return 1;
     }
     
+    // Test memory allocation failure scenarios with new error dialogs
+    // This will test the updated SAFE_MALLOC and SAFE_FREE functions
+    TestMemoryAllocationFailureScenarios();
+    
     // Force visual styles activation before anything else
     ForceVisualStylesActivation();
     

@@ -68,6 +68,16 @@ void SafeFree(void* ptr, const char* file, int line);
 #define SAFE_REALLOC(ptr, size) SafeRealloc(ptr, size, __FILE__, __LINE__)
 #define SAFE_FREE(ptr) SafeFree(ptr, __FILE__, __LINE__)
 
+// Enhanced allocation macros that integrate with error handling system
+// Note: SAFE_ALLOC and related macros are defined in error.h
+#define SAFE_MALLOC_OR_CLEANUP(ptr, size, cleanup_label) \
+    do { \
+        (ptr) = SafeMalloc(size, __FILE__, __LINE__); \
+        if (!(ptr)) { \
+            goto cleanup_label; \
+        } \
+    } while(0)
+
 // Memory leak detection functions
 BOOL EnableLeakDetection(BOOL enable);
 void DumpMemoryLeaks(void);
@@ -232,8 +242,14 @@ BOOL TestMemoryPools(void);
 // Test function for error-safe allocation patterns
 BOOL TestErrorSafeAllocationPatterns(void);
 
+// Test function for memory allocation failure scenarios with new error dialogs
+BOOL TestMemoryAllocationFailureScenarios(void);
+
 // Test function for memory error handling and reporting
 BOOL TestMemoryErrorHandling(void);
+
+// Memory recovery strategy initialization
+void InitializeMemoryRecoveryStrategies(void);
 
 // Memory Error Handling and Reporting
 

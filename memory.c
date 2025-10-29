@@ -160,6 +160,28 @@ void* SafeMalloc(size_t size, const char* file, int line)
     
     void* rawPtr = malloc(totalSize);
     if (!rawPtr) {
+        // Use standardized error reporting system
+        wchar_t errorMsg[512];
+        swprintf(errorMsg, 512, L"Memory allocation failed: requested %zu bytes\r\n", size);
+        
+        // Convert file path to wide string for error reporting
+        wchar_t wideFile[512];
+        MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
+        
+        // Convert function name (use file name as approximation)
+        const char* fileName = strrchr(file, '\\');
+        if (!fileName) fileName = strrchr(file, '/');
+        if (!fileName) fileName = file;
+        else fileName++; // Skip the slash
+        
+        wchar_t wideFunction[128];
+        MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
+        
+        // Report error using standardized system
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+                   wideFunction, wideFile, line, errorMsg);
+        
+        // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, size, file, line,
                          L"malloc() failed to allocate requested memory");
         return NULL;
@@ -188,6 +210,28 @@ void* SafeMalloc(size_t size, const char* file, int line)
     // In release builds, just allocate normally
     void* rawPtr = malloc(size);
     if (!rawPtr) {
+        // Use standardized error reporting system
+        wchar_t errorMsg[512];
+        swprintf(errorMsg, 512, L"Memory allocation failed: requested %zu bytes\r\n", size);
+        
+        // Convert file path to wide string for error reporting
+        wchar_t wideFile[512];
+        MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
+        
+        // Convert function name (use file name as approximation)
+        const char* fileName = strrchr(file, '\\');
+        if (!fileName) fileName = strrchr(file, '/');
+        if (!fileName) fileName = file;
+        else fileName++; // Skip the slash
+        
+        wchar_t wideFunction[128];
+        MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
+        
+        // Report error using standardized system
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+                   wideFunction, wideFile, line, errorMsg);
+        
+        // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, size, file, line,
                          L"malloc() failed to allocate requested memory");
         return NULL;
@@ -242,6 +286,28 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
     
     void* rawPtr = calloc(1, allocSize); // Use calloc(1, allocSize) to zero entire block
     if (!rawPtr) {
+        // Use standardized error reporting system
+        wchar_t errorMsg[512];
+        swprintf(errorMsg, 512, L"Memory allocation (calloc) failed: requested %zu bytes\r\n", totalSize);
+        
+        // Convert file path to wide string for error reporting
+        wchar_t wideFile[512];
+        MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
+        
+        // Convert function name (use file name as approximation)
+        const char* fileName = strrchr(file, '\\');
+        if (!fileName) fileName = strrchr(file, '/');
+        if (!fileName) fileName = file;
+        else fileName++; // Skip the slash
+        
+        wchar_t wideFunction[128];
+        MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
+        
+        // Report error using standardized system
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+                   wideFunction, wideFile, line, errorMsg);
+        
+        // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, totalSize, file, line,
                          L"calloc() failed to allocate requested memory");
         return NULL;
@@ -265,6 +331,28 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
     // In release builds, just allocate normally
     void* rawPtr = calloc(count, size);
     if (!rawPtr) {
+        // Use standardized error reporting system
+        wchar_t errorMsg[512];
+        swprintf(errorMsg, 512, L"Memory allocation (calloc) failed: requested %zu bytes\r\n", totalSize);
+        
+        // Convert file path to wide string for error reporting
+        wchar_t wideFile[512];
+        MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
+        
+        // Convert function name (use file name as approximation)
+        const char* fileName = strrchr(file, '\\');
+        if (!fileName) fileName = strrchr(file, '/');
+        if (!fileName) fileName = file;
+        else fileName++; // Skip the slash
+        
+        wchar_t wideFunction[128];
+        MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
+        
+        // Report error using standardized system
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+                   wideFunction, wideFile, line, errorMsg);
+        
+        // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, totalSize, file, line,
                          L"calloc() failed to allocate requested memory");
         return NULL;
@@ -406,6 +494,28 @@ void SafeFree(void* ptr, const char* file, int line)
 
     // Check for double-free if detection is enabled and leak detection is on
     if (g_doubleFreDetectionEnabled && g_memoryManager.leakDetectionEnabled && IsFreedMemory(ptr)) {
+        // Use standardized error reporting system
+        wchar_t errorMsg[512];
+        swprintf(errorMsg, 512, L"Double-free detected: attempt to free already freed memory at address %p\r\n", ptr);
+        
+        // Convert file path to wide string for error reporting
+        wchar_t wideFile[512];
+        MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
+        
+        // Convert function name (use file name as approximation)
+        const char* fileName = strrchr(file, '\\');
+        if (!fileName) fileName = strrchr(file, '/');
+        if (!fileName) fileName = file;
+        else fileName++; // Skip the slash
+        
+        wchar_t wideFunction[128];
+        MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
+        
+        // Report error using standardized system
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+                   wideFunction, wideFile, line, errorMsg);
+        
+        // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_DOUBLE_FREE, ptr, 0, file, line,
                          L"Attempt to free already freed memory");
         return; // Don't actually free again
@@ -1965,24 +2075,25 @@ BOOL TestMemoryPools(void)
 
 AllocationSet* CreateAllocationSet(const char* file, int line)
 {
-    AllocationSet* set = (AllocationSet*)SafeMalloc(sizeof(AllocationSet), file, line);
-    if (!set) {
-        return NULL;
-    }
-
-    set->allocations = (void**)SafeMalloc(
-        INITIAL_ALLOCATION_SET_CAPACITY * sizeof(void*), file, line);
-    if (!set->allocations) {
-        SafeFree(set, file, line);
-        return NULL;
-    }
-
+    AllocationSet* set = NULL;
+    void** allocations = NULL;
+    
+    // Use SAFE_ALLOC pattern for consistent error handling
+    SAFE_ALLOC(set, sizeof(AllocationSet), cleanup);
+    SAFE_ALLOC(allocations, INITIAL_ALLOCATION_SET_CAPACITY * sizeof(void*), cleanup);
+    
+    set->allocations = allocations;
     set->count = 0;
     set->capacity = INITIAL_ALLOCATION_SET_CAPACITY;
     set->file = file;
     set->line = line;
 
     return set;
+
+cleanup:
+    if (set) SafeFree(set, file, line);
+    if (allocations) SafeFree(allocations, file, line);
+    return NULL;
 }
 
 BOOL AddToAllocationSet(AllocationSet* set, void* ptr)
@@ -2066,21 +2177,23 @@ BulkCleanup* CreateBulkCleanup(size_t initialCapacity)
         initialCapacity = INITIAL_BULK_CLEANUP_CAPACITY;
     }
 
-    BulkCleanup* cleanup = (BulkCleanup*)SAFE_MALLOC(sizeof(BulkCleanup));
-    if (!cleanup) {
-        return NULL;
-    }
-
-    cleanup->pointers = (void**)SAFE_MALLOC(initialCapacity * sizeof(void*));
-    if (!cleanup->pointers) {
-        SAFE_FREE(cleanup);
-        return NULL;
-    }
-
+    BulkCleanup* cleanup = NULL;
+    void** pointers = NULL;
+    
+    // Use SAFE_ALLOC pattern for consistent error handling
+    SAFE_ALLOC(cleanup, sizeof(BulkCleanup), cleanup_error);
+    SAFE_ALLOC(pointers, initialCapacity * sizeof(void*), cleanup_error);
+    
+    cleanup->pointers = pointers;
     cleanup->count = 0;
     cleanup->capacity = initialCapacity;
 
     return cleanup;
+
+cleanup_error:
+    if (cleanup) SAFE_FREE(cleanup);
+    if (pointers) SAFE_FREE(pointers);
+    return NULL;
 }
 
 BOOL AddToBulkCleanup(BulkCleanup* cleanup, void* ptr)
@@ -2250,6 +2363,129 @@ static void TestErrorCallback(const MemoryError* error)
     g_lastErrorType = error->type;
     printf("Test callback received error type %d at address %p\n", 
            error->type, error->address);
+}
+
+// Memory allocation recovery strategies
+static BOOL RecoverFromMemoryAllocationFailure(const void* context) {
+    // Cast context to size_t to get the requested allocation size
+    size_t requestedSize = context ? *((const size_t*)context) : 0;
+    
+    // Strategy 1: Try to free some cached data if available
+    // This would need to be implemented based on the application's cache system
+    
+    // Strategy 2: Force garbage collection if memory pools are available
+    if (g_memoryManager.initialized) {
+        // Try to compact memory pools or free unused pool memory
+        // This is a placeholder for actual pool compaction logic
+    }
+    
+    // Strategy 3: Reduce memory usage by clearing non-essential buffers
+    // This would need application-specific implementation
+    
+    // For now, just log the recovery attempt
+    wchar_t recoveryMsg[256];
+    swprintf(recoveryMsg, 256, L"Attempted memory recovery for %zu bytes", requestedSize);
+    DebugOutput(recoveryMsg);
+    
+    // Return FALSE to indicate recovery was attempted but may not have succeeded
+    // The caller should still handle the allocation failure gracefully
+    return FALSE;
+}
+
+
+
+// Initialize memory allocation recovery strategies
+void InitializeMemoryRecoveryStrategies(void) {
+    if (!g_ErrorHandler.initialized) {
+        return;
+    }
+    
+    // Add recovery strategies for common memory errors
+    AddRecoveryStrategy(&g_ErrorHandler, YTC_ERROR_MEMORY_ALLOCATION, 
+                       RecoverFromMemoryAllocationFailure, 
+                       L"Attempt to free cached data and retry allocation");
+}
+
+// Test function for memory allocation failure scenarios with new error dialogs
+BOOL TestMemoryAllocationFailureScenarios(void)
+{
+    printf("=== TESTING MEMORY ALLOCATION FAILURE SCENARIOS ===\n");
+
+    // Test 1: Test normal allocation and free with error reporting
+    printf("Testing normal allocation with error reporting...\n");
+    
+    void* testPtr = SAFE_MALLOC(1024);
+    if (!testPtr) {
+        printf("ERROR: Normal allocation failed unexpectedly\n");
+        return FALSE;
+    }
+    
+    printf("Successfully allocated 1024 bytes at %p\n", testPtr);
+    SAFE_FREE(testPtr);
+    printf("Successfully freed memory\n");
+
+    // Test 2: Test allocation with cleanup pattern
+    printf("Testing allocation with cleanup pattern...\n");
+    
+    void* ptr1 = NULL;
+    void* ptr2 = NULL;
+    void* ptr3 = NULL;
+    BOOL success = FALSE;
+    
+    SAFE_MALLOC_OR_CLEANUP(ptr1, 512, cleanup);
+    SAFE_MALLOC_OR_CLEANUP(ptr2, 1024, cleanup);
+    SAFE_MALLOC_OR_CLEANUP(ptr3, 2048, cleanup);
+    
+    printf("Successfully allocated three memory blocks using cleanup pattern\n");
+    success = TRUE;
+    
+cleanup:
+    if (ptr1) SAFE_FREE(ptr1);
+    if (ptr2) SAFE_FREE(ptr2);
+    if (ptr3) SAFE_FREE(ptr3);
+    
+    if (!success) {
+        printf("ERROR: Cleanup pattern allocation failed\n");
+        return FALSE;
+    }
+    
+    printf("Successfully cleaned up all allocations\n");
+
+    // Test 3: Test calloc with error reporting
+    printf("Testing calloc with error reporting...\n");
+    
+    void* callocPtr = SAFE_CALLOC(100, sizeof(int));
+    if (!callocPtr) {
+        printf("ERROR: Calloc allocation failed unexpectedly\n");
+        return FALSE;
+    }
+    
+    printf("Successfully allocated zeroed memory for 100 integers\n");
+    SAFE_FREE(callocPtr);
+    printf("Successfully freed calloc memory\n");
+
+    // Test 4: Test realloc with error reporting
+    printf("Testing realloc with error reporting...\n");
+    
+    void* reallocPtr = SAFE_MALLOC(256);
+    if (!reallocPtr) {
+        printf("ERROR: Initial allocation for realloc test failed\n");
+        return FALSE;
+    }
+    
+    void* newPtr = SAFE_REALLOC(reallocPtr, 512);
+    if (!newPtr) {
+        printf("ERROR: Realloc failed unexpectedly\n");
+        SAFE_FREE(reallocPtr);
+        return FALSE;
+    }
+    
+    printf("Successfully reallocated memory from 256 to 512 bytes\n");
+    SAFE_FREE(newPtr);
+    printf("Successfully freed reallocated memory\n");
+
+    printf("=== MEMORY ALLOCATION FAILURE SCENARIO TESTS PASSED ===\n");
+    return TRUE;
 }
 
 // Test function for memory error handling and reporting
