@@ -1116,11 +1116,13 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 case IDC_UNIFIED_COPY_BTN:
                     if (errorDialog) {
                         if (CopyErrorInfoToClipboard(errorDialog)) {
-                            MessageBoxW(hDlg, L"Information copied to clipboard.", 
-                                       L"Information", MB_OK | MB_ICONINFORMATION);
+                            SHOW_ERROR_DIALOG(hDlg, YTC_SEVERITY_INFO, YTC_ERROR_SUCCESS, 
+                                             L"Information copied to clipboard successfully.\r\n\r\n"
+                                             L"The error details are now available in your clipboard.");
                         } else {
-                            MessageBoxW(hDlg, L"Failed to copy information to clipboard.", 
-                                       L"Error", MB_OK | MB_ICONERROR);
+                            SHOW_ERROR_DIALOG(hDlg, YTC_SEVERITY_ERROR, YTC_ERROR_DIALOG_CREATION, 
+                                             L"Failed to copy information to clipboard.\r\n\r\n"
+                                             L"Please try again or manually select and copy the text.");
                         }
                     }
                     return TRUE;

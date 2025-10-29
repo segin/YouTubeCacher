@@ -3023,7 +3023,8 @@ void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInf
             break;
     }
     
-    MessageBoxW(hParent, message, title, MB_OK | MB_ICONWARNING);
+    // Use the new error dialog system for configuration errors
+    SHOW_ERROR_DIALOG(hParent, YTC_SEVERITY_WARNING, YTC_ERROR_CONFIGURATION, message);
 }
 
 // Get subprocess result (transfers ownership to caller)

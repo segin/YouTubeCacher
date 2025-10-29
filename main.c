@@ -189,8 +189,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     
     // Initialize memory manager for leak detection and safe allocation
     if (!InitializeMemoryManager()) {
-        MessageBoxW(NULL, L"Failed to initialize memory management system.", 
-                   L"Initialization Error", MB_OK | MB_ICONERROR);
+        SHOW_ERROR_DIALOG(NULL, YTC_SEVERITY_FATAL, YTC_ERROR_INITIALIZATION, 
+                         L"Failed to initialize memory management system.\r\n\r\n"
+                         L"The application cannot continue without proper memory management.");
         return 1;
     }
     
@@ -266,8 +267,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     
     // Initialize the global IPC system for efficient cross-thread communication
     if (!InitializeGlobalIPC()) {
-        MessageBoxW(NULL, L"Failed to initialize inter-process communication system.", 
-                   L"Initialization Error", MB_OK | MB_ICONERROR);
+        SHOW_ERROR_DIALOG(NULL, YTC_SEVERITY_FATAL, YTC_ERROR_INITIALIZATION, 
+                         L"Failed to initialize inter-process communication system.\r\n\r\n"
+                         L"The application cannot continue without proper IPC functionality.");
         return 1;
     }
     

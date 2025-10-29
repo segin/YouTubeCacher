@@ -173,7 +173,7 @@ extern ErrorHandler g_ErrorHandler;
 // Convenience macro for showing error dialogs
 #define SHOW_ERROR_DIALOG(parent, severity, code, message) \
     do { \
-        ErrorContext* _ctx = CreateErrorContext((code), (severity), __FUNCTIONW__, __FILEW__, __LINE__); \
+        ErrorContext* _ctx = CreateErrorContext((code), (severity), GetWideFunction(__FUNCTION__), GetWideFile(__FILE__), __LINE__); \
         if (_ctx) { \
             SetUserFriendlyMessage(_ctx, (message)); \
             ShowErrorDialog((parent), _ctx); \

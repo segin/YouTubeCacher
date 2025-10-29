@@ -1190,8 +1190,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     
                 case ID_HELP_VIEW_LOG:
                     // TODO: Implement View Log dialog
-                    MessageBoxW(hDlg, L"View Log functionality will be implemented in a future update.", 
-                               L"View Log", MB_OK | MB_ICONINFORMATION);
+                    SHOW_ERROR_DIALOG(hDlg, YTC_SEVERITY_INFO, YTC_ERROR_SUCCESS, 
+                                     L"View Log functionality will be implemented in a future update.\r\n\r\n"
+                                     L"This feature is planned for the next release.");
                     return TRUE;
                     
                 case ID_HELP_ABOUT:
@@ -1632,7 +1633,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                 selectedCount);
                     }
                     
-                    // Confirm deletion
+                    // Confirm deletion - using MessageBox for YES/NO confirmation
+                    // Note: UnifiedDialog system doesn't support confirmation dialogs yet
                     int result = MessageBoxW(hDlg, confirmMsg, L"Confirm Delete", 
                                            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
                     
@@ -1848,113 +1850,26 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     break;
                     
                 case IDC_DEBUG_TEST_INFO: {
-                    // Test Info dialog
-                    UnifiedDialogConfig config = {0};
-                    config.dialogType = UNIFIED_DIALOG_INFO;
-                    config.title = L"Test Information Dialog";
-                    config.message = L"This is a test information dialog to verify the dialog system is working correctly.";
-                    config.details = L"This dialog demonstrates the information dialog type with:\r\n\r\n"
-                                   L"• Information icon\r\n"
-                                   L"• Blue title bar color\r\n"
-                                   L"• Standard OK button\r\n"
-                                   L"• Optional details section\r\n\r\n"
-                                   L"This is useful for showing non-critical information to users.";
-                    config.tab1_name = L"Details";
-                    config.tab2_content = L"Additional information can be displayed in multiple tabs:\r\n\r\n"
-                                        L"• Tab 1: Primary details\r\n"
-                                        L"• Tab 2: Secondary information\r\n"
-                                        L"• Tab 3: Additional context\r\n\r\n"
-                                        L"Each tab can contain different types of information to help organize complex messages.";
-                    config.tab2_name = L"Features";
-                    config.tab3_content = L"Debug Information:\r\n"
-                                        L"=================\r\n\r\n"
-                                        L"Dialog Type: UNIFIED_DIALOG_INFO\r\n"
-                                        L"Icon: IDI_INFORMATION\r\n"
-                                        L"Button Configuration: OK only\r\n"
-                                        L"Resizable: Yes\r\n"
-                                        L"Copy Support: Yes\r\n\r\n"
-                                        L"This tab demonstrates technical details that might be useful for debugging or support purposes.";
-                    config.tab3_name = L"Debug Info";
-                    config.showDetailsButton = TRUE;
-                    config.showCopyButton = TRUE;
-                    
-                    ShowUnifiedDialog(hDlg, &config);
+                    // Test Info dialog using new error dialog system
+                    SHOW_ERROR_DIALOG(hDlg, YTC_SEVERITY_INFO, YTC_ERROR_SUCCESS,
+                                     L"This is a test information dialog to verify the new error dialog system is working correctly.\r\n\r\n"
+                                     L"This tests the INFO severity mapping to UNIFIED_DIALOG_INFO type with proper visual styling.");
                     break;
                 }
                 
                 case IDC_DEBUG_TEST_WARNING: {
-                    // Test Warning dialog
-                    UnifiedDialogConfig config = {0};
-                    config.dialogType = UNIFIED_DIALOG_WARNING;
-                    config.title = L"Test Warning Dialog";
-                    config.message = L"This is a test warning dialog to verify warning notifications are displayed correctly.";
-                    config.details = L"Warning dialogs are used to alert users about:\r\n\r\n"
-                                   L"• Potentially problematic situations\r\n"
-                                   L"• Actions that might have consequences\r\n"
-                                   L"• Configuration issues that should be addressed\r\n"
-                                   L"• Non-fatal errors that don't prevent operation\r\n\r\n"
-                                   L"They use a yellow warning icon and are designed to get the user's attention without being alarming.";
-                    config.tab1_name = L"Details";
-                    config.tab2_content = L"Common warning scenarios in YouTube Cacher:\r\n\r\n"
-                                        L"• Missing yt-dlp configuration\r\n"
-                                        L"• Invalid or empty URLs\r\n"
-                                        L"• Network connectivity issues\r\n"
-                                        L"• Insufficient disk space\r\n"
-                                        L"• Outdated yt-dlp version\r\n\r\n"
-                                        L"Warnings allow users to take corrective action before problems become critical.";
-                    config.tab2_name = L"Use Cases";
-                    config.showDetailsButton = TRUE;
-                    config.showCopyButton = FALSE;
-                    
-                    ShowUnifiedDialog(hDlg, &config);
+                    // Test Warning dialog using new error dialog system
+                    SHOW_ERROR_DIALOG(hDlg, YTC_SEVERITY_WARNING, YTC_ERROR_CONFIGURATION,
+                                     L"This is a test warning dialog to verify warning notifications are displayed correctly.\r\n\r\n"
+                                     L"This tests the WARNING severity mapping to UNIFIED_DIALOG_WARNING type with proper visual styling.");
                     break;
                 }
                 
                 case IDC_DEBUG_TEST_ERROR: {
-                    // Test Error dialog
-                    UnifiedDialogConfig config = {0};
-                    config.dialogType = UNIFIED_DIALOG_ERROR;
-                    config.title = L"Test Error Dialog";
-                    config.message = L"This is a test error dialog to verify error reporting is working correctly.";
-                    config.details = L"Error Details:\r\n"
-                                   L"=============\r\n\r\n"
-                                   L"Operation: Test Error Generation\r\n"
-                                   L"Error Code: TEST_ERROR_001\r\n"
-                                   L"Timestamp: " __DATE__ L" " __TIME__ L"\r\n"
-                                   L"Component: Debug Test System\r\n\r\n"
-                                   L"This is a simulated error to test the error dialog functionality. "
-                                   L"Real errors would contain actual diagnostic information to help "
-                                   L"users and developers understand what went wrong.";
-                    config.tab1_name = L"Error Details";
-                    config.tab2_content = L"Troubleshooting Steps:\r\n\r\n"
-                                        L"1. Verify all system requirements are met\r\n"
-                                        L"2. Check network connectivity\r\n"
-                                        L"3. Ensure yt-dlp is properly installed\r\n"
-                                        L"4. Try restarting the application\r\n"
-                                        L"5. Check the application logs\r\n\r\n"
-                                        L"If the problem persists:\r\n"
-                                        L"• Copy the error details using the Copy button\r\n"
-                                        L"• Report the issue with the copied information\r\n"
-                                        L"• Include steps to reproduce the problem";
-                    config.tab2_name = L"Troubleshooting";
-                    config.tab3_content = L"Technical Information:\r\n"
-                                        L"=====================\r\n\r\n"
-                                        L"Stack Trace: (simulated)\r\n"
-                                        L"  at TestErrorFunction()\r\n"
-                                        L"  at DebugButtonHandler()\r\n"
-                                        L"  at DialogProc()\r\n"
-                                        L"  at WindowProc()\r\n\r\n"
-                                        L"System Information:\r\n"
-                                        L"  OS: Windows (detected)\r\n"
-                                        L"  Architecture: x64\r\n"
-                                        L"  Memory: Available\r\n"
-                                        L"  Disk Space: Sufficient\r\n\r\n"
-                                        L"This technical information would help developers diagnose the issue.";
-                    config.tab3_name = L"Technical";
-                    config.showDetailsButton = TRUE;
-                    config.showCopyButton = TRUE;
-                    
-                    ShowUnifiedDialog(hDlg, &config);
+                    // Test Error dialog using new error dialog system
+                    SHOW_ERROR_DIALOG(hDlg, YTC_SEVERITY_ERROR, YTC_ERROR_VALIDATION_FAILED,
+                                     L"This is a test error dialog to verify error reporting is working correctly.\r\n\r\n"
+                                     L"This tests the ERROR severity mapping to UNIFIED_DIALOG_ERROR type with proper visual styling and technical details.");
                     break;
                 }
                 

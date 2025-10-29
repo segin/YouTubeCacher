@@ -46,16 +46,13 @@
 
 - [x] 6. Update memory allocation error handling
 
-
   - Replace existing memory allocation patterns in memory.c with SAFE_ALLOC macro
   - Update SAFE_MALLOC and SAFE_FREE to use standardized error reporting
   - Test memory allocation failure scenarios with new error dialogs
   - _Requirements: 2.1, 7.1, 7.2_
 -
 
-- [-] 7. Update file operation error handling  
-
-
+- [x] 7. Update file operation error handling  
 
 
   - Replace existing file error handling in cache.c with new error macros
@@ -64,6 +61,10 @@
   - _Requirements: 2.2, 6.3_
 
 - [ ] 8. Update UI error handling integration
+
+
+
+
   - Replace existing MessageBox calls in main.c and ui.c with ShowErrorDialog function
   - Update error dialog creation to use new ErrorContext system
   - Test error severity mapping to UnifiedDialogType for proper visual styling
