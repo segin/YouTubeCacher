@@ -19,5 +19,7 @@
 Thumbs.db
 .DS_Store
 YouTubeCacher-log.txt
-YouTubeCacher-log.txt
 *.gch
+
+# Error logs
+error.log
