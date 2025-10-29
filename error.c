@@ -938,3 +938,344 @@ static void FreeErrorDialogBuilder(ErrorDialogBuilder* builder) {
     ZeroMemory(builder, sizeof(ErrorDialogBuilder));
     free(builder);
 }
+// ============================================================================
+// Validation Framework Implementation
+// ============================================================================
+
+/**
+ * Validate a pointer parameter for NULL checking
+ * Returns validation result with appropriate error information
+ */
+ParameterValidationResult ValidatePointer(const void* ptr, const wchar_t* paramName) {
+    ParameterValidationResult result = {0};
+    
+    // Initialize result structure
+    result.isValid = TRUE;
+    result.errorCode = YTC_ERROR_SUCCESS;
+    
+    // Set field name
+    if (paramName) {
+        wcsncpy(result.fieldName, paramName, 127);
+        result.fieldName[127] = L'\0';
+    } else {
+        wcscpy(result.fieldName, L"Unknown Parameter");
+    }
+    
+    // Check for NULL pointer
+    if (ptr == NULL) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_INVALID_PARAMETER;
+        swprintf(result.errorMessage, 512, 
+            L"Parameter '%ls' cannot be NULL", result.fieldName);
+    } else {
+        wcscpy(result.errorMessage, L"Parameter validation successful");
+    }
+    
+    return result;
+}
+
+/**
+ * Validate a string parameter for NULL, empty, and length constraints
+ * Returns validation result with detailed error information
+ */
+ParameterValidationResult ValidateString(const wchar_t* str, const wchar_t* paramName, size_t maxLength) {
+    ParameterValidationResult result = {0};
+    
+    // Initialize result structure
+    result.isValid = TRUE;
+    result.errorCode = YTC_ERROR_SUCCESS;
+    
+    // Set field name
+    if (paramName) {
+        wcsncpy(result.fieldName, paramName, 127);
+        result.fieldName[127] = L'\0';
+    } else {
+        wcscpy(result.fieldName, L"String Parameter");
+    }
+    
+    // Check for NULL pointer
+    if (str == NULL) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_INVALID_PARAMETER;
+        swprintf(result.errorMessage, 512, 
+            L"String parameter '%ls' cannot be NULL", result.fieldName);
+        return result;
+    }
+    
+    // Check for empty string
+    if (wcslen(str) == 0) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_INVALID_PARAMETER;
+        swprintf(result.errorMessage, 512, 
+            L"String parameter '%ls' cannot be empty", result.fieldName);
+        return result;
+    }
+    
+    // Check length constraint
+    size_t actualLength = wcslen(str);
+    if (maxLength > 0 && actualLength > maxLength) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_BUFFER_OVERFLOW;
+        swprintf(result.errorMessage, 512, 
+            L"String parameter '%ls' exceeds maximum length of %zu characters (actual: %zu)", 
+            result.fieldName, maxLength, actualLength);
+        return result;
+    }
+    
+    // Validation successful
+    swprintf(result.errorMessage, 512, 
+        L"String parameter '%ls' validation successful (length: %zu)", 
+        result.fieldName, actualLength);
+    
+    return result;
+}
+
+/**
+ * Validate a file path parameter for format and accessibility
+ * Returns validation result with file system specific error information
+ */
+ParameterValidationResult ValidateFilePath(const wchar_t* path, const wchar_t* paramName) {
+    ParameterValidationResult result = {0};
+    
+    // Initialize result structure
+    result.isValid = TRUE;
+    result.errorCode = YTC_ERROR_SUCCESS;
+    
+    // Set field name
+    if (paramName) {
+        wcsncpy(result.fieldName, paramName, 127);
+        result.fieldName[127] = L'\0';
+    } else {
+        wcscpy(result.fieldName, L"File Path");
+    }
+    
+    // First validate as string
+    ParameterValidationResult stringResult = ValidateString(path, paramName, MAX_PATH);
+    if (!stringResult.isValid) {
+        return stringResult; // Return the string validation error
+    }
+    
+    // Check for invalid characters in Windows file paths
+    const wchar_t* invalidChars = L"<>:\"|?*";
+    for (const wchar_t* invalid = invalidChars; *invalid; invalid++) {
+        if (wcschr(path, *invalid) != NULL) {
+            result.isValid = FALSE;
+            result.errorCode = YTC_ERROR_INVALID_PARAMETER;
+            swprintf(result.errorMessage, 512, 
+                L"File path '%ls' contains invalid character '%lc'", 
+                result.fieldName, *invalid);
+            return result;
+        }
+    }
+    
+    // Check for reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    wchar_t fileName[MAX_PATH];
+    wcsncpy(fileName, path, MAX_PATH - 1);
+    fileName[MAX_PATH - 1] = L'\0';
+    
+    // Extract just the filename part
+    wchar_t* lastSlash = wcsrchr(fileName, L'\\');
+    wchar_t* lastForwardSlash = wcsrchr(fileName, L'/');
+    wchar_t* actualFileName = fileName;
+    
+    if (lastSlash && (!lastForwardSlash || lastSlash > lastForwardSlash)) {
+        actualFileName = lastSlash + 1;
+    } else if (lastForwardSlash) {
+        actualFileName = lastForwardSlash + 1;
+    }
+    
+    // Remove extension for reserved name check
+    wchar_t* dot = wcsrchr(actualFileName, L'.');
+    if (dot) {
+        *dot = L'\0';
+    }
+    
+    // Convert to uppercase for comparison
+    _wcsupr(actualFileName);
+    
+    const wchar_t* reservedNames[] = {
+        L"CON", L"PRN", L"AUX", L"NUL",
+        L"COM1", L"COM2", L"COM3", L"COM4", L"COM5", L"COM6", L"COM7", L"COM8", L"COM9",
+        L"LPT1", L"LPT2", L"LPT3", L"LPT4", L"LPT5", L"LPT6", L"LPT7", L"LPT8", L"LPT9"
+    };
+    
+    for (size_t i = 0; i < sizeof(reservedNames) / sizeof(reservedNames[0]); i++) {
+        if (wcscmp(actualFileName, reservedNames[i]) == 0) {
+            result.isValid = FALSE;
+            result.errorCode = YTC_ERROR_INVALID_PARAMETER;
+            swprintf(result.errorMessage, 512, 
+                L"File path '%ls' uses reserved name '%ls'", 
+                result.fieldName, reservedNames[i]);
+            return result;
+        }
+    }
+    
+    // Check if path is too long
+    if (wcslen(path) >= MAX_PATH) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_BUFFER_OVERFLOW;
+        swprintf(result.errorMessage, 512, 
+            L"File path '%ls' exceeds maximum path length of %d characters", 
+            result.fieldName, MAX_PATH);
+        return result;
+    }
+    
+    // Validation successful
+    swprintf(result.errorMessage, 512, 
+        L"File path '%ls' validation successful", result.fieldName);
+    
+    return result;
+}
+
+/**
+ * Validate a URL parameter for basic format and YouTube URL patterns
+ * Returns validation result with URL-specific error information
+ */
+ParameterValidationResult ValidateURL(const wchar_t* url, const wchar_t* paramName) {
+    ParameterValidationResult result = {0};
+    
+    // Initialize result structure
+    result.isValid = TRUE;
+    result.errorCode = YTC_ERROR_SUCCESS;
+    
+    // Set field name
+    if (paramName) {
+        wcsncpy(result.fieldName, paramName, 127);
+        result.fieldName[127] = L'\0';
+    } else {
+        wcscpy(result.fieldName, L"URL");
+    }
+    
+    // First validate as string with reasonable URL length limit
+    ParameterValidationResult stringResult = ValidateString(url, paramName, 2048);
+    if (!stringResult.isValid) {
+        return stringResult; // Return the string validation error
+    }
+    
+    // Convert to lowercase for case-insensitive comparison
+    wchar_t lowerUrl[2049];
+    wcsncpy(lowerUrl, url, 2048);
+    lowerUrl[2048] = L'\0';
+    _wcslwr(lowerUrl);
+    
+    // Check for basic URL format (must start with http:// or https://)
+    if (wcsncmp(lowerUrl, L"http://", 7) != 0 && wcsncmp(lowerUrl, L"https://", 8) != 0) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_URL_INVALID;
+        swprintf(result.errorMessage, 512, 
+            L"URL '%ls' must start with 'http://' or 'https://'", result.fieldName);
+        return result;
+    }
+    
+    // Check for YouTube domain patterns
+    BOOL isYouTubeURL = FALSE;
+    const wchar_t* youtubeDomains[] = {
+        L"youtube.com",
+        L"www.youtube.com",
+        L"m.youtube.com",
+        L"youtu.be",
+        L"www.youtu.be"
+    };
+    
+    for (size_t i = 0; i < sizeof(youtubeDomains) / sizeof(youtubeDomains[0]); i++) {
+        if (wcsstr(lowerUrl, youtubeDomains[i]) != NULL) {
+            isYouTubeURL = TRUE;
+            break;
+        }
+    }
+    
+    if (!isYouTubeURL) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_URL_INVALID;
+        swprintf(result.errorMessage, 512, 
+            L"URL '%ls' is not a valid YouTube URL", result.fieldName);
+        return result;
+    }
+    
+    // Check for minimum URL structure (domain + some path/query)
+    const wchar_t* domainEnd = wcsstr(lowerUrl + 8, L"/"); // Skip https://
+    if (!domainEnd) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_URL_INVALID;
+        swprintf(result.errorMessage, 512, 
+            L"URL '%ls' appears to be incomplete (missing path or video ID)", result.fieldName);
+        return result;
+    }
+    
+    // For YouTube URLs, check for video ID patterns
+    if (wcsstr(lowerUrl, L"watch?v=") || wcsstr(lowerUrl, L"youtu.be/") || 
+        wcsstr(lowerUrl, L"embed/") || wcsstr(lowerUrl, L"v/")) {
+        // URL contains video ID patterns - this is good
+    } else {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_URL_INVALID;
+        swprintf(result.errorMessage, 512, 
+            L"URL '%ls' does not appear to contain a valid YouTube video ID", result.fieldName);
+        return result;
+    }
+    
+    // Validation successful
+    swprintf(result.errorMessage, 512, 
+        L"URL '%ls' validation successful", result.fieldName);
+    
+    return result;
+}
+
+/**
+ * Validate buffer size parameters for overflow prevention
+ * Returns validation result with buffer size specific error information
+ */
+ParameterValidationResult ValidateBufferSize(size_t size, size_t minSize, size_t maxSize) {
+    ParameterValidationResult result = {0};
+    
+    // Initialize result structure
+    result.isValid = TRUE;
+    result.errorCode = YTC_ERROR_SUCCESS;
+    wcscpy(result.fieldName, L"Buffer Size");
+    
+    // Check minimum size constraint
+    if (size < minSize) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_INVALID_PARAMETER;
+        swprintf(result.errorMessage, 512, 
+            L"Buffer size %zu is below minimum required size of %zu bytes", 
+            size, minSize);
+        return result;
+    }
+    
+    // Check maximum size constraint
+    if (maxSize > 0 && size > maxSize) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_BUFFER_OVERFLOW;
+        swprintf(result.errorMessage, 512, 
+            L"Buffer size %zu exceeds maximum allowed size of %zu bytes", 
+            size, maxSize);
+        return result;
+    }
+    
+    // Check for reasonable upper bounds to prevent excessive allocations
+    const size_t REASONABLE_MAX = 1024 * 1024 * 100; // 100 MB
+    if (size > REASONABLE_MAX) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_BUFFER_OVERFLOW;
+        swprintf(result.errorMessage, 512, 
+            L"Buffer size %zu is unreasonably large (exceeds %zu bytes)", 
+            size, REASONABLE_MAX);
+        return result;
+    }
+    
+    // Check for zero size (usually invalid)
+    if (size == 0) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_INVALID_PARAMETER;
+        wcscpy(result.errorMessage, L"Buffer size cannot be zero");
+        return result;
+    }
+    
+    // Validation successful
+    swprintf(result.errorMessage, 512, 
+        L"Buffer size %zu validation successful (min: %zu, max: %zu)", 
+        size, minSize, maxSize);
+    
+    return result;
+}
