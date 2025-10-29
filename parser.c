@@ -908,12 +908,12 @@ void FreeEnhancedSubprocessContext(EnhancedSubprocessContext* context) {
 BOOL StartEnhancedSubprocessExecution(EnhancedSubprocessContext* context) {
     if (!context || !context->baseContext) return FALSE;
     
-    // Create enhanced worker thread instead of base worker thread
-    HANDLE hThread = CreateThread(NULL, 0, EnhancedSubprocessWorkerThread, context, 0, NULL);
-    if (!hThread) return FALSE;
+    // Create enhanced managed worker thread
+    if (!CreateManagedThread(&context->baseContext->threadContext, EnhancedSubprocessWorkerThread, 
+                            context, L"EnhancedSubprocessWorker", 60000)) { // 60 second timeout
+        return FALSE;
+    }
     
-    // Store thread handle in base context for cleanup
-    context->baseContext->threadContext.hThread = hThread;
     return TRUE;
 }
 

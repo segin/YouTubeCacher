@@ -102,11 +102,21 @@ typedef struct {
     BOOL isRunning;
     BOOL cancelRequested;
     CRITICAL_SECTION criticalSection;
+    
+    // Enhanced lifecycle management fields
+    DWORD timeoutMs;
+    SYSTEMTIME startTime;
+    wchar_t threadName[64];
 } ThreadContext;
 
 // Thread context management functions
 BOOL InitializeThreadContext(ThreadContext* threadContext);
 void CleanupThreadContext(ThreadContext* threadContext);
+
+// Enhanced thread management functions
+BOOL CreateManagedThread(ThreadContext* context, LPTHREAD_START_ROUTINE function, LPVOID data, const wchar_t* name, DWORD timeoutMs);
+BOOL WaitForThreadCompletion(ThreadContext* context, DWORD timeoutMs);
+void ForceTerminateThread(ThreadContext* context);
 
 // Thread synchronization functions
 BOOL SetCancellationFlag(ThreadContext* threadContext);

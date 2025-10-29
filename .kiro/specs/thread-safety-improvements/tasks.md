@@ -10,6 +10,7 @@
 
 
 
+
   - [x] 2.1 Add critical sections for global error handler access
 
 
@@ -34,20 +35,30 @@
     - Update application state access to use thread-safe functions
     - _Requirements: 1.1, 1.2, 1.5_
 
-- [ ] 3. Enhance existing ThreadContext structure and management
-  - [ ] 3.1 Extend ThreadContext with better lifecycle management
+- [x] 3. Enhance existing ThreadContext structure and management
+
+
+
+
+  - [x] 3.1 Extend ThreadContext with better lifecycle management
+
+
     - Add timeout, start time, and thread name fields to ThreadContext
     - Implement CreateManagedThread function with proper initialization
     - Add WaitForThreadCompletion function with timeout support
     - _Requirements: 3.1, 3.2, 3.4_
 
-  - [ ] 3.2 Improve thread cleanup and termination handling
+
+  - [x] 3.2 Improve thread cleanup and termination handling
+
     - Enhance CleanupThreadContext to handle timeouts gracefully
     - Implement ForceTerminateThread function for unresponsive threads
     - Add proper resource cleanup for thread handles and critical sections
     - _Requirements: 3.3, 3.4, 3.5_
 
-  - [ ] 3.3 Update existing thread creation code to use managed threads
+  - [x] 3.3 Update existing thread creation code to use managed threads
+
+
     - Replace direct CreateThread calls in ytdlp.c with CreateManagedThread
     - Update thread cleanup calls to use enhanced ThreadContext functions
     - Ensure all threads use consistent naming and timeout patterns

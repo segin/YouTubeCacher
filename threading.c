@@ -18,6 +18,12 @@ BOOL InitializeThreadContext(ThreadContext* threadContext) {
     // Note: InitializeCriticalSection can raise exceptions on low memory,
     // but we'll handle this with standard error checking
     InitializeCriticalSection(&threadContext->criticalSection);
+    
+    // Initialize enhanced lifecycle management fields
+    threadContext->timeoutMs = 30000; // Default 30 second timeout
+    GetSystemTime(&threadContext->startTime);
+    wcscpy(threadContext->threadName, L"UnnamedThread");
+    
     return TRUE;
 }
 
@@ -32,18 +38,33 @@ void CleanupThreadContext(ThreadContext* threadContext) {
         threadContext->cancelRequested = TRUE;
         LeaveCriticalSection(&threadContext->criticalSection);
         
-        // Wait up to 5 seconds for graceful shutdown
-        if (WaitForSingleObject(threadContext->hThread, 5000) == WAIT_TIMEOUT) {
-            // Force terminate if thread doesn't respond
+        // Use the thread's configured timeout or default to 5 seconds
+        DWORD timeout = (threadContext->timeoutMs > 0) ? threadContext->timeoutMs : 5000;
+        
+        // Wait for graceful shutdown with timeout handling
+        DWORD waitResult = WaitForSingleObject(threadContext->hThread, timeout);
+        if (waitResult == WAIT_TIMEOUT) {
+            // Log timeout and force terminate if thread doesn't respond
+            wchar_t logMsg[256];
+            swprintf(logMsg, 256, L"Thread '%ls' (ID: %lu) timed out during cleanup, forcing termination\r\n", 
+                    threadContext->threadName, threadContext->threadId);
+            OutputDebugStringW(logMsg);
+            
             TerminateThread(threadContext->hThread, 1);
         }
         
+        // Proper resource cleanup for thread handles
         CloseHandle(threadContext->hThread);
         threadContext->hThread = NULL;
     }
     
+    // Clean up critical section
     DeleteCriticalSection(&threadContext->criticalSection);
+    
+    // Reset state
     threadContext->isRunning = FALSE;
+    threadContext->threadId = 0;
+    memset(&threadContext->startTime, 0, sizeof(SYSTEMTIME));
 }
 
 // Thread-safe cancellation flag setting
@@ -901,4 +922,94 @@ BOOL SendBatchMetadataUpdate(IPCContext* context, HWND targetWindow, const wchar
     }
     
     return success;
+}
+
+// ============================================================================
+// Enhanced Thread Management Functions
+// ============================================================================
+
+// Create a managed thread with proper initialization and lifecycle tracking
+BOOL CreateManagedThread(ThreadContext* context, LPTHREAD_START_ROUTINE function, LPVOID data, const wchar_t* name, DWORD timeoutMs) {
+    if (!context || !function) return FALSE;
+    
+    // Initialize the thread context if not already done
+    if (!InitializeThreadContext(context)) {
+        return FALSE;
+    }
+    
+    // Set thread name and timeout
+    if (name && wcslen(name) > 0) {
+        wcsncpy(context->threadName, name, 63);
+        context->threadName[63] = L'\0';
+    }
+    
+    if (timeoutMs > 0) {
+        context->timeoutMs = timeoutMs;
+    }
+    
+    // Record start time
+    GetSystemTime(&context->startTime);
+    
+    // Create the thread
+    context->hThread = CreateThread(NULL, 0, function, data, 0, &context->threadId);
+    if (!context->hThread) {
+        return FALSE;
+    }
+    
+    // Mark as running
+    EnterCriticalSection(&context->criticalSection);
+    context->isRunning = TRUE;
+    LeaveCriticalSection(&context->criticalSection);
+    
+    return TRUE;
+}
+
+// Wait for thread completion with timeout support
+BOOL WaitForThreadCompletion(ThreadContext* context, DWORD timeoutMs) {
+    if (!context || !context->hThread) return FALSE;
+    
+    // Use provided timeout or context default
+    DWORD actualTimeout = (timeoutMs > 0) ? timeoutMs : context->timeoutMs;
+    
+    // Wait for thread completion
+    DWORD waitResult = WaitForSingleObject(context->hThread, actualTimeout);
+    
+    if (waitResult == WAIT_OBJECT_0) {
+        // Thread completed successfully
+        EnterCriticalSection(&context->criticalSection);
+        context->isRunning = FALSE;
+        LeaveCriticalSection(&context->criticalSection);
+        return TRUE;
+    } else if (waitResult == WAIT_TIMEOUT) {
+        // Thread timed out - still running
+        return FALSE;
+    } else {
+        // Wait failed for some other reason
+        return FALSE;
+    }
+}
+
+// Force terminate an unresponsive thread
+void ForceTerminateThread(ThreadContext* context) {
+    if (!context || !context->hThread) return;
+    
+    // Log the forced termination
+    wchar_t logMsg[256];
+    swprintf(logMsg, 256, L"Force terminating unresponsive thread '%ls' (ID: %lu)\r\n", 
+            context->threadName, context->threadId);
+    OutputDebugStringW(logMsg);
+    
+    // Terminate the thread forcefully
+    TerminateThread(context->hThread, 1);
+    
+    // Update state
+    EnterCriticalSection(&context->criticalSection);
+    context->isRunning = FALSE;
+    context->cancelRequested = TRUE;
+    LeaveCriticalSection(&context->criticalSection);
+    
+    // Clean up thread handle
+    CloseHandle(context->hThread);
+    context->hThread = NULL;
+    context->threadId = 0;
 }

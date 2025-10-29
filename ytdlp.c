@@ -2606,14 +2606,12 @@ void FreeSubprocessContext(SubprocessContext* context) {
 BOOL StartSubprocessExecution(SubprocessContext* context) {
     if (!context) return FALSE;
     
-    // Create and start the worker thread
-    HANDLE hThread = CreateThread(NULL, 0, SubprocessWorkerThread, context, 0, NULL);
-    if (!hThread) {
+    // Create managed thread with proper lifecycle management
+    if (!CreateManagedThread(&context->threadContext, SubprocessWorkerThread, context, 
+                            L"SubprocessWorker", 60000)) { // 60 second timeout
         return FALSE;
     }
     
-    // Don't wait for completion - thread will run independently
-    CloseHandle(hThread);
     return TRUE;
 }
 
