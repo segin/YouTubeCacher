@@ -13,7 +13,7 @@ void InstallYtDlpWithWinget(HWND hParent) {
     
     wchar_t cmdLine[] = L"winget install yt-dlp";
     
-    // Create the process
+    // Create the process using new error handling
     BOOL processCreated = CreateProcessW(
         NULL,           // No module name (use command line)
         cmdLine,        // Command line
@@ -29,9 +29,10 @@ void InstallYtDlpWithWinget(HWND hParent) {
     
     if (!processCreated) {
         DWORD error = GetLastError();
-        wchar_t debugMsg[256];
-        swprintf(debugMsg, 256, L"YouTubeCacher: InstallYtDlpWithWinget - Failed to create winget process, error: %lu", error);
-        DebugOutput(debugMsg);
+        
+        // Report error using new error handling system
+        REPORT_ERROR_MSG(YTC_SEVERITY_WARNING, YTC_ERROR_SUBPROCESS_FAILED, 
+                        L"winget process creation failed with error %lu", error);
         
         // Create unified warning dialog for WinGet not available
         static wchar_t details[512];
@@ -94,8 +95,8 @@ void InstallYtDlpWithWinget(HWND hParent) {
     
     // Don't wait for the process - let it run independently
     // Close handles to avoid resource leaks
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
+    SAFE_CLOSE_HANDLE(pi.hProcess);
+    SAFE_CLOSE_HANDLE(pi.hThread);
 }
 
 // Function to validate that yt-dlp executable exists and is accessible
@@ -484,6 +485,76 @@ void DestroyProgressDialog(ProgressDialog* dialog) {
     SAFE_FREE(dialog);
 }
 
+// Create user-friendly error messages for common yt-dlp failures
+wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, const wchar_t* url) {
+    wchar_t* userMessage = (wchar_t*)SAFE_MALLOC(1024 * sizeof(wchar_t));
+    if (!userMessage) return NULL;
+    
+    // Analyze exit code and output to provide specific guidance
+    if (exitCode == ERROR_FILE_NOT_FOUND) {
+        wcscpy(userMessage, L"yt-dlp executable not found.\r\n\r\n"
+                           L"Please install yt-dlp using File > Install yt-dlp or configure the correct path in File > Settings.");
+    } else if (exitCode == ERROR_ACCESS_DENIED) {
+        wcscpy(userMessage, L"Access denied when running yt-dlp.\r\n\r\n"
+                           L"This may be caused by antivirus software or insufficient permissions. "
+                           L"Try running YouTubeCacher as administrator or add yt-dlp to your antivirus exclusions.");
+    } else if (output && wcslen(output) > 0) {
+        // Analyze output for common error patterns
+        if (wcsstr(output, L"Video unavailable") || wcsstr(output, L"Private video") || 
+            wcsstr(output, L"This video is not available")) {
+            swprintf(userMessage, 1024, L"The video is not available for download.\r\n\r\n"
+                                       L"This could be because:\r\n"
+                                       L"• The video is private or restricted\r\n"
+                                       L"• The video has been removed\r\n"
+                                       L"• Geographic restrictions apply\r\n\r\n"
+                                       L"URL: %ls", url ? url : L"Unknown");
+        } else if (wcsstr(output, L"Sign in to confirm") || wcsstr(output, L"age-restricted")) {
+            swprintf(userMessage, 1024, L"The video requires age verification or sign-in.\r\n\r\n"
+                                       L"Age-restricted videos cannot be downloaded without authentication. "
+                                       L"Try using a different video or check if the video is publicly accessible.\r\n\r\n"
+                                       L"URL: %ls", url ? url : L"Unknown");
+        } else if (wcsstr(output, L"HTTP Error 403") || wcsstr(output, L"Forbidden")) {
+            swprintf(userMessage, 1024, L"Access to the video is forbidden.\r\n\r\n"
+                                       L"The video server is blocking access. This may be due to:\r\n"
+                                       L"• Geographic restrictions\r\n"
+                                       L"• Rate limiting\r\n"
+                                       L"• Server-side blocking\r\n\r\n"
+                                       L"URL: %ls", url ? url : L"Unknown");
+        } else if (wcsstr(output, L"HTTP Error 404") || wcsstr(output, L"Not Found")) {
+            swprintf(userMessage, 1024, L"The video was not found.\r\n\r\n"
+                                       L"The video may have been removed or the URL is incorrect. "
+                                       L"Please verify the URL and try again.\r\n\r\n"
+                                       L"URL: %ls", url ? url : L"Unknown");
+        } else if (wcsstr(output, L"network") || wcsstr(output, L"timeout") || wcsstr(output, L"connection")) {
+            wcscpy(userMessage, L"Network connection error.\r\n\r\n"
+                               L"Please check your internet connection and try again. "
+                               L"If the problem persists, the video server may be temporarily unavailable.");
+        } else {
+            // Extract the most relevant error line from output
+            wchar_t* simpleError = ExtractSimpleErrorFromYtDlpOutput(output);
+            if (simpleError) {
+                swprintf(userMessage, 1024, L"yt-dlp error: %ls\r\n\r\n"
+                                           L"URL: %ls", simpleError, url ? url : L"Unknown");
+                SAFE_FREE(simpleError);
+            } else {
+                swprintf(userMessage, 1024, L"yt-dlp process failed (Exit code: %lu).\r\n\r\n"
+                                           L"Please check the URL and try again. If the problem persists, "
+                                           L"the video may not be supported or accessible.\r\n\r\n"
+                                           L"URL: %ls", exitCode, url ? url : L"Unknown");
+            }
+        }
+    } else {
+        swprintf(userMessage, 1024, L"yt-dlp process failed with no output (Exit code: %lu).\r\n\r\n"
+                                   L"This may indicate:\r\n"
+                                   L"• yt-dlp executable is corrupted\r\n"
+                                   L"• Missing Python runtime dependencies\r\n"
+                                   L"• Invalid command line arguments\r\n\r\n"
+                                   L"Try reinstalling yt-dlp using File > Install yt-dlp.", exitCode);
+    }
+    
+    return userMessage;
+}
+
 // Extract a simple, user-friendly error message from yt-dlp output
 wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
     if (!output || wcslen(output) == 0) {
@@ -578,59 +649,55 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
 }
 
 YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* request) {
-    if (!config || !request) {
-        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - NULL config or request parameter");
-        return NULL;
-    }
+    // Validate input parameters using new error handling macros
+    VALIDATE_POINTER_PARAM(config, L"config", cleanup_early);
+    VALIDATE_POINTER_PARAM(request, L"request", cleanup_early);
     
     wchar_t logBuffer[512];
     swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Starting execution for operation %d", request->operation);
     DebugOutput(logBuffer);
     
-    YtDlpResult* result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
-    if (!result) {
-        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Failed to allocate result structure");
-        return NULL;
-    }
+    // Initialize variables for cleanup
+    YtDlpResult* result = NULL;
+    wchar_t* cmdLine = NULL;
+    wchar_t* outputBuffer = NULL;
+    wchar_t* savedCmdLine = NULL;
+    HANDLE hRead = NULL, hWrite = NULL;
+    PROCESS_INFORMATION pi = {0};
+    BOOL processCreated = FALSE;
     
+    // Allocate result structure using new error handling macro
+    SAFE_ALLOC(result, sizeof(YtDlpResult), cleanup);
     memset(result, 0, sizeof(YtDlpResult));
     
     // Build command line arguments
     wchar_t arguments[4096];
     if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, config, arguments, 4096)) {
-        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Failed to build yt-dlp arguments");
+        REPORT_ERROR(YTC_SEVERITY_ERROR, YTC_ERROR_INVALID_PARAMETER, L"Failed to build yt-dlp arguments");
         result->success = FALSE;
         result->exitCode = 1;
-        result->errorMessage = SAFE_WCSDUP(L"Failed to build yt-dlp arguments");
+        result->errorMessage = SAFE_WCSDUP(L"Invalid parameters provided for yt-dlp operation");
         return result;
     }
     
     // Log the full arguments - allocate buffer based on actual arguments length
-    size_t fullArgsLogLen = wcslen(arguments) + 100; // Extra space for prefix
+    size_t fullArgsLogLen = wcslen(arguments) + 100;
     wchar_t* fullArgsLogBuffer = (wchar_t*)SAFE_MALLOC(fullArgsLogLen * sizeof(wchar_t));
     if (fullArgsLogBuffer) {
         swprintf(fullArgsLogBuffer, fullArgsLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %ls", arguments);
         DebugOutput(fullArgsLogBuffer);
         SAFE_FREE(fullArgsLogBuffer);
     } else {
-        // Fallback to truncated version if allocation fails
         swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %.200ls", arguments);
         DebugOutput(logBuffer);
     }
     
-    // Execute yt-dlp using existing process creation logic
+    // Create pipe for subprocess output using new error handling macro
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
-    HANDLE hRead = NULL, hWrite = NULL;
-    
-    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
-        result->success = FALSE;
-        result->exitCode = 1;
-        result->errorMessage = SAFE_WCSDUP(L"Failed to create output pipe");
-        return result;
-    }
-    
+    CHECK_SYSTEM_CALL(CreatePipe(&hRead, &hWrite, &sa, 0), cleanup);
     SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
     
+    // Setup process startup info
     STARTUPINFOW si = {0};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
@@ -638,153 +705,134 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     si.hStdError = hWrite;
     si.hStdInput = NULL;
     
-    PROCESS_INFORMATION pi = {0};
-    
-    // Build command line
+    // Build command line using new error handling macro
     size_t cmdLineLen = wcslen(config->ytDlpPath) + wcslen(arguments) + 10;
-    wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
-    if (!cmdLine) {
-        CloseHandle(hRead);
-        CloseHandle(hWrite);
-        result->success = FALSE;
-        result->exitCode = 1;
-        result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed");
-        return result;
-    }
-    
+    SAFE_ALLOC(cmdLine, cmdLineLen * sizeof(wchar_t), cleanup);
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", config->ytDlpPath, arguments);
     
-    // Log the full command - allocate buffer based on actual command length
-    size_t fullLogLen = wcslen(cmdLine) + 100; // Extra space for prefix
+    // Log the full command
+    size_t fullLogLen = wcslen(cmdLine) + 100;
     wchar_t* fullLogBuffer = (wchar_t*)SAFE_MALLOC(fullLogLen * sizeof(wchar_t));
     if (fullLogBuffer) {
         swprintf(fullLogBuffer, fullLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %ls", cmdLine);
         DebugOutput(fullLogBuffer);
         SAFE_FREE(fullLogBuffer);
     } else {
-        // Fallback to truncated version if allocation fails
         swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %.200ls", cmdLine);
         DebugOutput(logBuffer);
     }
     
-    // Create process
-    BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-    
+    // Create process using new error handling macro
+    processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
     if (!processCreated) {
         DWORD error = GetLastError();
-        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - FAILED to create process, error: %lu", error);
-        DebugOutput(logBuffer);
-        
-        SAFE_FREE(cmdLine);
-        CloseHandle(hRead);
-        CloseHandle(hWrite);
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_SUBPROCESS_FAILED, 
+                        L"CreateProcessW failed with error %lu", error);
         result->success = FALSE;
         result->exitCode = error;
-        result->errorMessage = SAFE_WCSDUP(L"Failed to start yt-dlp process");
-        return result;
+        result->errorMessage = CreateUserFriendlyYtDlpError(error, NULL, request->url);
+        goto cleanup;
     }
     
     DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Process created successfully, reading output...");
-    
     CloseHandle(hWrite);
+    hWrite = NULL; // Mark as closed
     
-    // Read output
+    // Read output from subprocess
     char buffer[4096];
     DWORD bytesRead;
     size_t outputSize = 8192;
-    wchar_t* outputBuffer = (wchar_t*)SAFE_MALLOC(outputSize * sizeof(wchar_t));
-    if (outputBuffer) {
-        outputBuffer[0] = L'\0';
+    SAFE_ALLOC(outputBuffer, outputSize * sizeof(wchar_t), cleanup);
+    outputBuffer[0] = L'\0';
+    
+    // Safe line-based processing for synchronous execution
+    static char syncLineAccumulator[8192] = {0};
+    static size_t syncFillCounter = 0;
+    
+    while (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+        buffer[bytesRead] = '\0';
         
-        // Safe line-based processing for synchronous execution
-        static char syncLineAccumulator[8192] = {0};
-        static size_t syncFillCounter = 0;
+        // Safely add new bytes with bounds checking
+        size_t spaceAvailable = sizeof(syncLineAccumulator) - syncFillCounter - 1;
+        size_t bytesToCopy = (bytesRead < spaceAvailable) ? bytesRead : spaceAvailable;
         
-        while (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-            buffer[bytesRead] = '\0';
-            
-            // Safely add new bytes with bounds checking
-            size_t spaceAvailable = sizeof(syncLineAccumulator) - syncFillCounter - 1;
-            size_t bytesToCopy = (bytesRead < spaceAvailable) ? bytesRead : spaceAvailable;
-            
-            if (bytesToCopy > 0) {
-                memcpy(syncLineAccumulator + syncFillCounter, buffer, bytesToCopy);
-                syncFillCounter += bytesToCopy;
-                syncLineAccumulator[syncFillCounter] = '\0';
-            }
-            
-            // Process complete lines
-            char* start = syncLineAccumulator;
-            char* newline;
-            while ((newline = strchr(start, '\n')) != NULL) {
-                *newline = '\0';
-                
-                // Remove \r if present
-                size_t lineLen = newline - start;
-                if (lineLen > 0 && start[lineLen - 1] == '\r') {
-                    start[lineLen - 1] = '\0';
-                    lineLen--;
-                }
-                
-                // Convert complete UTF-8 line to wide chars
-                if (lineLen > 0) {
-                    wchar_t tempOutput[2048];
-                    int converted = MultiByteToWideChar(CP_UTF8, 0, start, (int)lineLen, tempOutput, 2047);
-                    if (converted > 0) {
-                        tempOutput[converted] = L'\0';
-                        
-                        size_t currentLen = wcslen(outputBuffer);
-                        size_t newLen = currentLen + converted + 2; // +2 for \n and null
-                        if (newLen >= outputSize) {
-                            outputSize = newLen * 2;
-                            wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(outputBuffer, outputSize * sizeof(wchar_t));
-                            if (newBuffer) {
-                                outputBuffer = newBuffer;
-                            } else {
-                                break;
-                            }
-                        }
-                        
-                        wcscat(outputBuffer, tempOutput);
-                        wcscat(outputBuffer, L"\n");
-                    }
-                }
-                
-                start = newline + 1;
-            }
-            
-            // Move remaining incomplete data to start
-            size_t remaining = syncFillCounter - (start - syncLineAccumulator);
-            if (remaining > 0 && start != syncLineAccumulator) {
-                memmove(syncLineAccumulator, start, remaining);
-            }
-            syncFillCounter = remaining;
+        if (bytesToCopy > 0) {
+            memcpy(syncLineAccumulator + syncFillCounter, buffer, bytesToCopy);
+            syncFillCounter += bytesToCopy;
             syncLineAccumulator[syncFillCounter] = '\0';
         }
         
-        // Process any remaining data at end
-        if (syncFillCounter > 0) {
-            wchar_t tempOutput[2048];
-            int converted = MultiByteToWideChar(CP_UTF8, 0, syncLineAccumulator, (int)syncFillCounter, tempOutput, 2047);
-            if (converted > 0) {
-                tempOutput[converted] = L'\0';
-                
-                size_t currentLen = wcslen(outputBuffer);
-                size_t newLen = currentLen + converted + 1;
-                if (newLen >= outputSize) {
-                    outputSize = newLen * 2;
-                    wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(outputBuffer, outputSize * sizeof(wchar_t));
-                    if (newBuffer) {
-                        outputBuffer = newBuffer;
+        // Process complete lines
+        char* start = syncLineAccumulator;
+        char* newline;
+        while ((newline = strchr(start, '\n')) != NULL) {
+            *newline = '\0';
+            
+            // Remove \r if present
+            size_t lineLen = newline - start;
+            if (lineLen > 0 && start[lineLen - 1] == '\r') {
+                start[lineLen - 1] = '\0';
+                lineLen--;
+            }
+            
+            // Convert complete UTF-8 line to wide chars
+            if (lineLen > 0) {
+                wchar_t tempOutput[2048];
+                int converted = MultiByteToWideChar(CP_UTF8, 0, start, (int)lineLen, tempOutput, 2047);
+                if (converted > 0) {
+                    tempOutput[converted] = L'\0';
+                    
+                    size_t currentLen = wcslen(outputBuffer);
+                    size_t newLen = currentLen + converted + 2; // +2 for \n and null
+                    if (newLen >= outputSize) {
+                        outputSize = newLen * 2;
+                        wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(outputBuffer, outputSize * sizeof(wchar_t));
+                        if (newBuffer) {
+                            outputBuffer = newBuffer;
+                        } else {
+                            break;
+                        }
                     }
-                }
-                
-                if (outputBuffer) {
+                    
                     wcscat(outputBuffer, tempOutput);
+                    wcscat(outputBuffer, L"\r\n"); // Use Windows line endings
                 }
             }
-            syncFillCounter = 0;
+            
+            start = newline + 1;
         }
+        
+        // Move remaining incomplete data to start
+        size_t remaining = syncFillCounter - (start - syncLineAccumulator);
+        if (remaining > 0 && start != syncLineAccumulator) {
+            memmove(syncLineAccumulator, start, remaining);
+        }
+        syncFillCounter = remaining;
+        syncLineAccumulator[syncFillCounter] = '\0';
+    }
+    
+    // Process any remaining data at end
+    if (syncFillCounter > 0) {
+        wchar_t tempOutput[2048];
+        int converted = MultiByteToWideChar(CP_UTF8, 0, syncLineAccumulator, (int)syncFillCounter, tempOutput, 2047);
+        if (converted > 0) {
+            tempOutput[converted] = L'\0';
+            
+            size_t currentLen = wcslen(outputBuffer);
+            size_t newLen = currentLen + converted + 1;
+            if (newLen >= outputSize) {
+                outputSize = newLen * 2;
+                wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(outputBuffer, outputSize * sizeof(wchar_t));
+                if (newBuffer) {
+                    outputBuffer = newBuffer;
+                }
+            }
+            
+            if (outputBuffer) {
+                wcscat(outputBuffer, tempOutput);
+            }
+        }
+        syncFillCounter = 0;
     }
     
     // Wait for process completion
@@ -795,23 +843,18 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     GetExitCodeProcess(pi.hProcess, &exitCode);
     
     // Save command line for diagnostics before freeing
-    wchar_t* savedCmdLine = SAFE_WCSDUP(cmdLine);
-    
-    // Cleanup
-    SAFE_FREE(cmdLine);
-    CloseHandle(hRead);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
+    savedCmdLine = SAFE_WCSDUP(cmdLine);
     
     // Set result
     result->success = (exitCode == 0);
     result->exitCode = exitCode;
     result->output = outputBuffer;
+    outputBuffer = NULL; // Transfer ownership to result
     
     // Save output to global buffer (clear previous run first)
     ClearYtDlpOutputBuffer();
-    if (outputBuffer && wcslen(outputBuffer) > 0) {
-        AppendToYtDlpOutputBuffer(outputBuffer);
+    if (result->output && wcslen(result->output) > 0) {
+        AppendToYtDlpOutputBuffer(result->output);
     }
     
     swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Process completed with exit code: %lu, success: %s", 
@@ -839,14 +882,12 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
                 DebugOutput(outputLogBuffer);
                 SAFE_FREE(outputLogBuffer);
             } else {
-                // Fallback to truncated version if allocation fails
                 swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output (first 200 chars): %.200ls", result->output);
                 DebugOutput(logBuffer);
             }
             
-            // Extract a simple, user-friendly error message from yt-dlp output
-            wchar_t* simpleError = ExtractSimpleErrorFromYtDlpOutput(result->output);
-            result->errorMessage = simpleError ? simpleError : SAFE_WCSDUP(L"yt-dlp process failed");
+            // Create user-friendly error message using new helper function
+            result->errorMessage = CreateUserFriendlyYtDlpError(result->exitCode, result->output, request->url);
             
             if (result->errorMessage) {
                 swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Extracted error message: %ls", result->errorMessage);
@@ -866,8 +907,8 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
         } else {
             DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output from failed process, using fallback error");
             
-            // Fallback for cases with no output
-            result->errorMessage = SAFE_WCSDUP(L"yt-dlp process failed with no output");
+            // Fallback for cases with no output using new helper function
+            result->errorMessage = CreateUserFriendlyYtDlpError(result->exitCode, NULL, request->url);
             
             wchar_t* diagnostics = (wchar_t*)SAFE_MALLOC(1024 * sizeof(wchar_t));
             if (diagnostics) {
@@ -885,11 +926,26 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
         }
     }
     
-    // Cleanup saved command line
-    if (savedCmdLine) SAFE_FREE(savedCmdLine);
+    goto cleanup;
+
+cleanup_early:
+    return NULL;
+
+cleanup:
+    // Cleanup resources using safe macros
+    SAFE_FREE_AND_NULL(cmdLine);
+    SAFE_FREE_AND_NULL(savedCmdLine);
+    SAFE_FREE_AND_NULL(outputBuffer); // Only free if not transferred to result
+    SAFE_CLOSE_HANDLE(hRead);
+    SAFE_CLOSE_HANDLE(hWrite);
+    if (processCreated) {
+        SAFE_CLOSE_HANDLE(pi.hProcess);
+        SAFE_CLOSE_HANDLE(pi.hThread);
+    }
     
     swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Returning result: success=%s, exitCode=%lu", 
-            result->success ? L"TRUE" : L"FALSE", result->exitCode);
+            result ? (result->success ? L"TRUE" : L"FALSE") : L"NULL", 
+            result ? result->exitCode : 0);
     DebugOutput(logBuffer);
     
     return result;
@@ -1941,9 +1997,11 @@ BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, siz
     data->duration[0] = L'\0';
     data->success = FALSE;
     
-    // Create thread to get video info
+    // Create thread to get video info using new error handling macro
     data->hThread = CreateThread(NULL, 0, GetVideoInfoThread, data, 0, &data->threadId);
     if (!data->hThread) {
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
+                        L"Failed to create video info thread (Error: %lu)", GetLastError());
         SAFE_FREE(data);
         return FALSE;
     }
@@ -2031,10 +2089,12 @@ OperationResult* StartNonBlockingGetInfoEx(HWND hDlg, const wchar_t* url, Cached
     wcscpy(context->url, url);
     context->cachedMetadata = cachedMetadata;
     
-    // Create worker thread
+    // Create worker thread using new error handling macro
     HANDLE hThread = CreateThread(NULL, 0, GetInfoWorkerThread, context, 0, NULL);
     if (!hThread) {
         DWORD errorCode = GetLastError();
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
+                        L"Failed to create GetInfo worker thread (Error: %lu)", errorCode);
         SAFE_FREE(context);
         
         wchar_t contextBuffer[512];
@@ -2280,10 +2340,12 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     UpdateMainProgressBar(hDlg, -1, L"Starting download...");
     SetDownloadUIState(hDlg, TRUE);
     
-    // Start worker thread
+    // Start worker thread using new error handling macro
     OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Starting worker thread\n");
     HANDLE hThread = CreateThread(NULL, 0, UnifiedDownloadWorkerThread, context, 0, NULL);
     if (!hThread) {
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
+                        L"Failed to create unified download worker thread (Error: %lu)", GetLastError());
         OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create worker thread\n");
         SAFE_FREE(context);
         FreeYtDlpRequest(request);
@@ -2345,9 +2407,11 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
         SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50); // 50ms animation speed
     }
     
-    // Create and start the download thread
+    // Create and start the download thread using new error handling macro
     HANDLE hThread = CreateThread(NULL, 0, NonBlockingDownloadThread, downloadContext, 0, NULL);
     if (!hThread) {
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
+                        L"Failed to create non-blocking download thread (Error: %lu)", GetLastError());
         SAFE_FREE(downloadContext);
         return FALSE;
     }
@@ -2362,10 +2426,9 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
                                           ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow) {
     DebugOutput(L"YouTubeCacher: CreateSubprocessContext - ENTRY");
     
-    if (!config || !request) {
-        DebugOutput(L"YouTubeCacher: CreateSubprocessContext - NULL config or request, RETURNING NULL");
-        return NULL;
-    }
+    // Validate input parameters using new error handling macros
+    VALIDATE_POINTER_PARAM(config, L"config", cleanup_early);
+    VALIDATE_POINTER_PARAM(request, L"request", cleanup_early);
     
     DebugOutput(L"YouTubeCacher: CreateSubprocessContext - Parameters valid, proceeding");
     
@@ -2382,11 +2445,8 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
     OutputDebugStringW(debugMsg);
     
     OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Allocating context memory\n");
-    SubprocessContext* context = (SubprocessContext*)SAFE_MALLOC(sizeof(SubprocessContext));
-    if (!context) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Failed to allocate context memory, RETURNING NULL\n");
-        return NULL;
-    }
+    SubprocessContext* context = NULL;
+    SAFE_ALLOC(context, sizeof(SubprocessContext), cleanup_early);
     
     OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Context allocated, zeroing memory\n");
     memset(context, 0, sizeof(SubprocessContext));
@@ -2402,17 +2462,8 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
     
     // Copy configuration and request (deep copy for thread safety)
     OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Allocating config and request copies\n");
-    context->config = (YtDlpConfig*)SAFE_MALLOC(sizeof(YtDlpConfig));
-    context->request = (YtDlpRequest*)SAFE_MALLOC(sizeof(YtDlpRequest));
-    
-    if (!context->config || !context->request) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Failed to allocate config or request memory\n");
-        CleanupThreadContext(&context->threadContext);
-        if (context->config) SAFE_FREE(context->config);
-        if (context->request) SAFE_FREE(context->request);
-        SAFE_FREE(context);
-        return NULL;
-    }
+    SAFE_ALLOC(context->config, sizeof(YtDlpConfig), cleanup);
+    SAFE_ALLOC(context->request, sizeof(YtDlpRequest), cleanup);
     OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Config and request memory allocated\n");
     
     // Deep copy config
@@ -2495,6 +2546,18 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
     
     OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Context created successfully, RETURNING\n");
     return context;
+
+cleanup:
+    if (context) {
+        CleanupThreadContext(&context->threadContext);
+        SAFE_FREE_AND_NULL(context->config);
+        SAFE_FREE_AND_NULL(context->request);
+        SAFE_FREE_AND_NULL(context);
+    }
+
+cleanup_early:
+    REPORT_ERROR(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, L"Failed to create subprocess context");
+    return NULL;
 }
 
 void FreeSubprocessContext(SubprocessContext* context) {
@@ -2788,12 +2851,12 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
 }
 
 BOOL TestYtDlpFunctionality(const wchar_t* path) {
-    if (!path || wcslen(path) == 0) return FALSE;
+    VALIDATE_STRING_PARAM(path, L"path", 256, cleanup);
     
     // Build command line to test yt-dlp version
     size_t cmdLineLen = wcslen(path) + 20;
-    wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
-    if (!cmdLine) return FALSE;
+    wchar_t* cmdLine = NULL;
+    SAFE_ALLOC(cmdLine, cmdLineLen * sizeof(wchar_t), cleanup);
     
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" --version", path);
     
@@ -2801,12 +2864,8 @@ BOOL TestYtDlpFunctionality(const wchar_t* path) {
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     HANDLE hRead = NULL, hWrite = NULL;
     
-    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
-        SAFE_FREE(cmdLine);
-        return FALSE;
-    }
-    
-    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+    CHECK_SYSTEM_CALL(CreatePipe(&hRead, &hWrite, &sa, 0), pipe_cleanup);
+    CHECK_SYSTEM_CALL(SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0), pipe_cleanup);
     
     // Set up process creation
     STARTUPINFOW si = {0};
@@ -2819,14 +2878,8 @@ BOOL TestYtDlpFunctionality(const wchar_t* path) {
     PROCESS_INFORMATION pi = {0};
     
     // Create process
-    BOOL processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-    
-    if (!processCreated) {
-        SAFE_FREE(cmdLine);
-        CloseHandle(hRead);
-        CloseHandle(hWrite);
-        return FALSE;
-    }
+    CHECK_SYSTEM_CALL_EX(CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi),
+                         YTC_ERROR_YTDLP_EXECUTION, process_cleanup);
     
     CloseHandle(hWrite);
     
@@ -2846,12 +2899,25 @@ BOOL TestYtDlpFunctionality(const wchar_t* path) {
     }
     
     // Cleanup
-    SAFE_FREE(cmdLine);
-    CloseHandle(hRead);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
+    SAFE_FREE_AND_NULL(cmdLine);
+    SAFE_CLOSE_HANDLE(hRead);
+    SAFE_CLOSE_HANDLE(pi.hProcess);
+    SAFE_CLOSE_HANDLE(pi.hThread);
     
     return success;
+
+process_cleanup:
+    SAFE_CLOSE_HANDLE(hWrite);
+    SAFE_CLOSE_HANDLE(pi.hProcess);
+    SAFE_CLOSE_HANDLE(pi.hThread);
+
+pipe_cleanup:
+    SAFE_CLOSE_HANDLE(hRead);
+    SAFE_CLOSE_HANDLE(hWrite);
+    SAFE_FREE_AND_NULL(cmdLine);
+
+cleanup:
+    return FALSE;
 }BOOL
  ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo) {
     if (!config || !validationInfo) return FALSE;

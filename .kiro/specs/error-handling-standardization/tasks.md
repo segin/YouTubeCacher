@@ -54,15 +54,12 @@
 
 - [x] 7. Update file operation error handling  
 
-
   - Replace existing file error handling in cache.c with new error macros
   - Update file access functions to use CHECK_FILE_OPERATION macro
   - Implement user-friendly error messages for common file failures (permissions, disk full)
   - _Requirements: 2.2, 6.3_
 
-- [ ] 8. Update UI error handling integration
-
-
+- [x] 8. Update UI error handling integration
 
 
   - Replace existing MessageBox calls in main.c and ui.c with ShowErrorDialog function
@@ -71,6 +68,9 @@
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
 - [ ] 9. Update yt-dlp subprocess error handling
+
+
+
   - Update ExecuteYtDlpRequest in ytdlp.c to use new error handling macros
   - Replace existing subprocess error handling with CHECK_SYSTEM_CALL macro
   - Create user-friendly error messages for common yt-dlp failures

@@ -158,16 +158,16 @@ extern ErrorHandler g_ErrorHandler;
 
 // Convenience macros for error reporting
 #define REPORT_ERROR(severity, code, message) \
-    ReportError((severity), (code), __FUNCTIONW__, __FILEW__, __LINE__, (message))
+    ReportError((severity), (code), GetWideFunction(__FUNCTION__), GetWideFile(__FILE__), __LINE__, (message))
 
 #define REPORT_FATAL_ERROR(code, message) \
-    ReportError(YTC_SEVERITY_FATAL, (code), __FUNCTIONW__, __FILEW__, __LINE__, (message))
+    ReportError(YTC_SEVERITY_FATAL, (code), GetWideFunction(__FUNCTION__), GetWideFile(__FILE__), __LINE__, (message))
 
 #define REPORT_ERROR_MSG(severity, code, format, ...) \
     do { \
         wchar_t _msg[512]; \
         swprintf(_msg, 512, (format), __VA_ARGS__); \
-        ReportError((severity), (code), __FUNCTIONW__, __FILEW__, __LINE__, _msg); \
+        ReportError((severity), (code), GetWideFunction(__FUNCTION__), GetWideFile(__FILE__), __LINE__, _msg); \
     } while(0)
 
 // Convenience macro for showing error dialogs
