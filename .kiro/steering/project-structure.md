@@ -53,15 +53,16 @@ This project follows a modular C/Windows application structure with clear separa
 
 ## Design Principles
 
-1. **Centralized Constants**: All magic numbers and configuration values are defined in header files
-2. **Modular Design**: Functionality is separated into logical modules (URI handling, main UI, etc.)
-3. **Resource Sharing**: Common definitions between C code and resource script are in `resource.h`
-4. **Type Safety**: Proper extern declarations and function prototypes
-5. **Maintainability**: Constants can be changed in one location
-6. **Unicode Support**: All code uses Unicode (UTF-16) APIs and TCHAR types for proper internationalization
-7. **Master Header Inclusion**: The only header file included by `.c` files is `YouTubeCacher.h`. This master header includes all other necessary headers
-8. **Version Control Discipline**: Always run `git status`, `git commit` and `git push` after every development step. Use `git diff` when `git status` shows additional staged changes
-9. **GUI Application**: YouTubeCacher is a Windows GUI application that does not produce command-line output. Testing should focus on successful compilation and proper module integration rather than command-line execution
+1. **Desktop Utility Focus**: YouTubeCacher is a desktop utility application, not a high-availability enterprise backend. All designs, architectures, and implementations should be appropriate for a desktop utility - prioritizing simplicity, maintainability, and user experience over enterprise-scale features like complex thread pools, extensive monitoring, or high-availability patterns
+2. **Centralized Constants**: All magic numbers and configuration values are defined in header files
+3. **Modular Design**: Functionality is separated into logical modules (URI handling, main UI, etc.)
+4. **Resource Sharing**: Common definitions between C code and resource script are in `resource.h`
+5. **Type Safety**: Proper extern declarations and function prototypes
+6. **Maintainability**: Constants can be changed in one location
+7. **Unicode Support**: All code uses Unicode (UTF-16) APIs and TCHAR types for proper internationalization
+8. **Master Header Inclusion**: The only header file included by `.c` files is `YouTubeCacher.h`. This master header includes all other necessary headers
+9. **Version Control Discipline**: Always run `git status`, `git commit` and `git push` after every development step. Use `git diff` when `git status` shows additional staged changes
+10. **GUI Application**: YouTubeCacher is a Windows GUI application that does not produce command-line output. Testing should focus on successful compilation and proper module integration rather than command-line execution
 
 ## Build Process
 
