@@ -1,5 +1,71 @@
 #include "YouTubeCacher.h"
 
+// Enhanced file operation error handling macro for cache operations
+#define CHECK_FILE_OPERATION_WITH_CONTEXT(call, operation_name, file_path, cleanup_label) \
+    do { \
+        if (!(call)) { \
+            DWORD _error = GetLastError(); \
+            ErrorContext* _ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_ERROR); \
+            if (_ctx) { \
+                AddContextVariable(_ctx, L"FilePath", (file_path)); \
+                AddContextVariable(_ctx, L"Operation", (operation_name)); \
+                wchar_t _errorStr[32]; \
+                swprintf(_errorStr, 32, L"%lu", _error); \
+                AddContextVariable(_ctx, L"SystemError", _errorStr); \
+                \
+                if (_error == ERROR_ACCESS_DENIED) { \
+                    SetUserFriendlyMessage(_ctx, L"Access denied. Please check file permissions or run as administrator."); \
+                } else if (_error == ERROR_SHARING_VIOLATION) { \
+                    SetUserFriendlyMessage(_ctx, L"File is currently in use by another program. Please close any programs using the file and try again."); \
+                } else if (_error == ERROR_FILE_NOT_FOUND || _error == ERROR_PATH_NOT_FOUND) { \
+                    SetUserFriendlyMessage(_ctx, L"File or path not found. The file may have been moved or deleted."); \
+                } else if (_error == ERROR_DISK_FULL) { \
+                    SetUserFriendlyMessage(_ctx, L"Disk is full. Please free up disk space and try again."); \
+                } else { \
+                    SetUserFriendlyMessage(_ctx, L"File operation failed due to a system error. The storage device may have issues."); \
+                } \
+                FreeErrorContext(_ctx); \
+            } \
+            goto cleanup_label; \
+        } \
+    } while(0)
+
+// Utility function to safely check if a file exists using new error handling
+BOOL SafeFileExists(const wchar_t* filePath) {
+    VALIDATE_POINTER_PARAM(filePath, L"filePath", cleanup);
+    
+    DWORD attributes = GetFileAttributesW(filePath);
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        DWORD error = GetLastError();
+        
+        // Only report non-file-not-found errors as these are unexpected
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
+            ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_INFO);
+            if (ctx) {
+                AddContextVariable(ctx, L"FilePath", filePath);
+                AddContextVariable(ctx, L"Operation", L"Check file existence");
+                wchar_t errorCodeStr[32];
+                swprintf(errorCodeStr, 32, L"%lu", error);
+                AddContextVariable(ctx, L"SystemError", errorCodeStr);
+                
+                if (error == ERROR_ACCESS_DENIED) {
+                    SetUserFriendlyMessage(ctx, L"Cannot check if file exists due to insufficient permissions.");
+                } else {
+                    SetUserFriendlyMessage(ctx, L"Cannot check if file exists due to a system error.");
+                }
+                FreeErrorContext(ctx);
+            }
+        }
+        return FALSE;
+    }
+    
+    // Return TRUE only if it's a file (not a directory)
+    return !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+
+cleanup:
+    return FALSE;
+}
+
 // Initialize the cache manager
 BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) {
     DebugOutput(L"YouTubeCacher: InitializeCacheManager - ENTRY");
@@ -100,10 +166,31 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     HANDLE hFind = FindFirstFileW(manager->cacheFilePath, &findData);
     if (hFind == INVALID_HANDLE_VALUE) {
         DWORD error = GetLastError();
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - File doesn't exist (error %lu): %ls", 
-                error, manager->cacheFilePath);
-        DebugOutput(debugMsg);
-        return TRUE; // File doesn't exist yet, that's okay for new installations
+        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Cache file doesn't exist yet: %ls\r\n", 
+                    manager->cacheFilePath);
+            DebugOutput(debugMsg);
+            return TRUE; // File doesn't exist yet, that's okay for new installations
+        } else {
+            // Report unexpected file access errors with user-friendly messages
+            ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_WARNING);
+            if (ctx) {
+                AddContextVariable(ctx, L"FilePath", manager->cacheFilePath);
+                AddContextVariable(ctx, L"SystemError", L"FindFirstFile failed");
+                if (error == ERROR_ACCESS_DENIED) {
+                    SetUserFriendlyMessage(ctx, L"Cannot access cache file due to insufficient permissions.\r\nPlease check file permissions or run as administrator.");
+                } else if (error == ERROR_SHARING_VIOLATION) {
+                    SetUserFriendlyMessage(ctx, L"Cache file is currently in use by another program.\r\nPlease close any programs that might be using the file and try again.");
+                } else {
+                    SetUserFriendlyMessage(ctx, L"Unable to access cache file due to a system error.\r\nThe cache may be corrupted or the storage device may have issues.");
+                }
+                FreeErrorContext(ctx);
+            }
+            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - File access error %lu: %ls\r\n", 
+                    error, manager->cacheFilePath);
+            DebugOutput(debugMsg);
+            return FALSE;
+        }
     }
     FindClose(hFind);
     
@@ -126,24 +213,43 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         DebugOutput(debugMsg);
     }
     
-    // Attempt to open file with error handling
+    // Attempt to open file with comprehensive error handling using new macros
     FILE* file = _wfopen(manager->cacheFilePath, L"r,ccs=UTF-8");
     if (!file) {
         DWORD error = GetLastError();
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to open file (error %lu): %ls", 
-                error, manager->cacheFilePath);
-        DebugOutput(debugMsg);
         
         // Try alternative encoding if UTF-8 fails
         file = _wfopen(manager->cacheFilePath, L"r");
         if (!file) {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to open file with alternative encoding");
+            // Use new error handling macro for file operations
+            ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_ERROR);
+            if (ctx) {
+                AddContextVariable(ctx, L"FilePath", manager->cacheFilePath);
+                AddContextVariable(ctx, L"Operation", L"Open cache file for reading");
+                wchar_t errorCodeStr[32];
+                swprintf(errorCodeStr, 32, L"%lu", error);
+                AddContextVariable(ctx, L"SystemError", errorCodeStr);
+                
+                if (error == ERROR_ACCESS_DENIED) {
+                    SetUserFriendlyMessage(ctx, L"Cannot open cache file due to insufficient permissions.\r\nPlease check file permissions or run as administrator.");
+                } else if (error == ERROR_SHARING_VIOLATION) {
+                    SetUserFriendlyMessage(ctx, L"Cache file is currently locked by another program.\r\nPlease close any programs that might be using the file and try again.");
+                } else if (error == ERROR_DISK_FULL) {
+                    SetUserFriendlyMessage(ctx, L"Cannot open cache file because the disk is full.\r\nPlease free up disk space and try again.");
+                } else {
+                    SetUserFriendlyMessage(ctx, L"Unable to open cache file due to a system error.\r\nThe file may be corrupted or the storage device may have issues.");
+                }
+                FreeErrorContext(ctx);
+            }
+            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to open file (error %lu): %ls\r\n", 
+                    error, manager->cacheFilePath);
+            DebugOutput(debugMsg);
             return FALSE;
         } else {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - WARNING: Opened file without UTF-8 encoding");
+            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - WARNING: Opened file without UTF-8 encoding\r\n");
         }
     } else {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File opened successfully with UTF-8 encoding");
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File opened successfully with UTF-8 encoding\r\n");
     }
     
     wchar_t line[MAX_CACHE_LINE_LENGTH];
@@ -441,7 +547,28 @@ BOOL SaveCacheToFile(CacheManager* manager) {
     FILE* file = _wfopen(manager->cacheFilePath, L"w,ccs=UTF-8");
     if (!file) {
         DWORD error = GetLastError();
-        swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - ERROR: Failed to open file for writing (error %lu): %ls", 
+        
+        // Use enhanced error handling with better context information
+        ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_ERROR);
+        if (ctx) {
+            AddContextVariable(ctx, L"FilePath", manager->cacheFilePath);
+            AddContextVariable(ctx, L"Operation", L"Open cache file for writing");
+            wchar_t errorCodeStr[32];
+            swprintf(errorCodeStr, 32, L"%lu", error);
+            AddContextVariable(ctx, L"SystemError", errorCodeStr);
+            
+            if (error == ERROR_ACCESS_DENIED) {
+                SetUserFriendlyMessage(ctx, L"Cannot save cache file due to insufficient permissions.\r\nPlease check folder permissions or run as administrator.");
+            } else if (error == ERROR_DISK_FULL) {
+                SetUserFriendlyMessage(ctx, L"Cannot save cache file because the disk is full.\r\nPlease free up disk space and try again.");
+            } else if (error == ERROR_PATH_NOT_FOUND) {
+                SetUserFriendlyMessage(ctx, L"Cannot save cache file because the folder path does not exist.\r\nPlease check that the download folder is accessible.");
+            } else {
+                SetUserFriendlyMessage(ctx, L"Unable to save cache file due to a system error.\r\nThe storage device may have issues or be write-protected.");
+            }
+            FreeErrorContext(ctx);
+        }
+        swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - ERROR: Failed to open file for writing (error %lu): %ls\r\n", 
                 error, manager->cacheFilePath);
         DebugOutput(debugMsg);
         return FALSE;
@@ -673,7 +800,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
         memset(result->errors, 0, result->totalFiles * sizeof(FileDeleteError));
     }
     
-    // Delete main video file
+    // Delete main video file with enhanced error handling
     if (entry->mainVideoFile) {
         if (!DeleteFileW(entry->mainVideoFile)) {
             DWORD error = GetLastError();
@@ -681,9 +808,31 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
             result->errors[result->errorCount].errorCode = error;
             result->errorCount++;
             
-            // Log deletion failure
+            // Use enhanced error context with more detailed information
+            ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_WARNING);
+            if (ctx) {
+                AddContextVariable(ctx, L"FilePath", entry->mainVideoFile);
+                AddContextVariable(ctx, L"Operation", L"Delete main video file");
+                AddContextVariable(ctx, L"FileType", L"Video");
+                wchar_t errorCodeStr[32];
+                swprintf(errorCodeStr, 32, L"%lu", error);
+                AddContextVariable(ctx, L"SystemError", errorCodeStr);
+                
+                if (error == ERROR_ACCESS_DENIED) {
+                    SetUserFriendlyMessage(ctx, L"Cannot delete video file due to insufficient permissions.\r\nThe file may be read-only or you may need administrator privileges.");
+                } else if (error == ERROR_SHARING_VIOLATION) {
+                    SetUserFriendlyMessage(ctx, L"Cannot delete video file because it is currently in use.\r\nPlease close any media players or programs using the file and try again.");
+                } else if (error == ERROR_FILE_NOT_FOUND) {
+                    SetUserFriendlyMessage(ctx, L"Video file was already deleted or moved.\r\nThe cache entry will be updated to reflect this change.");
+                } else {
+                    SetUserFriendlyMessage(ctx, L"Unable to delete video file due to a system error.\r\nThe file may be corrupted or the storage device may have issues.");
+                }
+                FreeErrorContext(ctx);
+            }
+            
+            // Log deletion failure with enhanced context
             wchar_t logMsg[1024];
-            swprintf(logMsg, 1024, L"Failed to delete video file: %ls (Error: %lu)", 
+            swprintf(logMsg, 1024, L"Failed to delete video file: %ls (Error: %lu)\r\n", 
                     entry->mainVideoFile, error);
             WriteToLogfile(logMsg);
         } else {
@@ -691,12 +840,12 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
             
             // Log successful deletion
             wchar_t logMsg[1024];
-            swprintf(logMsg, 1024, L"Deleted video file: %ls", entry->mainVideoFile);
+            swprintf(logMsg, 1024, L"Deleted video file: %ls\r\n", entry->mainVideoFile);
             WriteToLogfile(logMsg);
         }
     }
     
-    // Delete subtitle files
+    // Delete subtitle files with enhanced error handling
     for (int i = 0; i < entry->subtitleCount; i++) {
         if (entry->subtitleFiles && entry->subtitleFiles[i]) {
             if (!DeleteFileW(entry->subtitleFiles[i])) {
@@ -705,9 +854,34 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
                 result->errors[result->errorCount].errorCode = error;
                 result->errorCount++;
                 
-                // Log deletion failure
+                // Use enhanced error context with subtitle-specific information
+                ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_WARNING);
+                if (ctx) {
+                    AddContextVariable(ctx, L"FilePath", entry->subtitleFiles[i]);
+                    AddContextVariable(ctx, L"Operation", L"Delete subtitle file");
+                    AddContextVariable(ctx, L"FileType", L"Subtitle");
+                    wchar_t subtitleIndex[16];
+                    swprintf(subtitleIndex, 16, L"%d", i + 1);
+                    AddContextVariable(ctx, L"SubtitleIndex", subtitleIndex);
+                    wchar_t errorCodeStr[32];
+                    swprintf(errorCodeStr, 32, L"%lu", error);
+                    AddContextVariable(ctx, L"SystemError", errorCodeStr);
+                    
+                    if (error == ERROR_ACCESS_DENIED) {
+                        SetUserFriendlyMessage(ctx, L"Cannot delete subtitle file due to insufficient permissions.\r\nThe file may be read-only or you may need administrator privileges.");
+                    } else if (error == ERROR_SHARING_VIOLATION) {
+                        SetUserFriendlyMessage(ctx, L"Cannot delete subtitle file because it is currently in use.\r\nPlease close any text editors or programs using the file and try again.");
+                    } else if (error == ERROR_FILE_NOT_FOUND) {
+                        SetUserFriendlyMessage(ctx, L"Subtitle file was already deleted or moved.\r\nThe cache entry will be updated to reflect this change.");
+                    } else {
+                        SetUserFriendlyMessage(ctx, L"Unable to delete subtitle file due to a system error.\r\nThe file may be corrupted or the storage device may have issues.");
+                    }
+                    FreeErrorContext(ctx);
+                }
+                
+                // Log deletion failure with enhanced context
                 wchar_t logMsg[1024];
-                swprintf(logMsg, 1024, L"Failed to delete subtitle file: %ls (Error: %lu)", 
+                swprintf(logMsg, 1024, L"Failed to delete subtitle file: %ls (Error: %lu)\r\n", 
                         entry->subtitleFiles[i], error);
                 WriteToLogfile(logMsg);
             } else {
@@ -715,7 +889,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
                 
                 // Log successful deletion
                 wchar_t logMsg[1024];
-                swprintf(logMsg, 1024, L"Deleted subtitle file: %ls", entry->subtitleFiles[i]);
+                swprintf(logMsg, 1024, L"Deleted subtitle file: %ls\r\n", entry->subtitleFiles[i]);
                 WriteToLogfile(logMsg);
             }
         }
@@ -842,9 +1016,26 @@ BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t
         return FALSE;
     }
     
-    // Check if video file still exists
+    // Check if video file still exists with enhanced error handling
     DWORD attributes = GetFileAttributesW(entry->mainVideoFile);
     if (attributes == INVALID_FILE_ATTRIBUTES) {
+        DWORD error = GetLastError();
+        
+        // Report file access failure for playback
+        ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_NOT_FOUND, YTC_SEVERITY_ERROR);
+        if (ctx) {
+            AddContextVariable(ctx, L"FilePath", entry->mainVideoFile);
+            AddContextVariable(ctx, L"Operation", L"Check file for playback");
+            if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+                SetUserFriendlyMessage(ctx, L"The video file no longer exists at the expected location.\r\nIt may have been moved, deleted, or the storage device may be disconnected.");
+            } else if (error == ERROR_ACCESS_DENIED) {
+                SetUserFriendlyMessage(ctx, L"Cannot access the video file due to insufficient permissions.\r\nPlease check file permissions or run as administrator.");
+            } else {
+                SetUserFriendlyMessage(ctx, L"Unable to access the video file due to a system error.\r\nThe storage device may have issues or be disconnected.");
+            }
+            FreeErrorContext(ctx);
+        }
+        
         LeaveCriticalSection(&manager->lock);
         return FALSE;
     }
@@ -1071,34 +1262,71 @@ wchar_t* ExtractVideoIdFromUrl(const wchar_t* url) {
     return NULL;
 }
 
-// Validate a cache entry
+// Validate a cache entry using enhanced error handling
 BOOL ValidateCacheEntry(const CacheEntry* entry) {
     if (!entry || !entry->videoId || !entry->mainVideoFile) {
         OutputDebugStringW(L"YouTubeCacher: ValidateCacheEntry - NULL entry or missing required fields\n");
         return FALSE;
     }
     
-    // Check if main video file exists
-    DWORD attributes = GetFileAttributesW(entry->mainVideoFile);
-    BOOL fileExists = (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY));
+    // Use the new SafeFileExists function for better error handling
+    BOOL fileExists = SafeFileExists(entry->mainVideoFile);
     
     if (!fileExists) {
+        // Create minimal error context for validation failures (don't show dialog as this is called frequently)
+        ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_NOT_FOUND, YTC_SEVERITY_INFO);
+        if (ctx) {
+            AddContextVariable(ctx, L"FilePath", entry->mainVideoFile);
+            AddContextVariable(ctx, L"Operation", L"Validate cache entry");
+            AddContextVariable(ctx, L"VideoId", entry->videoId ? entry->videoId : L"Unknown");
+            if (entry->title) {
+                AddContextVariable(ctx, L"VideoTitle", entry->title);
+            }
+            SetUserFriendlyMessage(ctx, L"Cache entry references a file that no longer exists.\r\nThe file may have been moved or deleted outside of the application.");
+            
+            // Don't show dialog for validation - just log the context for debugging
+            FreeErrorContext(ctx);
+        }
+        
         wchar_t debugMsg[1024];
-        swprintf(debugMsg, 1024, L"YouTubeCacher: ValidateCacheEntry - File does not exist: %ls\n", entry->mainVideoFile);
+        swprintf(debugMsg, 1024, L"YouTubeCacher: ValidateCacheEntry - File validation failed: %ls\r\n", 
+                entry->mainVideoFile);
         OutputDebugStringW(debugMsg);
     }
     
     return fileExists;
 }
 
-// Get video file information
+// Get video file information with enhanced error handling
 BOOL GetVideoFileInfo(const wchar_t* filePath, DWORD* fileSize, FILETIME* modTime) {
-    if (!filePath) return FALSE;
+    VALIDATE_POINTER_PARAM(filePath, L"filePath", cleanup);
     
     WIN32_FIND_DATAW findData;
     HANDLE hFind = FindFirstFileW(filePath, &findData);
     
     if (hFind == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        
+        // Use enhanced error context with more detailed information
+        ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_WARNING);
+        if (ctx) {
+            AddContextVariable(ctx, L"FilePath", filePath);
+            AddContextVariable(ctx, L"Operation", L"Get file information");
+            AddContextVariable(ctx, L"Function", L"FindFirstFileW");
+            wchar_t errorCodeStr[32];
+            swprintf(errorCodeStr, 32, L"%lu", error);
+            AddContextVariable(ctx, L"SystemError", errorCodeStr);
+            
+            if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+                SetUserFriendlyMessage(ctx, L"Cannot get file information because the file does not exist.\r\nThe file may have been moved or deleted.");
+            } else if (error == ERROR_ACCESS_DENIED) {
+                SetUserFriendlyMessage(ctx, L"Cannot get file information due to insufficient permissions.\r\nPlease check file permissions.");
+            } else {
+                SetUserFriendlyMessage(ctx, L"Unable to get file information due to a system error.\r\nThe storage device may have issues.");
+            }
+            FreeErrorContext(ctx);
+        }
+        
         return FALSE;
     }
     
@@ -1112,6 +1340,9 @@ BOOL GetVideoFileInfo(const wchar_t* filePath, DWORD* fileSize, FILETIME* modTim
     
     FindClose(hFind);
     return TRUE;
+
+cleanup:
+    return FALSE;
 }
 
 // Find subtitle files for a video
@@ -1144,6 +1375,18 @@ BOOL FindSubtitleFiles(const wchar_t* videoFilePath, wchar_t*** subtitleFiles, i
         if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
             tempFiles[foundCount] = SAFE_WCSDUP(subtitlePath);
             foundCount++;
+        } else if (attributes == INVALID_FILE_ATTRIBUTES) {
+            DWORD error = GetLastError();
+            // Only report non-file-not-found errors for subtitle search
+            if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
+                ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_INFO);
+                if (ctx) {
+                    AddContextVariable(ctx, L"FilePath", subtitlePath);
+                    AddContextVariable(ctx, L"Operation", L"Search for subtitle files");
+                    SetUserFriendlyMessage(ctx, L"Error occurred while searching for subtitle files.\r\nSome subtitle files may not be detected.");
+                    FreeErrorContext(ctx);
+                }
+            }
         }
     }
     
@@ -1221,6 +1464,26 @@ BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath) {
         DWORD bytesWritten;
         WriteFile(hFile, dummyData, sizeof(dummyData), &bytesWritten, NULL);
         CloseHandle(hFile);
+    } else {
+        // Use enhanced file operation error handling
+        DWORD error = GetLastError();
+        ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_WARNING);
+        if (ctx) {
+            AddContextVariable(ctx, L"FilePath", fullPath);
+            AddContextVariable(ctx, L"Operation", L"Create dummy video file");
+            wchar_t errorCodeStr[32];
+            swprintf(errorCodeStr, 32, L"%lu", error);
+            AddContextVariable(ctx, L"SystemError", errorCodeStr);
+            
+            if (error == ERROR_ACCESS_DENIED) {
+                SetUserFriendlyMessage(ctx, L"Cannot create dummy video file due to insufficient permissions.\r\nPlease check folder permissions or run as administrator.");
+            } else if (error == ERROR_DISK_FULL) {
+                SetUserFriendlyMessage(ctx, L"Cannot create dummy video file because the disk is full.\r\nPlease free up disk space and try again.");
+            } else {
+                SetUserFriendlyMessage(ctx, L"Unable to create dummy video file due to a system error.\r\nThe storage device may have issues or be write-protected.");
+            }
+            FreeErrorContext(ctx);
+        }
     }
     
     // Create dummy subtitle files
@@ -1237,6 +1500,18 @@ BOOL AddDummyVideo(CacheManager* manager, const wchar_t* downloadPath) {
             DWORD bytesWritten;
             WriteFile(hSrt, srtData, sizeof(srtData), &bytesWritten, NULL);
             CloseHandle(hSrt);
+        } else {
+            DWORD error = GetLastError();
+            ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_INFO);
+            if (ctx) {
+                AddContextVariable(ctx, L"FilePath", srtPath);
+                AddContextVariable(ctx, L"Operation", L"Create dummy SRT subtitle file");
+                wchar_t errorCodeStr[32];
+                swprintf(errorCodeStr, 32, L"%lu", error);
+                AddContextVariable(ctx, L"SystemError", errorCodeStr);
+                SetUserFriendlyMessage(ctx, L"Could not create dummy subtitle file.\r\nThis may affect testing but does not impact normal operation.");
+                FreeErrorContext(ctx);
+            }
         }
         
         // Create .vtt file

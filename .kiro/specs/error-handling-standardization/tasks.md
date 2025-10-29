@@ -44,11 +44,7 @@
   - Create cleanup label patterns for consistent resource management
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 6. Update memory allocation error handling
-
-
-
-
+- [x] 6. Update memory allocation error handling
 
 
   - Replace existing memory allocation patterns in memory.c with SAFE_ALLOC macro
@@ -57,8 +53,10 @@
   - _Requirements: 2.1, 7.1, 7.2_
 -
 
+- [-] 7. Update file operation error handling  
 
-- [ ] 7. Update file operation error handling  
+
+
 
   - Replace existing file error handling in cache.c with new error macros
   - Update file access functions to use CHECK_FILE_OPERATION macro
