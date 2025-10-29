@@ -136,17 +136,23 @@ void CleanupErrorHandler(ErrorHandler* handler) {
 StandardErrorCode ReportError(ErrorSeverity severity, StandardErrorCode code, 
                              const wchar_t* function, const wchar_t* file, 
                              int line, const wchar_t* message) {
-    if (!g_ErrorHandler.initialized) {
+    // Use thread-safe access to error handler
+    LockErrorHandler();
+    ErrorHandler* handler = GetErrorHandler();
+    
+    if (!handler->initialized) {
         // Try to initialize if not already done
-        if (!InitializeErrorHandler(&g_ErrorHandler)) {
+        if (!InitializeErrorHandler(handler)) {
+            UnlockErrorHandler();
             return code; // Return original error if we can't initialize
         }
     }
 
-    EnterCriticalSection(&g_ErrorHandler.lock);
+    // Note: We already have the lock from LockErrorHandler(), so don't enter again
+    // EnterCriticalSection(&handler->lock); // This would cause deadlock
 
     // Update error statistics
-    UpdateErrorStatistics(&g_ErrorHandler, code, severity);
+    UpdateErrorStatistics(handler, code, severity);
 
     // Create log entry
     SYSTEMTIME currentTime;
@@ -168,9 +174,9 @@ StandardErrorCode ReportError(ErrorSeverity severity, StandardErrorCode code,
         GetCurrentThreadId());
 
     // Write to log file
-    if (g_ErrorHandler.logFile == INVALID_HANDLE_VALUE) {
-        g_ErrorHandler.logFile = CreateFileW(
-            g_ErrorHandler.logPath,
+    if (handler->logFile == INVALID_HANDLE_VALUE) {
+        handler->logFile = CreateFileW(
+            handler->logPath,
             GENERIC_WRITE,
             FILE_SHARE_READ,
             NULL,
@@ -178,27 +184,32 @@ StandardErrorCode ReportError(ErrorSeverity severity, StandardErrorCode code,
             FILE_ATTRIBUTE_NORMAL,
             NULL);
         
-        if (g_ErrorHandler.logFile != INVALID_HANDLE_VALUE) {
-            SetFilePointer(g_ErrorHandler.logFile, 0, NULL, FILE_END);
+        if (handler->logFile != INVALID_HANDLE_VALUE) {
+            SetFilePointer(handler->logFile, 0, NULL, FILE_END);
         }
     }
 
-    if (g_ErrorHandler.logFile != INVALID_HANDLE_VALUE) {
+    if (handler->logFile != INVALID_HANDLE_VALUE) {
         DWORD bytesWritten;
         char utf8Buffer[4096];
         int utf8Length = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, 
                                            utf8Buffer, sizeof(utf8Buffer), NULL, NULL);
         if (utf8Length > 0) {
-            WriteFile(g_ErrorHandler.logFile, utf8Buffer, utf8Length - 1, &bytesWritten, NULL);
-            FlushFileBuffers(g_ErrorHandler.logFile);
+            WriteFile(handler->logFile, utf8Buffer, utf8Length - 1, &bytesWritten, NULL);
+            FlushFileBuffers(handler->logFile);
         }
     }
 
-    LeaveCriticalSection(&g_ErrorHandler.lock);
+    // Use thread-safe unlock instead of direct critical section
+    UnlockErrorHandler();
 
     // Attempt recovery if available
     if (IsRecoverableError(code)) {
-        ExecuteRecoveryStrategy(&g_ErrorHandler, code, NULL);
+        // Need to lock again for recovery strategy execution
+        LockErrorHandler();
+        ErrorHandler* recoveryHandler = GetErrorHandler();
+        ExecuteRecoveryStrategy(recoveryHandler, code, NULL);
+        UnlockErrorHandler();
     }
 
     return code;

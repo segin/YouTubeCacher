@@ -67,7 +67,7 @@ void UnlockErrorHandler(void) {
  * Get a pointer to the global error handler
  * Note: Caller must call LockErrorHandler() before using and UnlockErrorHandler() when done
  */
-void* GetErrorHandler(void) {
+ErrorHandler* GetErrorHandler(void) {
     return &g_ErrorHandler;
 }
 
@@ -93,13 +93,14 @@ void UnlockMemoryManager(void) {
 }
 
 /**
- * Get access to memory manager functions
- * Note: The memory manager itself is accessed through its API functions,
- * not through direct pointer access. This function is for coordination only.
+ * Get access to memory manager
+ * Note: The memory manager is accessed through its API functions (SAFE_MALLOC, etc.)
+ * This function provides coordination locking only and returns NULL
+ * Caller must call LockMemoryManager() before coordinated operations and UnlockMemoryManager() when done
  */
-void* GetMemoryManager(void) {
-    // Memory manager is accessed through its API functions (SAFE_MALLOC, etc.)
-    // This function exists for interface consistency but should not be used directly
+MemoryManager* GetMemoryManager(void) {
+    // Memory manager is accessed through its API functions, not direct pointer access
+    // This function exists for interface consistency and coordination locking
     return NULL;
 }
 
@@ -129,7 +130,7 @@ void UnlockAppState(void) {
  * Note: Caller must call LockAppState() before using and UnlockAppState() when done
  * This provides coordinated access - the application state has its own internal locking
  */
-void* GetAppState(void) {
+ApplicationState* GetAppState(void) {
     return GetApplicationState();
 }
 
