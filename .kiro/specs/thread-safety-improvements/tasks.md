@@ -8,11 +8,7 @@
 
 - [x] 2. Implement thread-safe global state wrappers
 
-
-
-
   - [x] 2.1 Add critical sections for global error handler access
-
 
     - Initialize critical section for g_ErrorHandler in error.c
     - Implement LockErrorHandler/UnlockErrorHandler/GetErrorHandler functions
@@ -21,12 +17,10 @@
 
   - [x] 2.2 Add critical sections for global memory manager access
 
-
     - Initialize critical section for g_memoryManager in memory.c
     - Implement LockMemoryManager/UnlockMemoryManager/GetMemoryManager functions
     - Update memory allocation functions to use thread-safe access
     - _Requirements: 1.1, 1.2, 1.5_
-
 
   - [x] 2.3 Add critical sections for global application state access
 
@@ -37,18 +31,12 @@
 
 - [x] 3. Enhance existing ThreadContext structure and management
 
-
-
-
-
   - [x] 3.1 Extend ThreadContext with better lifecycle management
-
 
     - Add timeout, start time, and thread name fields to ThreadContext
     - Implement CreateManagedThread function with proper initialization
     - Add WaitForThreadCompletion function with timeout support
     - _Requirements: 3.1, 3.2, 3.4_
-
 
   - [x] 3.2 Improve thread cleanup and termination handling
 
@@ -59,7 +47,6 @@
 
   - [x] 3.3 Update existing thread creation code to use managed threads
 
-
     - Replace direct CreateThread calls in ytdlp.c with CreateManagedThread
     - Update thread cleanup calls to use enhanced ThreadContext functions
     - Ensure all threads use consistent naming and timeout patterns
@@ -67,11 +54,7 @@
 
 - [x] 4. Implement thread-safe logging system
 
-
-
-
   - [x] 4.1 Create thread-safe debug output functions
-
 
     - Add critical section for protecting debug output operations
     - Implement ThreadSafeDebugOutput and ThreadSafeDebugOutputF functions
@@ -80,10 +63,10 @@
 
   - [x] 4.2 Update existing logging calls to use thread-safe functions
 
-
     - Replace DebugOutput calls with ThreadSafeDebugOutput throughout codebase
     - Update formatted logging calls to use ThreadSafeDebugOutputF
     - Ensure log message ordering is preserved during concurrent operations
+
     - _Requirements: 4.3, 4.5_
 
 - [ ] 5. Enhance subprocess handling with thread safety

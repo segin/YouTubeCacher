@@ -195,9 +195,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         return 1;
     }
     
-    // Test memory allocation failure scenarios with new error dialogs
-    // This will test the updated SAFE_MALLOC and SAFE_FREE functions
-    TestMemoryAllocationFailureScenarios();
+    // REMOVED: TestMemoryAllocationFailureScenarios() - was slowing startup with debug output
     
     // Force visual styles activation before anything else
     ForceVisualStylesActivation();
@@ -218,52 +216,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         InitCommonControls();
     }
     
-    // Enable Windows XP+ Visual Styles programmatically (backup to manifest)
-    // This ensures theming works even if manifest processing fails
-    HMODULE hUxTheme = LoadLibraryW(L"uxtheme.dll");
-    if (hUxTheme) {
-        // Try to enable theming programmatically as backup
-        typedef BOOL (WINAPI *SetThemeAppPropertiesFunc)(DWORD);
-        SetThemeAppPropertiesFunc SetThemeAppProperties = 
-            (SetThemeAppPropertiesFunc)(void*)GetProcAddress(hUxTheme, "SetThemeAppProperties");
-        
-        if (SetThemeAppProperties) {
-            // Enable all theming properties
-            SetThemeAppProperties(0x7); // STAP_ALLOW_NONCLIENT | STAP_ALLOW_CONTROLS | STAP_ALLOW_WEBCONTENT
-        }
-        
-        FreeLibrary(hUxTheme);
-    }
+    // SIMPLIFIED: Removed excessive DLL loading that was slowing startup
+    // The manifest and InitCommonControlsEx above should be sufficient for theming
     
-    // Also try the older method for compatibility
-    typedef BOOL (WINAPI *InitCommonControlsExFunc)(LPINITCOMMONCONTROLSEX);
-    HMODULE hComCtl32 = LoadLibraryW(L"comctl32.dll");
-    if (hComCtl32) {
-        InitCommonControlsExFunc InitCommonControlsExPtr = 
-            (InitCommonControlsExFunc)(void*)GetProcAddress(hComCtl32, "InitCommonControlsEx");
-        
-        if (InitCommonControlsExPtr) {
-            // Re-initialize with visual styles
-            INITCOMMONCONTROLSEX icex2;
-            icex2.dwSize = sizeof(INITCOMMONCONTROLSEX);
-            icex2.dwICC = ICC_WIN95_CLASSES;
-            InitCommonControlsExPtr(&icex2);
-        }
-        
-        FreeLibrary(hComCtl32);
-    }
-    
-    // Enable DPI awareness for HiDPI support
-    typedef BOOL (WINAPI *SetProcessDPIAwareFunc)(void);
-    HMODULE hUser32 = LoadLibraryW(L"user32.dll");
-    if (hUser32) {
-        FARPROC proc = GetProcAddress(hUser32, "SetProcessDPIAware");
-        if (proc) {
-            SetProcessDPIAwareFunc SetProcessDPIAware = (SetProcessDPIAwareFunc)(void*)proc;
-            SetProcessDPIAware();
-        }
-        FreeLibrary(hUser32);
-    }
+    // Enable DPI awareness (simplified)
+    SetProcessDPIAware();
     
     // Initialize the global IPC system for efficient cross-thread communication
     if (!InitializeGlobalIPC()) {

@@ -112,10 +112,8 @@ void CleanupMemoryManager(void)
 
     EnterCriticalSection(&g_memoryManager.lock);
 
-    // Dump any remaining leaks before cleanup
-    if (g_memoryManager.leakDetectionEnabled && g_memoryManager.allocationCount > 0) {
-        DumpMemoryLeaks();
-    }
+    // REMOVED: DumpMemoryLeaks() during normal shutdown - was slowing shutdown with printf output
+    // Memory leak detection is still active during development, just not dumped at shutdown
 
     // Cleanup memory pools first
     CleanupMemoryPools();

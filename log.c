@@ -12,10 +12,22 @@ void WriteToLogfile(const wchar_t* message) {
         SYSTEMTIME st;
         GetLocalTime(&st);
         
-        fwprintf(logFile, L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] %ls\r\n",
-                st.wYear, st.wMonth, st.wDay,
-                st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
-                message);
+        // Create a copy of the message to strip trailing newlines
+        wchar_t* cleanMessage = SAFE_WCSDUP(message);
+        if (cleanMessage) {
+            // Strip trailing \r\n, \n, or \r
+            size_t len = wcslen(cleanMessage);
+            while (len > 0 && (cleanMessage[len-1] == L'\r' || cleanMessage[len-1] == L'\n')) {
+                cleanMessage[--len] = L'\0';
+            }
+            
+            fwprintf(logFile, L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] %ls\r\n",
+                    st.wYear, st.wMonth, st.wDay,
+                    st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+                    cleanMessage);
+            
+            SAFE_FREE(cleanMessage);
+        }
         
         fclose(logFile);
     }
