@@ -1,9 +1,11 @@
 #include "YouTubeCacher.h"
+#include <stdarg.h>
 
 // Global synchronization objects for coordinated access to global systems
 static CRITICAL_SECTION g_errorHandlerLock;
 static CRITICAL_SECTION g_memoryManagerLock;
 static CRITICAL_SECTION g_appStateLock;
+static CRITICAL_SECTION g_debugOutputLock;
 static BOOL g_threadSafetyInitialized = FALSE;
 
 // External global variable declarations (for direct access when needed)
@@ -22,6 +24,7 @@ BOOL InitializeThreadSafety(void) {
     InitializeCriticalSection(&g_errorHandlerLock);
     InitializeCriticalSection(&g_memoryManagerLock);
     InitializeCriticalSection(&g_appStateLock);
+    InitializeCriticalSection(&g_debugOutputLock);
 
     g_threadSafetyInitialized = TRUE;
     return TRUE;
@@ -40,6 +43,7 @@ void CleanupThreadSafety(void) {
     DeleteCriticalSection(&g_errorHandlerLock);
     DeleteCriticalSection(&g_memoryManagerLock);
     DeleteCriticalSection(&g_appStateLock);
+    DeleteCriticalSection(&g_debugOutputLock);
 
     g_threadSafetyInitialized = FALSE;
 }
@@ -139,4 +143,71 @@ ApplicationState* GetAppState(void) {
  */
 BOOL IsThreadSafetyInitialized(void) {
     return g_threadSafetyInitialized;
+}
+
+/**
+ * Thread-safe debug output function
+ * Protects debug output operations with critical section and includes thread ID
+ */
+void ThreadSafeDebugOutput(const wchar_t* message) {
+    if (!message) {
+        return;
+    }
+
+    // Initialize thread safety if not already done
+    if (!g_threadSafetyInitialized) {
+        InitializeThreadSafety();
+    }
+
+    // Enter critical section to ensure atomic debug output
+    EnterCriticalSection(&g_debugOutputLock);
+
+    // Create message with thread ID for debugging
+    DWORD threadId = GetCurrentThreadId();
+    wchar_t threadedMessage[2048];
+    swprintf(threadedMessage, 2048, L"[Thread %lu] %ls", threadId, message);
+
+    // Call the original DebugOutput function
+    DebugOutput(threadedMessage);
+
+    // Leave critical section
+    LeaveCriticalSection(&g_debugOutputLock);
+}
+
+/**
+ * Thread-safe formatted debug output function
+ * Protects debug output operations with critical section and includes thread ID
+ */
+void ThreadSafeDebugOutputF(const wchar_t* format, ...) {
+    if (!format) {
+        return;
+    }
+
+    // Initialize thread safety if not already done
+    if (!g_threadSafetyInitialized) {
+        InitializeThreadSafety();
+    }
+
+    // Format the message using variable arguments
+    va_list args;
+    va_start(args, format);
+    
+    wchar_t formattedMessage[2048];
+    vswprintf(formattedMessage, 2048, format, args);
+    
+    va_end(args);
+
+    // Enter critical section to ensure atomic debug output
+    EnterCriticalSection(&g_debugOutputLock);
+
+    // Create message with thread ID for debugging
+    DWORD threadId = GetCurrentThreadId();
+    wchar_t threadedMessage[2048];
+    swprintf(threadedMessage, 2048, L"[Thread %lu] %ls", threadId, formattedMessage);
+
+    // Call the original DebugOutput function
+    DebugOutput(threadedMessage);
+
+    // Leave critical section
+    LeaveCriticalSection(&g_debugOutputLock);
 }

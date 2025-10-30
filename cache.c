@@ -68,34 +68,30 @@ cleanup:
 
 // Initialize the cache manager
 BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) {
-    DebugOutput(L"YouTubeCacher: InitializeCacheManager - ENTRY");
+    ThreadSafeDebugOutput(L"YouTubeCacher: InitializeCacheManager - ENTRY");
     
     if (!manager || !downloadPath) {
-        DebugOutput(L"YouTubeCacher: InitializeCacheManager - NULL parameters");
+        ThreadSafeDebugOutput(L"YouTubeCacher: InitializeCacheManager - NULL parameters");
         return FALSE;
     }
     
-    wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - downloadPath: %ls", downloadPath);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: InitializeCacheManager - downloadPath: %ls", downloadPath);
     
     memset(manager, 0, sizeof(CacheManager));
     
     // Initialize critical section for thread safety
     InitializeCriticalSection(&manager->lock);
-    DebugOutput(L"YouTubeCacher: InitializeCacheManager - Critical section initialized");
+    ThreadSafeDebugOutput(L"YouTubeCacher: InitializeCacheManager - Critical section initialized");
     
     // Build cache file path
     swprintf(manager->cacheFilePath, MAX_EXTENDED_PATH, L"%ls\\%ls", downloadPath, CACHE_FILE_NAME);
-    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - cacheFilePath: %ls", manager->cacheFilePath);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: InitializeCacheManager - cacheFilePath: %ls", manager->cacheFilePath);
     
     // Load existing cache from file
-    DebugOutput(L"YouTubeCacher: InitializeCacheManager - Loading cache from file");
+    ThreadSafeDebugOutput(L"YouTubeCacher: InitializeCacheManager - Loading cache from file");
     LoadCacheFromFile(manager);
     
-    swprintf(debugMsg, 512, L"YouTubeCacher: InitializeCacheManager - SUCCESS, loaded %d entries", manager->totalEntries);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: InitializeCacheManager - SUCCESS, loaded %d entries", manager->totalEntries);
     
     return TRUE;
 }
@@ -144,16 +140,16 @@ void FreeCacheEntry(CacheEntry* entry) {
 
 // Load cache from file with bulletproof error handling
 BOOL LoadCacheFromFile(CacheManager* manager) {
-    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ENTRY");
+    ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ENTRY");
     
     // Validate input parameters
     if (!manager) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: NULL manager");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: NULL manager");
         return FALSE;
     }
     
     if (wcslen(manager->cacheFilePath) == 0) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Empty cache file path");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Empty cache file path");
         return FALSE;
     }
     

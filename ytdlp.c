@@ -2,7 +2,7 @@
 
 // Function to install yt-dlp using winget
 void InstallYtDlpWithWinget(HWND hParent) {
-    DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - Starting yt-dlp installation");
+    ThreadSafeDebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - Starting yt-dlp installation");
     
     // Create process to run winget install yt-dlp
     STARTUPINFOW si = {0};
@@ -76,7 +76,7 @@ void InstallYtDlpWithWinget(HWND hParent) {
         return;
     }
     
-    DebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - WinGet process started successfully");
+    ThreadSafeDebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - WinGet process started successfully");
     
     // Show simple informational dialog about installation progress using unified dialog
     UnifiedDialogConfig config = {0};
@@ -599,9 +599,7 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     VALIDATE_POINTER_PARAM(config, L"config", cleanup_early);
     VALIDATE_POINTER_PARAM(request, L"request", cleanup_early);
     
-    wchar_t logBuffer[512];
-    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Starting execution for operation %d", request->operation);
-    DebugOutput(logBuffer);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Starting execution for operation %d", request->operation);
     
     // Initialize variables for cleanup
     YtDlpResult* result = NULL;
@@ -631,11 +629,10 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     wchar_t* fullArgsLogBuffer = (wchar_t*)SAFE_MALLOC(fullArgsLogLen * sizeof(wchar_t));
     if (fullArgsLogBuffer) {
         swprintf(fullArgsLogBuffer, fullArgsLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %ls", arguments);
-        DebugOutput(fullArgsLogBuffer);
+        ThreadSafeDebugOutput(fullArgsLogBuffer);
         SAFE_FREE(fullArgsLogBuffer);
     } else {
-        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %.200ls", arguments);
-        DebugOutput(logBuffer);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %.200ls", arguments);
     }
     
     // Create pipe for subprocess output using new error handling macro
@@ -661,11 +658,10 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     wchar_t* fullLogBuffer = (wchar_t*)SAFE_MALLOC(fullLogLen * sizeof(wchar_t));
     if (fullLogBuffer) {
         swprintf(fullLogBuffer, fullLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %ls", cmdLine);
-        DebugOutput(fullLogBuffer);
+        ThreadSafeDebugOutput(fullLogBuffer);
         SAFE_FREE(fullLogBuffer);
     } else {
-        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %.200ls", cmdLine);
-        DebugOutput(logBuffer);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %.200ls", cmdLine);
     }
     
     // Create process using new error handling macro
@@ -680,7 +676,7 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
         goto cleanup;
     }
     
-    DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Process created successfully, reading output...");
+    ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Process created successfully, reading output...");
     CloseHandle(hWrite);
     hWrite = NULL; // Mark as closed
     
@@ -803,41 +799,37 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
         AppendToYtDlpOutputBuffer(result->output);
     }
     
-    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Process completed with exit code: %lu, success: %s", 
+    ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Process completed with exit code: %lu, success: %s", 
             exitCode, result->success ? L"TRUE" : L"FALSE");
-    DebugOutput(logBuffer);
     
     if (result->output && wcslen(result->output) > 0) {
-        swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Output length: %zu characters", wcslen(result->output));
-        DebugOutput(logBuffer);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Output length: %zu characters", wcslen(result->output));
     } else {
-        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output captured from process");
+        ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output captured from process");
     }
     
     // For failed processes, extract meaningful error information from output
     if (!result->success) {
-        DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Processing failure, extracting error information...");
+        ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Processing failure, extracting error information...");
         if (result->output && wcslen(result->output) > 0) {
-            DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Extracting error from yt-dlp output");
+            ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Extracting error from yt-dlp output");
             
             // Log the full output for debugging
             size_t outputLogLen = wcslen(result->output) + 100;
             wchar_t* outputLogBuffer = (wchar_t*)SAFE_MALLOC(outputLogLen * sizeof(wchar_t));
             if (outputLogBuffer) {
                 swprintf(outputLogBuffer, outputLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output: %ls", result->output);
-                DebugOutput(outputLogBuffer);
+                ThreadSafeDebugOutput(outputLogBuffer);
                 SAFE_FREE(outputLogBuffer);
             } else {
-                swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output (first 200 chars): %.200ls", result->output);
-                DebugOutput(logBuffer);
+                ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output (first 200 chars): %.200ls", result->output);
             }
             
             // Create user-friendly error message using new helper function
             result->errorMessage = CreateUserFriendlyYtDlpError(result->exitCode, result->output, request->url);
             
             if (result->errorMessage) {
-                swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Extracted error message: %ls", result->errorMessage);
-                DebugOutput(logBuffer);
+                ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Extracted error message: %ls", result->errorMessage);
             }
             
             // Generate diagnostic information based on the output
@@ -851,7 +843,7 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
                 result->diagnostics = diagnostics;
             }
         } else {
-            DebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output from failed process, using fallback error");
+            ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output from failed process, using fallback error");
             
             // Fallback for cases with no output using new helper function
             result->errorMessage = CreateUserFriendlyYtDlpError(result->exitCode, NULL, request->url);
@@ -889,10 +881,9 @@ cleanup:
         SAFE_CLOSE_HANDLE(pi.hThread);
     }
     
-    swprintf(logBuffer, 512, L"YouTubeCacher: ExecuteYtDlpRequest - Returning result: success=%s, exitCode=%lu", 
+    ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Returning result: success=%s, exitCode=%lu", 
             result ? (result->success ? L"TRUE" : L"FALSE") : L"NULL", 
             result ? result->exitCode : 0);
-    DebugOutput(logBuffer);
     
     return result;
 }
@@ -1305,28 +1296,26 @@ BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metada
 // Output format: First line = title, Second line = duration
 BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     if (!url || !metadata) {
-        DebugOutput(L"GetVideoMetadata: Invalid parameters - URL or metadata is NULL");
+        ThreadSafeDebugOutput(L"GetVideoMetadata: Invalid parameters - URL or metadata is NULL");
         return FALSE;
     }
     
     // Initialize metadata
     memset(metadata, 0, sizeof(VideoMetadata));
     
-    wchar_t logBuffer[512];
-    swprintf(logBuffer, 512, L"GetVideoMetadata: Processing URL: %ls", url);
-    DebugOutput(logBuffer);
+    ThreadSafeDebugOutputF(L"GetVideoMetadata: Processing URL: %ls", url);
     
     // Initialize config
     YtDlpConfig config;
     if (!InitializeYtDlpConfig(&config)) {
-        DebugOutput(L"GetVideoMetadata: Failed to initialize yt-dlp configuration");
+        ThreadSafeDebugOutput(L"GetVideoMetadata: Failed to initialize yt-dlp configuration");
         return FALSE;
     }
     
     // Create request for getting title and duration together
     YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_TITLE_DURATION, url, NULL);
     if (!request) {
-        DebugOutput(L"GetVideoMetadata: Failed to create yt-dlp request");
+        ThreadSafeDebugOutput(L"GetVideoMetadata: Failed to create yt-dlp request");
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
@@ -1337,9 +1326,8 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     BOOL success = FALSE;
     if (result) {
         if (result->success && result->output) {
-            swprintf(logBuffer, 512, L"GetVideoMetadata: yt-dlp execution successful, parsing output (length: %zu)", 
+            ThreadSafeDebugOutputF(L"GetVideoMetadata: yt-dlp execution successful, parsing output (length: %zu)", 
                     wcslen(result->output));
-            DebugOutput(logBuffer);
             
             // Parse the output - first line is title, second line is duration
             wchar_t* output = SAFE_WCSDUP(result->output);
@@ -1349,50 +1337,46 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
                 if (line) {
                     // First line is title
                     metadata->title = SAFE_WCSDUP(line);
-                    swprintf(logBuffer, 512, L"GetVideoMetadata: Extracted title: %ls", metadata->title);
-                    DebugOutput(logBuffer);
+                    ThreadSafeDebugOutputF(L"GetVideoMetadata: Extracted title: %ls", metadata->title);
                     
                     // Second line is duration
                     line = wcstok(NULL, L"\n", &context);
                     if (line) {
                         metadata->duration = SAFE_WCSDUP(line);
-                        swprintf(logBuffer, 512, L"GetVideoMetadata: Extracted duration: %ls", metadata->duration);
-                        DebugOutput(logBuffer);
+                        ThreadSafeDebugOutputF(L"GetVideoMetadata: Extracted duration: %ls", metadata->duration);
                     } else {
-                        DebugOutput(L"GetVideoMetadata: Warning - No duration found in output");
+                        ThreadSafeDebugOutput(L"GetVideoMetadata: Warning - No duration found in output");
                     }
                 } else {
-                    DebugOutput(L"GetVideoMetadata: Error - No lines found in yt-dlp output");
+                    ThreadSafeDebugOutput(L"GetVideoMetadata: Error - No lines found in yt-dlp output");
                 }
                 SAFE_FREE(output);
                 
                 metadata->success = (metadata->title != NULL);
                 success = metadata->success;
             } else {
-                DebugOutput(L"GetVideoMetadata: Failed to duplicate output string");
+                ThreadSafeDebugOutput(L"GetVideoMetadata: Failed to duplicate output string");
             }
         } else {
             // Log detailed error information
             if (!result->success) {
-                swprintf(logBuffer, 512, L"GetVideoMetadata: yt-dlp execution failed with exit code: %lu", result->exitCode);
-                DebugOutput(logBuffer);
+                ThreadSafeDebugOutputF(L"GetVideoMetadata: yt-dlp execution failed with exit code: %lu", result->exitCode);
                 
                 if (result->errorMessage) {
-                    swprintf(logBuffer, 512, L"GetVideoMetadata: yt-dlp error message: %ls", result->errorMessage);
-                    DebugOutput(logBuffer);
+                    ThreadSafeDebugOutputF(L"GetVideoMetadata: yt-dlp error message: %ls", result->errorMessage);
                 }
             } else {
-                DebugOutput(L"GetVideoMetadata: yt-dlp succeeded but produced no output");
+                ThreadSafeDebugOutput(L"GetVideoMetadata: yt-dlp succeeded but produced no output");
             }
         }
     } else {
-        DebugOutput(L"GetVideoMetadata: ExecuteYtDlpRequest returned NULL result");
+        ThreadSafeDebugOutput(L"GetVideoMetadata: ExecuteYtDlpRequest returned NULL result");
     }
     
     if (success) {
-        DebugOutput(L"GetVideoMetadata: Successfully retrieved video metadata");
+        ThreadSafeDebugOutput(L"GetVideoMetadata: Successfully retrieved video metadata");
     } else {
-        DebugOutput(L"GetVideoMetadata: Failed to retrieve video metadata");
+        ThreadSafeDebugOutput(L"GetVideoMetadata: Failed to retrieve video metadata");
     }
     
     // Cleanup
@@ -1965,7 +1949,7 @@ DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam) {
     VideoMetadata* metadata = (VideoMetadata*)SAFE_MALLOC(sizeof(VideoMetadata));
     if (!metadata) {
         // Log memory allocation failure
-        DebugOutput(L"GetInfoWorkerThread: Failed to allocate VideoMetadata structure");
+        ThreadSafeDebugOutput(L"GetInfoWorkerThread: Failed to allocate VideoMetadata structure");
         
         // Send failure notification with NULL metadata to indicate memory error
         PostMessageW(context->hDialog, WM_USER + 103, (WPARAM)FALSE, (LPARAM)NULL);
@@ -1974,20 +1958,16 @@ DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam) {
     }
     
     // Log the operation start
-    wchar_t logBuffer[512];
-    swprintf(logBuffer, 512, L"GetInfoWorkerThread: Starting metadata retrieval for URL: %ls", context->url);
-    DebugOutput(logBuffer);
+    ThreadSafeDebugOutputF(L"GetInfoWorkerThread: Starting metadata retrieval for URL: %ls", context->url);
     
     BOOL success = GetVideoMetadata(context->url, metadata);
     
     if (success) {
-        swprintf(logBuffer, 512, L"GetInfoWorkerThread: Successfully retrieved metadata - Title: %ls, Duration: %ls", 
+        ThreadSafeDebugOutputF(L"GetInfoWorkerThread: Successfully retrieved metadata - Title: %ls, Duration: %ls", 
                 metadata->title ? metadata->title : L"(null)", 
                 metadata->duration ? metadata->duration : L"(null)");
-        DebugOutput(logBuffer);
     } else {
-        swprintf(logBuffer, 512, L"GetInfoWorkerThread: Failed to retrieve metadata for URL: %ls", context->url);
-        DebugOutput(logBuffer);
+        ThreadSafeDebugOutputF(L"GetInfoWorkerThread: Failed to retrieve metadata for URL: %ls", context->url);
     }
     
     // Send result back to main thread (metadata will be freed by the main thread)
@@ -2185,10 +2165,10 @@ BOOL SaveYtDlpConfig(const YtDlpConfig* config) {
 //
 // Start unified download process
 BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
-    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Entry");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Entry");
     
     if (!hDlg || !url) {
-        DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Invalid parameters");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Invalid parameters");
         return FALSE;
     }
     
@@ -2197,13 +2177,13 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     OutputDebugStringW(debugMsg);
     
     // Initialize configuration
-    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Initializing config");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Initializing config");
     YtDlpConfig config = {0};
     if (!InitializeYtDlpConfig(&config)) {
-        DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to initialize config");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to initialize config");
         return FALSE;
     }
-    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config initialized successfully");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config initialized successfully");
     
     // Validate configuration
     OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Validating config\n");
@@ -2280,7 +2260,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Context created successfully\n");
     
     // Show progress and disable UI
-    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Setting up UI");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Setting up UI");
     ShowMainProgressBar(hDlg, TRUE);
     SetProgressBarMarquee(hDlg, TRUE);  // Start with marquee for indefinite "Starting..." phase
     UpdateMainProgressBar(hDlg, -1, L"Starting download...");
@@ -2300,7 +2280,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     }
     
     CloseHandle(hThread);
-    DebugOutput(L"YouTubeCacher: StartUnifiedDownload - Worker thread started successfully");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Worker thread started successfully");
     return TRUE;
 }
 
@@ -2370,7 +2350,7 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
 // Multithreaded subprocess execution implementation
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
                                           ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow) {
-    DebugOutput(L"YouTubeCacher: CreateSubprocessContext - ENTRY");
+    ThreadSafeDebugOutput(L"YouTubeCacher: CreateSubprocessContext - ENTRY");
     
     // Validate input parameters using new error handling macros
     VALIDATE_POINTER_PARAM(config, L"config", cleanup_early);

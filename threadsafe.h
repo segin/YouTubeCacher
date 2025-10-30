@@ -28,4 +28,8 @@ ApplicationState* GetAppState(void);
 // Thread safety status
 BOOL IsThreadSafetyInitialized(void);
 
+// Thread-safe logging functions
+void ThreadSafeDebugOutput(const wchar_t* message);
+void ThreadSafeDebugOutputF(const wchar_t* format, ...);
+
 #endif // THREADSAFE_H
