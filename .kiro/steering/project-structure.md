@@ -64,6 +64,32 @@ This project follows a modular C/Windows application structure with clear separa
 9. **Version Control Discipline**: Always run `git status`, `git commit` and `git push` after every development step. Use `git diff` when `git status` shows additional staged changes
 10. **GUI Application**: YouTubeCacher is a Windows GUI application that does not produce command-line output. Testing should focus on successful compilation and proper module integration rather than command-line execution
 
+## Critical Implementation Rules
+
+### Duration Processing Requirements
+- **NEVER remove or simplify duration parsing logic without explicit approval**
+- Duration processing must handle both JSON metadata and direct yt-dlp output formats
+- All duration parsing functions in `parser.c` are essential and must be preserved
+- Duration formatting must support both MM:SS and HH:MM:SS formats
+- JSON parsing for duration must extract numeric seconds and convert to formatted time strings
+- The `ParseJsonMetadataLine` function is critical for extracting video metadata
+
+### UI/UX Patterns - STRICTLY PROHIBITED
+- **NEVER create popup progress dialogs during download operations**
+- **NEVER use `CreateProgressDialog`, `ProgressDialog`, or modal dialogs for download progress**
+- **NEVER show blocking dialogs during background operations**
+- All download progress must be shown in the main window's integrated progress controls
+- Use non-blocking, in-window progress indicators only
+- The `ProgressDialog` system was removed for being poor UX and must not be reintroduced
+- Background operations must update the main UI asynchronously without blocking user interaction
+
+### Forbidden Patterns
+- Modal progress dialogs during downloads (removed for poor UX)
+- Blocking UI during background operations
+- Oversimplified duration parsing that loses functionality
+- Removal of JSON metadata extraction without replacement
+- Synchronous operations that freeze the main UI thread
+
 ## Build Process
 
 The build system automatically handles dependencies between:

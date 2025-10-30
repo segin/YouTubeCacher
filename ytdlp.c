@@ -428,62 +428,8 @@ BOOL CleanupTempDirectory(const wchar_t* tempDir) {
     return dirRemoved;
 }
 
-ProgressDialog* CreateProgressDialog(HWND parent, const wchar_t* title) {
-    ProgressDialog* dialog = (ProgressDialog*)SAFE_MALLOC(sizeof(ProgressDialog));
-    if (!dialog) return NULL;
-    
-    memset(dialog, 0, sizeof(ProgressDialog));
-    
-    // Create the progress dialog
-    dialog->hDialog = CreateDialogParamW(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_PROGRESS), 
-                                        parent, ProgressDialogProc, (LPARAM)dialog);
-    
-    if (!dialog->hDialog) {
-        SAFE_FREE(dialog);
-        return NULL;
-    }
-    
-    // Set the title
-    SetWindowTextW(dialog->hDialog, title);
-    ShowWindow(dialog->hDialog, SW_SHOW);
-    
-    return dialog;
-}
-
-void UpdateProgressDialog(ProgressDialog* dialog, int progress, const wchar_t* status) {
-    if (!dialog || !dialog->hDialog) return;
-    
-    if (dialog->hProgressBar) {
-        SendMessageW(dialog->hProgressBar, PBM_SETPOS, progress, 0);
-    }
-    
-    if (dialog->hStatusText && status) {
-        SetWindowTextW(dialog->hStatusText, status);
-    }
-    
-    // Process messages to keep UI responsive
-    MSG msg;
-    while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-        if (!IsDialogMessageW(dialog->hDialog, &msg)) {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
-    }
-}
-
-BOOL IsProgressDialogCancelled(const ProgressDialog* dialog) {
-    return dialog ? dialog->cancelled : FALSE;
-}
-
-void DestroyProgressDialog(ProgressDialog* dialog) {
-    if (!dialog) return;
-    
-    if (dialog->hDialog) {
-        DestroyWindow(dialog->hDialog);
-    }
-    
-    SAFE_FREE(dialog);
-}
+// REMOVED: ProgressDialog functions - these create popup dialogs which are prohibited
+// Use main window progress controls instead: UpdateMainProgressBar, SetProgressBarMarquee
 
 // Create user-friendly error messages for common yt-dlp failures
 wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, const wchar_t* url) {
@@ -2650,61 +2596,17 @@ BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs) {
     return TRUE;
 }
 
-// Convenience function for simple multithreaded execution with progress dialog
+// Convenience function for simple multithreaded execution (NO POPUP DIALOGS)
 YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
                                              HWND parentWindow, const wchar_t* operationTitle) {
     if (!config || !request) return NULL;
     
-    // Create progress dialog
-    ProgressDialog* progressDialog = CreateProgressDialog(parentWindow, operationTitle);
-    if (!progressDialog) {
-        // Fallback to synchronous execution if progress dialog fails
-        return ExecuteYtDlpRequest(config, request);
-    }
+    // REMOVED: Popup progress dialog - use main window progress instead
+    // Simply execute synchronously - the calling code should handle threading if needed
+    (void)parentWindow;     // Suppress unused parameter warning
+    (void)operationTitle;   // Suppress unused parameter warning
     
-    // Create subprocess context with progress callback
-    SubprocessContext* context = CreateSubprocessContext(config, request, NULL, progressDialog, parentWindow);
-    if (!context) {
-        DestroyProgressDialog(progressDialog);
-        return ExecuteYtDlpRequest(config, request);
-    }
-    
-    // Start execution
-    if (!StartSubprocessExecution(context)) {
-        FreeSubprocessContext(context);
-        DestroyProgressDialog(progressDialog);
-        return ExecuteYtDlpRequest(config, request);
-    }
-    
-    // Wait for completion with progress updates
-    while (!context->completed && !IsProgressDialogCancelled(progressDialog)) {
-        Sleep(100);
-        
-        // Update progress dialog
-        UpdateProgressDialog(progressDialog, -1, L"Processing...");
-    }
-    
-    // Handle cancellation
-    if (IsProgressDialogCancelled(progressDialog)) {
-        CancelSubprocessExecution(context);
-        
-        // Wait a bit for graceful cancellation
-        WaitForSubprocessCompletion(context, 5000);
-    }
-    
-    // Get result
-    YtDlpResult* result = NULL;
-    if (context->result) {
-        // Transfer ownership of result
-        result = context->result;
-        context->result = NULL;
-    }
-    
-    // Cleanup
-    FreeSubprocessContext(context);
-    DestroyProgressDialog(progressDialog);
-    
-    return result;
+    return ExecuteYtDlpRequest(config, request);
 }
 
 // Worker thread function that executes yt-dlp subprocess

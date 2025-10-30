@@ -91,11 +91,8 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
 // Temporary directory functions
 BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize);
 
-// Progress dialog functions
-ProgressDialog* CreateProgressDialog(HWND parent, const wchar_t* title);
-void UpdateProgressDialog(ProgressDialog* dialog, int progress, const wchar_t* status);
-BOOL IsProgressDialogCancelled(const ProgressDialog* dialog);
-void DestroyProgressDialog(ProgressDialog* dialog);
+// REMOVED: ProgressDialog functions - these create popup dialogs which are prohibited
+// Use main window progress controls instead: UpdateMainProgressBar, SetProgressBarMarquee
 
 // Error analysis functions
 ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result);

@@ -385,13 +385,8 @@ BOOL SendOperationCancelled(IPCContext* context, HWND targetWindow) {
 // Legacy Progress Callback Functions (Updated to use IPC)
 // ============================================================================
 
-// Progress callback for updating progress dialog
-void SubprocessProgressCallback(int percentage, const wchar_t* status, void* userData) {
-    ProgressDialog* progress = (ProgressDialog*)userData;
-    if (progress) {
-        UpdateProgressDialog(progress, percentage, status);
-    }
-}
+// REMOVED: SubprocessProgressCallback - used popup progress dialogs which are prohibited
+// Use main window progress controls instead
 
 // Progress callback for unified download - now uses IPC system
 void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void* userData) {
