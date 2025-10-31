@@ -138,390 +138,250 @@ void FreeCacheEntry(CacheEntry* entry) {
     SAFE_FREE(entry);
 }
 
-// Load cache from file with bulletproof error handling
+// Optimized cache loading: Load entire file into memory and process in-place
 BOOL LoadCacheFromFile(CacheManager* manager) {
-    ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ENTRY");
-    
-    // Validate input parameters
-    if (!manager) {
-        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: NULL manager");
-        return FALSE;
-    }
-    
-    if (wcslen(manager->cacheFilePath) == 0) {
-        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Empty cache file path");
-        return FALSE;
-    }
+    if (!manager) return FALSE;
     
     wchar_t debugMsg[1024];
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Attempting to open: %ls", manager->cacheFilePath);
-    DebugOutput(debugMsg);
+    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ENTRY (optimized version)");
     
-    // Check if file exists and get file size for validation
-    WIN32_FIND_DATAW findData;
-    HANDLE hFind = FindFirstFileW(manager->cacheFilePath, &findData);
-    if (hFind == INVALID_HANDLE_VALUE) {
+    // Step 1: Use Windows API to get file size (equivalent to stat())
+    HANDLE hFile = CreateFileW(manager->cacheFilePath, GENERIC_READ, FILE_SHARE_READ, NULL, 
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
         DWORD error = GetLastError();
-        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Cache file doesn't exist yet: %ls\r\n", 
-                    manager->cacheFilePath);
-            DebugOutput(debugMsg);
-            return TRUE; // File doesn't exist yet, that's okay for new installations
-        } else {
-            // Report unexpected file access errors with user-friendly messages
-            ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_WARNING);
-            if (ctx) {
-                AddContextVariable(ctx, L"FilePath", manager->cacheFilePath);
-                AddContextVariable(ctx, L"SystemError", L"FindFirstFile failed");
-                if (error == ERROR_ACCESS_DENIED) {
-                    SetUserFriendlyMessage(ctx, L"Cannot access cache file due to insufficient permissions.\r\nPlease check file permissions or run as administrator.");
-                } else if (error == ERROR_SHARING_VIOLATION) {
-                    SetUserFriendlyMessage(ctx, L"Cache file is currently in use by another program.\r\nPlease close any programs that might be using the file and try again.");
-                } else {
-                    SetUserFriendlyMessage(ctx, L"Unable to access cache file due to a system error.\r\nThe cache may be corrupted or the storage device may have issues.");
-                }
-                FreeErrorContext(ctx);
-            }
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - File access error %lu: %ls\r\n", 
-                    error, manager->cacheFilePath);
-            DebugOutput(debugMsg);
-            return FALSE;
+        if (error == ERROR_FILE_NOT_FOUND) {
+            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Cache file does not exist, starting with empty cache");
+            return TRUE; // Not an error - just no cache file yet
         }
+        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot open file (error %lu)", error);
+        DebugOutput(debugMsg);
+        return FALSE;
     }
-    FindClose(hFind);
     
-    // Log file size for diagnostics
     LARGE_INTEGER fileSize;
-    fileSize.LowPart = findData.nFileSizeLow;
-    fileSize.HighPart = findData.nFileSizeHigh;
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - File exists, size: %lld bytes", fileSize.QuadPart);
-    DebugOutput(debugMsg);
+    if (!GetFileSizeEx(hFile, &fileSize)) {
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot get file size");
+        CloseHandle(hFile);
+        return FALSE;
+    }
     
-    // Check for empty file
     if (fileSize.QuadPart == 0) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File is empty, nothing to load");
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File is empty, starting with empty cache");
+        CloseHandle(hFile);
         return TRUE;
     }
     
-    // Check for suspiciously large files (> 10MB)
-    if (fileSize.QuadPart > 10 * 1024 * 1024) {
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: File is very large (%lld bytes), may take time to process", fileSize.QuadPart);
-        DebugOutput(debugMsg);
+    if (fileSize.QuadPart > 50 * 1024 * 1024) { // 50MB limit for safety
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: File too large for in-memory processing");
+        CloseHandle(hFile);
+        return FALSE;
     }
     
-    // Attempt to open file with comprehensive error handling using new macros
-    FILE* file = _wfopen(manager->cacheFilePath, L"r,ccs=UTF-8");
-    if (!file) {
-        DWORD error = GetLastError();
-        
-        // Try alternative encoding if UTF-8 fails
-        file = _wfopen(manager->cacheFilePath, L"r");
-        if (!file) {
-            // Use new error handling macro for file operations
-            ErrorContext* ctx = CREATE_ERROR_CONTEXT(YTC_ERROR_FILE_ACCESS, YTC_SEVERITY_ERROR);
-            if (ctx) {
-                AddContextVariable(ctx, L"FilePath", manager->cacheFilePath);
-                AddContextVariable(ctx, L"Operation", L"Open cache file for reading");
-                wchar_t errorCodeStr[32];
-                swprintf(errorCodeStr, 32, L"%lu", error);
-                AddContextVariable(ctx, L"SystemError", errorCodeStr);
-                
-                if (error == ERROR_ACCESS_DENIED) {
-                    SetUserFriendlyMessage(ctx, L"Cannot open cache file due to insufficient permissions.\r\nPlease check file permissions or run as administrator.");
-                } else if (error == ERROR_SHARING_VIOLATION) {
-                    SetUserFriendlyMessage(ctx, L"Cache file is currently locked by another program.\r\nPlease close any programs that might be using the file and try again.");
-                } else if (error == ERROR_DISK_FULL) {
-                    SetUserFriendlyMessage(ctx, L"Cannot open cache file because the disk is full.\r\nPlease free up disk space and try again.");
-                } else {
-                    SetUserFriendlyMessage(ctx, L"Unable to open cache file due to a system error.\r\nThe file may be corrupted or the storage device may have issues.");
-                }
-                FreeErrorContext(ctx);
-            }
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to open file (error %lu): %ls\r\n", 
-                    error, manager->cacheFilePath);
-            DebugOutput(debugMsg);
+    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - File size: %lld bytes", fileSize.QuadPart);
+    DebugOutput(debugMsg);
+    
+    // Step 2: Allocate buffer to load entire file (use ANSI for simplicity, convert to wide later)
+    DWORD fileSizeBytes = (DWORD)fileSize.QuadPart;
+    char* fileBuffer = (char*)SAFE_MALLOC(fileSizeBytes + 1); // +1 for null terminator
+    if (!fileBuffer) {
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot allocate file buffer");
+        CloseHandle(hFile);
+        return FALSE;
+    }
+    
+    // Read entire file in one operation (or 4K chunks if needed)
+    DWORD totalBytesRead = 0;
+    while (totalBytesRead < fileSizeBytes) {
+        DWORD chunkSize = min(4096, fileSizeBytes - totalBytesRead);
+        DWORD bytesRead;
+        if (!ReadFile(hFile, fileBuffer + totalBytesRead, chunkSize, &bytesRead, NULL) || bytesRead == 0) {
+            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to read file");
+            SAFE_FREE(fileBuffer);
+            CloseHandle(hFile);
             return FALSE;
-        } else {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - WARNING: Opened file without UTF-8 encoding\r\n");
         }
-    } else {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File opened successfully with UTF-8 encoding\r\n");
+        totalBytesRead += bytesRead;
     }
     
-    wchar_t line[MAX_CACHE_LINE_LENGTH];
-    wchar_t version[64]; // Increased buffer size for safety
+    CloseHandle(hFile);
+    fileBuffer[fileSizeBytes] = '\0'; // Null terminate
     
-    // Read and verify version header with robust error handling
-    if (!fgetws(version, sizeof(version)/sizeof(wchar_t), file)) {
-        if (feof(file)) {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: File is empty or contains no readable content");
-        } else if (ferror(file)) {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: I/O error reading version header");
-        } else {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Unknown error reading version header");
+    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File loaded into memory successfully");
+    
+    // Step 3: Scan for newlines and count them
+    int newlineCount = 0;
+    for (DWORD i = 0; i < fileSizeBytes; i++) {
+        if (fileBuffer[i] == '\n') {
+            newlineCount++;
         }
-        fclose(file);
+    }
+    
+    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Found %d lines", newlineCount);
+    DebugOutput(debugMsg);
+    
+    if (newlineCount == 0) {
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - No lines found in file");
+        SAFE_FREE(fileBuffer);
+        return TRUE;
+    }
+    
+    // Step 4: Allocate pointer array (2 more than newline count for safety)
+    char** lines = (char**)SAFE_MALLOC((newlineCount + 2) * sizeof(char*));
+    if (!lines) {
+        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot allocate line pointer array");
+        SAFE_FREE(fileBuffer);
         return FALSE;
     }
     
-    // Remove any trailing whitespace/newlines from version string
-    size_t versionLen = wcslen(version);
-    while (versionLen > 0 && (version[versionLen-1] == L'\n' || version[versionLen-1] == L'\r' || version[versionLen-1] == L' ')) {
-        version[versionLen-1] = L'\0';
-        versionLen--;
+    // Step 5: Replace newlines with null bytes and build pointer array
+    int lineIndex = 0;
+    lines[lineIndex++] = fileBuffer; // First line starts at beginning
+    
+    for (DWORD i = 0; i < fileSizeBytes; i++) {
+        if (fileBuffer[i] == '\r') {
+            fileBuffer[i] = '\0'; // Null out \r
+            if (i + 1 < fileSizeBytes && fileBuffer[i + 1] == '\n') {
+                fileBuffer[i + 1] = '\0'; // Null out \n in \r\n sequence
+                i++; // Skip the \n
+                if (i + 1 < fileSizeBytes) {
+                    lines[lineIndex++] = &fileBuffer[i + 1]; // Next line starts after \r\n
+                }
+            } else if (i + 1 < fileSizeBytes) {
+                lines[lineIndex++] = &fileBuffer[i + 1]; // Next line starts after \r
+            }
+        } else if (fileBuffer[i] == '\n') {
+            fileBuffer[i] = '\0'; // Null out \n
+            if (i + 1 < fileSizeBytes) {
+                lines[lineIndex++] = &fileBuffer[i + 1]; // Next line starts after \n
+            }
+        }
     }
     
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Read version header: '%ls' (length: %zu)", version, versionLen);
+    int totalLines = lineIndex;
+    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Processed into %d lines", totalLines);
     DebugOutput(debugMsg);
     
-    // Validate version header format
-    if (wcsncmp(version, L"CACHE_VERSION=", 14) != 0) {
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Invalid version header format. Expected 'CACHE_VERSION=', got: '%ls'", version);
-        DebugOutput(debugMsg);
-        fclose(file);
-        return FALSE;
-    }
-    
-    // Extract and validate version number
-    const wchar_t* versionNumber = version + 14;
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Cache file version: '%ls', expected: '%ls'", versionNumber, CACHE_VERSION);
-    DebugOutput(debugMsg);
-    
-    if (wcscmp(versionNumber, CACHE_VERSION) != 0) {
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Version mismatch. File: '%ls', Expected: '%ls'", versionNumber, CACHE_VERSION);
-        DebugOutput(debugMsg);
-        // Continue loading but warn about potential compatibility issues
-    }
-    
-    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Version header validated successfully");
-    
-    // Enter critical section for thread safety
+    // Step 6: Process cache entries in-place
     EnterCriticalSection(&manager->lock);
     
-    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Starting to read cache entries");
-    int lineCount = 0;
     int validEntries = 0;
     int invalidEntries = 0;
-    int memoryErrors = 0;
+    BOOL versionValidated = FALSE;
     
-    // Read cache entries with comprehensive error handling
-    while (fgetws(line, MAX_CACHE_LINE_LENGTH, file)) {
-        lineCount++;
+    for (int i = 0; i < totalLines; i++) {
+        char* line = lines[i];
+        if (!line || strlen(line) == 0) continue; // Skip empty lines
+        if (line[0] == '#') continue; // Skip comments
         
-        // Check for I/O errors
-        if (ferror(file)) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: I/O error reading line %d", lineCount);
-            DebugOutput(debugMsg);
-            break;
-        }
+        // Convert line to wide string for processing
+        int wideLen = MultiByteToWideChar(CP_UTF8, 0, line, -1, NULL, 0);
+        if (wideLen <= 0) continue;
         
-        // Log progress for large files
-        if (lineCount % 100 == 0) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Progress: processed %d lines", lineCount);
-            DebugOutput(debugMsg);
-        }
+        wchar_t* wideLine = (wchar_t*)SAFE_MALLOC(wideLen * sizeof(wchar_t));
+        if (!wideLine) continue;
         
-        // Remove newline characters
-        wchar_t* newline = wcschr(line, L'\n');
-        if (newline) *newline = L'\0';
-        newline = wcschr(line, L'\r');
-        if (newline) *newline = L'\0';
-        
-        // Skip empty lines and comments
-        size_t lineLen = wcslen(line);
-        if (lineLen == 0) {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Skipping empty line");
+        if (MultiByteToWideChar(CP_UTF8, 0, line, -1, wideLine, wideLen) <= 0) {
+            SAFE_FREE(wideLine);
             continue;
         }
         
-        if (line[0] == L'#') {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Skipping comment line");
+        // Handle version header
+        if (!versionValidated && wcsncmp(wideLine, L"CACHE_VERSION=", 14) == 0) {
+            const wchar_t* version = wideLine + 14;
+            if (wcscmp(version, CACHE_VERSION) != 0) {
+                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Version mismatch. File: '%ls', Expected: '%ls'", version, CACHE_VERSION);
+                DebugOutput(debugMsg);
+            }
+            versionValidated = TRUE;
+            SAFE_FREE(wideLine);
             continue;
         }
         
-        // Validate line length
-        if (lineLen >= MAX_CACHE_LINE_LENGTH - 1) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Line %d is very long (%zu chars), may be truncated", lineCount, lineLen);
-            DebugOutput(debugMsg);
-        }
-        
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Processing line %d (length: %zu): %.100ls%ls", 
-                lineCount, lineLen, line, lineLen > 100 ? L"..." : L"");
-        DebugOutput(debugMsg);
-        
-        // Parse cache entry line format: VIDEO_ID|TITLE|DURATION|MAIN_FILE|SUBTITLE_COUNT|SUBTITLE1|SUBTITLE2|...
+        // Parse cache entry: VIDEO_ID|TITLE|DURATION|MAIN_FILE|SUBTITLE_COUNT|...
         wchar_t* context = NULL;
-        wchar_t* token = wcstok(line, L"|", &context);
-        if (!token || wcslen(token) == 0) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Line %d has no video ID token", lineCount);
-            DebugOutput(debugMsg);
+        wchar_t* videoId = wcstok(wideLine, L"|", &context);
+        if (!videoId || wcslen(videoId) == 0) {
+            SAFE_FREE(wideLine);
             invalidEntries++;
             continue;
         }
         
-        // Validate video ID format (should be 11 characters)
-        if (wcslen(token) != 11) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Line %d has invalid video ID length (%zu): %ls", 
-                    lineCount, wcslen(token), token);
-            DebugOutput(debugMsg);
-        }
-        
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Parsing entry for video ID: %ls", token);
-        DebugOutput(debugMsg);
-        
-        // Allocate memory for cache entry
+        // Quick validation and parsing
         CacheEntry* entry = (CacheEntry*)SAFE_MALLOC(sizeof(CacheEntry));
         if (!entry) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Memory allocation failed for line %d", lineCount);
-            DebugOutput(debugMsg);
-            memoryErrors++;
+            SAFE_FREE(wideLine);
             continue;
         }
         
         memset(entry, 0, sizeof(CacheEntry));
+        entry->videoId = SAFE_WCSDUP(videoId);
         
-        // Parse video ID with validation
-        entry->videoId = SAFE_WCSDUP(token);
-        if (!entry->videoId) {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to duplicate video ID");
-            SAFE_FREE(entry);
-            memoryErrors++;
-            continue;
-        }
-        
-        // Parse title (base64 encoded) with error handling
-        token = wcstok(NULL, L"|", &context);
-        if (token && wcslen(token) > 0) {
-            entry->title = Base64DecodeWide(token);
-            if (entry->title) {
-                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Decoded title: %ls (length: %zu)", 
-                        entry->title, wcslen(entry->title));
-                DebugOutput(debugMsg);
-            } else {
-                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Base64 decode failed for title on line %d", lineCount);
-                DebugOutput(debugMsg);
+        // Parse title (base64 encoded)
+        wchar_t* titleToken = wcstok(NULL, L"|", &context);
+        if (titleToken && wcslen(titleToken) > 0) {
+            entry->title = Base64DecodeWide(titleToken);
+            if (!entry->title) {
                 entry->title = SAFE_WCSDUP(L"Unknown Title");
             }
         } else {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - No title found, using default");
             entry->title = SAFE_WCSDUP(L"Unknown Title");
         }
         
-        // Parse duration with validation
-        token = wcstok(NULL, L"|", &context);
-        if (token && wcslen(token) > 0) {
-            entry->duration = SAFE_WCSDUP(token);
-            if (entry->duration) {
-                // Format the duration properly (fix legacy single-number durations)
-                size_t len = wcslen(entry->duration);
-                wchar_t* tempDuration = (wchar_t*)SAFE_MALLOC((len + 32) * sizeof(wchar_t));
-                if (tempDuration) {
-                    wcscpy(tempDuration, entry->duration);
-                    FormatDuration(tempDuration, len + 32);
-                    
-                    // Replace the original if it changed
-                    if (wcscmp(entry->duration, tempDuration) != 0) {
-                        SAFE_FREE(entry->duration);
-                        entry->duration = SAFE_WCSDUP(tempDuration);
-                    }
-                    SAFE_FREE(tempDuration);
-                }
-            }
+        // Parse duration
+        wchar_t* durationToken = wcstok(NULL, L"|", &context);
+        if (durationToken && wcslen(durationToken) > 0) {
+            entry->duration = SAFE_WCSDUP(durationToken);
         } else {
             entry->duration = SAFE_WCSDUP(L"Unknown");
         }
         
-        // Parse main video file with validation
-        token = wcstok(NULL, L"|", &context);
-        if (token && wcslen(token) > 0) {
-            entry->mainVideoFile = SAFE_WCSDUP(token);
+        // Parse main video file
+        wchar_t* fileToken = wcstok(NULL, L"|", &context);
+        if (fileToken && wcslen(fileToken) > 0) {
+            entry->mainVideoFile = SAFE_WCSDUP(fileToken);
         } else {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Line %d missing main video file", lineCount);
-            DebugOutput(debugMsg);
+            // Missing main file - invalid entry
             FreeCacheEntry(entry);
+            SAFE_FREE(wideLine);
             invalidEntries++;
             continue;
         }
         
-        // Parse subtitle count with bounds checking
-        token = wcstok(NULL, L"|", &context);
-        if (token) {
-            int subtitleCount = _wtoi(token);
-            if (subtitleCount < 0 || subtitleCount > 100) { // Reasonable upper limit
-                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Line %d has invalid subtitle count (%d), setting to 0", 
-                        lineCount, subtitleCount);
-                DebugOutput(debugMsg);
-                subtitleCount = 0;
-            }
-            
-            entry->subtitleCount = subtitleCount;
-            if (subtitleCount > 0) {
-                entry->subtitleFiles = (wchar_t**)SAFE_MALLOC(subtitleCount * sizeof(wchar_t*));
+        // Parse subtitle count and files (simplified for performance)
+        wchar_t* subtitleCountToken = wcstok(NULL, L"|", &context);
+        if (subtitleCountToken) {
+            entry->subtitleCount = _wtoi(subtitleCountToken);
+            if (entry->subtitleCount > 0 && entry->subtitleCount <= 100) { // Reasonable limit
+                entry->subtitleFiles = (wchar_t**)SAFE_MALLOC(entry->subtitleCount * sizeof(wchar_t*));
                 if (entry->subtitleFiles) {
-                    for (int i = 0; i < subtitleCount; i++) {
-                        token = wcstok(NULL, L"|", &context);
-                        if (token && wcslen(token) > 0) {
-                            entry->subtitleFiles[i] = SAFE_WCSDUP(token);
-                        } else {
-                            entry->subtitleFiles[i] = NULL;
-                            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Missing subtitle file %d for line %d", i+1, lineCount);
-                            DebugOutput(debugMsg);
+                    memset(entry->subtitleFiles, 0, entry->subtitleCount * sizeof(wchar_t*));
+                    for (int j = 0; j < entry->subtitleCount; j++) {
+                        wchar_t* subtitleToken = wcstok(NULL, L"|", &context);
+                        if (subtitleToken && wcslen(subtitleToken) > 0) {
+                            entry->subtitleFiles[j] = SAFE_WCSDUP(subtitleToken);
                         }
                     }
-                } else {
-                    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to allocate subtitle array for line %d", lineCount);
-                    DebugOutput(debugMsg);
-                    entry->subtitleCount = 0;
-                    memoryErrors++;
                 }
             }
         }
         
-        // Get file info for the main video file with error handling
-        if (entry->mainVideoFile) {
-            if (!GetVideoFileInfo(entry->mainVideoFile, &entry->fileSize, &entry->downloadTime)) {
-                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Could not get file info for: %ls", entry->mainVideoFile);
-                DebugOutput(debugMsg);
-            }
-        }
+        // Add entry to cache
+        entry->next = manager->entries;
+        manager->entries = entry;
+        manager->totalEntries++;
+        validEntries++;
         
-        // Validate entry before adding
-        if (ValidateCacheEntry(entry)) {
-            // Add to linked list
-            entry->next = manager->entries;
-            manager->entries = entry;
-            manager->totalEntries++;
-            validEntries++;
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Entry validated and added successfully");
-        } else {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Entry validation FAILED for line %d, freeing entry", lineCount);
-            DebugOutput(debugMsg);
-            FreeCacheEntry(entry);
-            invalidEntries++;
-        }
+        SAFE_FREE(wideLine);
     }
     
     LeaveCriticalSection(&manager->lock);
     
-    // Check for file reading errors
-    if (ferror(file)) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - WARNING: I/O errors occurred during file reading");
-    }
+    // Cleanup
+    SAFE_FREE(lines);
+    SAFE_FREE(fileBuffer);
     
-    fclose(file);
-    
-    // Comprehensive completion summary
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - COMPLETE: Processed %d lines, loaded %d valid entries, %d invalid entries, %d memory errors", 
-            lineCount, validEntries, invalidEntries, memoryErrors);
-    DebugOutput(debugMsg);
-    
-    if (invalidEntries > 0 || memoryErrors > 0) {
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Encountered %d invalid entries and %d memory errors during loading", 
-                invalidEntries, memoryErrors);
-        DebugOutput(debugMsg);
-    }
-    
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Final cache state: %d total entries in memory", manager->totalEntries);
+    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - COMPLETE: Loaded %d valid entries, %d invalid entries", validEntries, invalidEntries);
     DebugOutput(debugMsg);
     
     return TRUE;
