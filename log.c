@@ -45,12 +45,10 @@ void WriteSessionStartToLogfile(void) {
         SYSTEMTIME st;
         GetLocalTime(&st);
         
-        fwprintf(logFile, L"\r\n");
         fwprintf(logFile, L"=== YouTubeCacher Session Started: %04d-%02d-%02d %02d:%02d:%02d ===\r\n",
                 st.wYear, st.wMonth, st.wDay,
                 st.wHour, st.wMinute, st.wSecond);
         fwprintf(logFile, L"=== Version: %ls ===\r\n", APP_VERSION);
-        fwprintf(logFile, L"\r\n");
         
         fclose(logFile);
     }
@@ -68,14 +66,12 @@ void WriteSessionEndToLogfile(const wchar_t* reason) {
         SYSTEMTIME st;
         GetLocalTime(&st);
         
-        fwprintf(logFile, L"\r\n");
         fwprintf(logFile, L"=== YouTubeCacher Session Ended: %04d-%02d-%02d %02d:%02d:%02d ===\r\n",
                 st.wYear, st.wMonth, st.wDay,
                 st.wHour, st.wMinute, st.wSecond);
         if (reason) {
             fwprintf(logFile, L"=== Reason: %ls ===\r\n", reason);
         }
-        fwprintf(logFile, L"\r\n");
         
         fclose(logFile);
     }
