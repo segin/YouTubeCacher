@@ -163,6 +163,91 @@ void SubprocessProgressCallback(int percentage, const wchar_t* status, void* use
 void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void* userData);
 void MainWindowProgressCallback(int percentage, const wchar_t* status, void* userData);
 
+// Thread-safe subprocess context structure
+typedef struct {
+    // Critical sections for thread safety
+    CRITICAL_SECTION processStateLock;
+    CRITICAL_SECTION outputLock;
+    CRITICAL_SECTION configLock;
+    
+    // Process state (protected by processStateLock)
+    HANDLE hProcess;
+    HANDLE hThread;
+    DWORD processId;
+    DWORD threadId;
+    BOOL processRunning;
+    BOOL processCompleted;
+    DWORD exitCode;
+    
+    // Output management (protected by outputLock)
+    HANDLE hOutputRead;
+    HANDLE hOutputWrite;
+    wchar_t* outputBuffer;
+    size_t outputBufferSize;
+    size_t outputLength;
+    BOOL outputComplete;
+    
+    // Configuration (protected by configLock)
+    wchar_t* executablePath;
+    wchar_t* arguments;
+    wchar_t* workingDirectory;
+    DWORD timeoutMs;
+    
+    // Progress and status
+    ProgressCallback progressCallback;
+    void* callbackUserData;
+    HWND parentWindow;
+    
+    // Cancellation support
+    BOOL cancellationRequested;
+    HANDLE cancellationEvent;
+    
+    // Initialization state
+    BOOL initialized;
+} ThreadSafeSubprocessContext;
+
+// Thread-safe subprocess management functions
+BOOL InitializeThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
+void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
+BOOL SetSubprocessExecutable(ThreadSafeSubprocessContext* context, const wchar_t* path);
+BOOL SetSubprocessArguments(ThreadSafeSubprocessContext* context, const wchar_t* args);
+BOOL SetSubprocessWorkingDirectory(ThreadSafeSubprocessContext* context, const wchar_t* dir);
+BOOL SetSubprocessTimeout(ThreadSafeSubprocessContext* context, DWORD timeoutMs);
+BOOL SetSubprocessProgressCallback(ThreadSafeSubprocessContext* context, ProgressCallback callback, void* userData);
+BOOL SetSubprocessParentWindow(ThreadSafeSubprocessContext* context, HWND parentWindow);
+
+// Thread-safe process control functions
+BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context);
+BOOL IsThreadSafeSubprocessRunning(ThreadSafeSubprocessContext* context);
+BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context);
+BOOL WaitForThreadSafeSubprocessCompletion(ThreadSafeSubprocessContext* context, DWORD timeoutMs);
+DWORD GetThreadSafeSubprocessExitCode(ThreadSafeSubprocessContext* context);
+
+// Thread-safe output collection functions
+BOOL GetThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, wchar_t** output, size_t* length);
+BOOL AppendToThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, const wchar_t* data, size_t length);
+void ClearThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context);
+
+// Thread-safe process termination functions
+BOOL TerminateThreadSafeSubprocess(ThreadSafeSubprocessContext* context, DWORD exitCode);
+BOOL ForceKillThreadSafeSubprocess(ThreadSafeSubprocessContext* context);
+
+// Thread-safe subprocess output collection functions
+BOOL StartThreadSafeSubprocessOutputCollection(ThreadSafeSubprocessContext* context);
+BOOL ExecuteThreadSafeSubprocessWithOutput(ThreadSafeSubprocessContext* context);
+BOOL WaitForThreadSafeSubprocessWithOutputCompletion(ThreadSafeSubprocessContext* context, DWORD timeoutMs);
+BOOL GetFinalThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, wchar_t** output, size_t* length, DWORD* exitCode);
+
+// Adapter functions for integrating with existing ytdlp.c code
+ThreadSafeSubprocessContext* CreateThreadSafeSubprocessFromYtDlp(const YtDlpConfig* config, const YtDlpRequest* request);
+YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDlpRequest* request);
+ThreadSafeSubprocessContext* CreateThreadSafeSubprocessWithCallback(const YtDlpConfig* config, const YtDlpRequest* request, 
+                                                                   ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow);
+
+// Legacy context adapter functions - these will be declared properly in YouTubeCacher.h after SubprocessContext is defined
+// Thread-safe worker thread function
+DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam);
+
 // Forward declaration for download completion handling (defined in YouTubeCacher.h after type definitions)
 // void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 

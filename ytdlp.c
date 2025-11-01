@@ -599,293 +599,28 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     VALIDATE_POINTER_PARAM(config, L"config", cleanup_early);
     VALIDATE_POINTER_PARAM(request, L"request", cleanup_early);
     
-    ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Starting execution for operation %d", request->operation);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Starting thread-safe execution for operation %d", request->operation);
     
-    // Initialize variables for cleanup
-    YtDlpResult* result = NULL;
-    wchar_t* cmdLine = NULL;
-    wchar_t* outputBuffer = NULL;
-    wchar_t* savedCmdLine = NULL;
-    HANDLE hRead = NULL, hWrite = NULL;
-    PROCESS_INFORMATION pi = {0};
-    BOOL processCreated = FALSE;
+    // Use the new thread-safe implementation
+    YtDlpResult* result = ExecuteYtDlpRequestThreadSafe(config, request);
     
-    // Allocate result structure using new error handling macro
-    SAFE_ALLOC(result, sizeof(YtDlpResult), cleanup);
-    memset(result, 0, sizeof(YtDlpResult));
-    
-    // Build command line arguments
-    wchar_t arguments[4096];
-    if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, config, arguments, 4096)) {
-        REPORT_ERROR(YTC_SEVERITY_ERROR, YTC_ERROR_INVALID_PARAMETER, L"Failed to build yt-dlp arguments");
-        result->success = FALSE;
-        result->exitCode = 1;
-        result->errorMessage = SAFE_WCSDUP(L"Invalid parameters provided for yt-dlp operation");
-        return result;
-    }
-    
-    // Log the full arguments - allocate buffer based on actual arguments length
-    size_t fullArgsLogLen = wcslen(arguments) + 100;
-    wchar_t* fullArgsLogBuffer = (wchar_t*)SAFE_MALLOC(fullArgsLogLen * sizeof(wchar_t));
-    if (fullArgsLogBuffer) {
-        swprintf(fullArgsLogBuffer, fullArgsLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %ls", arguments);
-        ThreadSafeDebugOutput(fullArgsLogBuffer);
-        SAFE_FREE(fullArgsLogBuffer);
-    } else {
-        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Arguments: %.200ls", arguments);
-    }
-    
-    // Create pipe for subprocess output using new error handling macro
-    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
-    CHECK_SYSTEM_CALL(CreatePipe(&hRead, &hWrite, &sa, 0), cleanup);
-    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
-    
-    // Setup process startup info
-    STARTUPINFOW si = {0};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdOutput = hWrite;
-    si.hStdError = hWrite;
-    si.hStdInput = NULL;
-    
-    // Build command line using new error handling macro
-    size_t cmdLineLen = wcslen(config->ytDlpPath) + wcslen(arguments) + 10;
-    SAFE_ALLOC(cmdLine, cmdLineLen * sizeof(wchar_t), cleanup);
-    swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", config->ytDlpPath, arguments);
-    
-    // Log the full command
-    size_t fullLogLen = wcslen(cmdLine) + 100;
-    wchar_t* fullLogBuffer = (wchar_t*)SAFE_MALLOC(fullLogLen * sizeof(wchar_t));
-    if (fullLogBuffer) {
-        swprintf(fullLogBuffer, fullLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %ls", cmdLine);
-        ThreadSafeDebugOutput(fullLogBuffer);
-        SAFE_FREE(fullLogBuffer);
-    } else {
-        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Executing command: %.200ls", cmdLine);
-    }
-    
-    // Create process using new error handling macro
-    processCreated = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-    if (!processCreated) {
-        DWORD error = GetLastError();
-        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_SUBPROCESS_FAILED, 
-                        L"CreateProcessW failed with error %lu", error);
-        result->success = FALSE;
-        result->exitCode = error;
-        result->errorMessage = CreateUserFriendlyYtDlpError(error, NULL, request->url);
-        goto cleanup;
-    }
-    
-    ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Process created successfully, reading output...");
-    CloseHandle(hWrite);
-    hWrite = NULL; // Mark as closed
-    
-    // Read output from subprocess
-    char buffer[4096];
-    DWORD bytesRead;
-    size_t outputSize = 8192;
-    SAFE_ALLOC(outputBuffer, outputSize * sizeof(wchar_t), cleanup);
-    outputBuffer[0] = L'\0';
-    
-    // Safe line-based processing for synchronous execution
-    static char syncLineAccumulator[8192] = {0};
-    static size_t syncFillCounter = 0;
-    
-    while (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-        buffer[bytesRead] = '\0';
-        
-        // Safely add new bytes with bounds checking
-        size_t spaceAvailable = sizeof(syncLineAccumulator) - syncFillCounter - 1;
-        size_t bytesToCopy = (bytesRead < spaceAvailable) ? bytesRead : spaceAvailable;
-        
-        if (bytesToCopy > 0) {
-            memcpy(syncLineAccumulator + syncFillCounter, buffer, bytesToCopy);
-            syncFillCounter += bytesToCopy;
-            syncLineAccumulator[syncFillCounter] = '\0';
-        }
-        
-        // Process complete lines
-        char* start = syncLineAccumulator;
-        char* newline;
-        while ((newline = strchr(start, '\n')) != NULL) {
-            *newline = '\0';
-            
-            // Remove \r if present
-            size_t lineLen = newline - start;
-            if (lineLen > 0 && start[lineLen - 1] == '\r') {
-                start[lineLen - 1] = '\0';
-                lineLen--;
-            }
-            
-            // Convert complete UTF-8 line to wide chars
-            if (lineLen > 0) {
-                wchar_t tempOutput[2048];
-                int converted = MultiByteToWideChar(CP_UTF8, 0, start, (int)lineLen, tempOutput, 2047);
-                if (converted > 0) {
-                    tempOutput[converted] = L'\0';
-                    
-                    size_t currentLen = wcslen(outputBuffer);
-                    size_t newLen = currentLen + converted + 2; // +2 for \n and null
-                    if (newLen >= outputSize) {
-                        outputSize = newLen * 2;
-                        wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(outputBuffer, outputSize * sizeof(wchar_t));
-                        if (newBuffer) {
-                            outputBuffer = newBuffer;
-                        } else {
-                            break;
-                        }
-                    }
-                    
-                    wcscat(outputBuffer, tempOutput);
-                    wcscat(outputBuffer, L"\r\n"); // Use Windows line endings
-                }
-            }
-            
-            start = newline + 1;
-        }
-        
-        // Move remaining incomplete data to start
-        size_t remaining = syncFillCounter - (start - syncLineAccumulator);
-        if (remaining > 0 && start != syncLineAccumulator) {
-            memmove(syncLineAccumulator, start, remaining);
-        }
-        syncFillCounter = remaining;
-        syncLineAccumulator[syncFillCounter] = '\0';
-    }
-    
-    // Process any remaining data at end
-    if (syncFillCounter > 0) {
-        wchar_t tempOutput[2048];
-        int converted = MultiByteToWideChar(CP_UTF8, 0, syncLineAccumulator, (int)syncFillCounter, tempOutput, 2047);
-        if (converted > 0) {
-            tempOutput[converted] = L'\0';
-            
-            size_t currentLen = wcslen(outputBuffer);
-            size_t newLen = currentLen + converted + 1;
-            if (newLen >= outputSize) {
-                outputSize = newLen * 2;
-                wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(outputBuffer, outputSize * sizeof(wchar_t));
-                if (newBuffer) {
-                    outputBuffer = newBuffer;
-                }
-            }
-            
-            if (outputBuffer) {
-                wcscat(outputBuffer, tempOutput);
-            }
-        }
-        syncFillCounter = 0;
-    }
-    
-    // Wait for process completion
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    
-    // Get exit code
-    DWORD exitCode;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    
-    // Save command line for diagnostics before freeing
-    savedCmdLine = SAFE_WCSDUP(cmdLine);
-    
-    // Set result
-    result->success = (exitCode == 0);
-    result->exitCode = exitCode;
-    result->output = outputBuffer;
-    outputBuffer = NULL; // Transfer ownership to result
-    
-    // Save output to global buffer (clear previous run first)
-    ClearYtDlpOutputBuffer();
-    if (result->output && wcslen(result->output) > 0) {
-        AppendToYtDlpOutputBuffer(result->output);
-    }
-    
-    ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Process completed with exit code: %lu, success: %s", 
-            exitCode, result->success ? L"TRUE" : L"FALSE");
-    
-    if (result->output && wcslen(result->output) > 0) {
-        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Output length: %zu characters", wcslen(result->output));
-    } else {
-        ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output captured from process");
-    }
-    
-    // For failed processes, extract meaningful error information from output
-    if (!result->success) {
-        ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Processing failure, extracting error information...");
+    if (result) {
+        // Save output to global buffer (clear previous run first) for backward compatibility
+        ClearYtDlpOutputBuffer();
         if (result->output && wcslen(result->output) > 0) {
-            ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Extracting error from yt-dlp output");
-            
-            // Log the full output for debugging
-            size_t outputLogLen = wcslen(result->output) + 100;
-            wchar_t* outputLogBuffer = (wchar_t*)SAFE_MALLOC(outputLogLen * sizeof(wchar_t));
-            if (outputLogBuffer) {
-                swprintf(outputLogBuffer, outputLogLen, L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output: %ls", result->output);
-                ThreadSafeDebugOutput(outputLogBuffer);
-                SAFE_FREE(outputLogBuffer);
-            } else {
-                ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - yt-dlp output (first 200 chars): %.200ls", result->output);
-            }
-            
-            // Create user-friendly error message using new helper function
-            result->errorMessage = CreateUserFriendlyYtDlpError(result->exitCode, result->output, request->url);
-            
-            if (result->errorMessage) {
-                ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Extracted error message: %ls", result->errorMessage);
-            }
-            
-            // Generate diagnostic information based on the output
-            wchar_t* diagnostics = (wchar_t*)SAFE_MALLOC(2048 * sizeof(wchar_t));
-            if (diagnostics) {
-                swprintf(diagnostics, 2048,
-                    L"yt-dlp process exited with code %lu\r\n\r\n"
-                    L"Command executed: %ls\r\n\r\n"
-                    L"Process output:\r\n%ls",
-                    exitCode, savedCmdLine ? savedCmdLine : L"Unknown", result->output);
-                result->diagnostics = diagnostics;
-            }
-        } else {
-            ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - No output from failed process, using fallback error");
-            
-            // Fallback for cases with no output using new helper function
-            result->errorMessage = CreateUserFriendlyYtDlpError(result->exitCode, NULL, request->url);
-            
-            wchar_t* diagnostics = (wchar_t*)SAFE_MALLOC(1024 * sizeof(wchar_t));
-            if (diagnostics) {
-                swprintf(diagnostics, 1024,
-                    L"yt-dlp process exited with code %lu but produced no output\r\n\r\n"
-                    L"Command executed: %ls\r\n\r\n"
-                    L"This may indicate:\r\n"
-                    L"- yt-dlp executable not found or corrupted\r\n"
-                    L"- Missing dependencies (Python runtime)\r\n"
-                    L"- Permission issues\r\n"
-                    L"- Invalid command line arguments",
-                    exitCode, savedCmdLine ? savedCmdLine : L"Unknown");
-                result->diagnostics = diagnostics;
-            }
+            AppendToYtDlpOutputBuffer(result->output);
         }
+        
+        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Thread-safe execution completed: success=%s, exitCode=%lu", 
+                result->success ? L"TRUE" : L"FALSE", result->exitCode);
+    } else {
+        ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Thread-safe execution failed to return result");
     }
     
-    goto cleanup;
+    return result;
 
 cleanup_early:
     return NULL;
-
-cleanup:
-    // Cleanup resources using safe macros
-    SAFE_FREE_AND_NULL(cmdLine);
-    SAFE_FREE_AND_NULL(savedCmdLine);
-    SAFE_FREE_AND_NULL(outputBuffer); // Only free if not transferred to result
-    SAFE_CLOSE_HANDLE(hRead);
-    SAFE_CLOSE_HANDLE(hWrite);
-    if (processCreated) {
-        SAFE_CLOSE_HANDLE(pi.hProcess);
-        SAFE_CLOSE_HANDLE(pi.hThread);
-    }
-    
-    ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Returning result: success=%s, exitCode=%lu", 
-            result ? (result->success ? L"TRUE" : L"FALSE") : L"NULL", 
-            result ? result->exitCode : 0);
-    
-    return result;
 }
 
 void FreeYtDlpResult(YtDlpResult* result) {
@@ -2350,144 +2085,115 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
 // Multithreaded subprocess execution implementation
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
                                           ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow) {
-    ThreadSafeDebugOutput(L"YouTubeCacher: CreateSubprocessContext - ENTRY");
+    ThreadSafeDebugOutput(L"CreateSubprocessContext: Creating legacy wrapper for thread-safe implementation");
     
-    // Validate input parameters using new error handling macros
-    VALIDATE_POINTER_PARAM(config, L"config", cleanup_early);
-    VALIDATE_POINTER_PARAM(request, L"request", cleanup_early);
+    if (!config || !request) {
+        ThreadSafeDebugOutput(L"CreateSubprocessContext: Invalid parameters");
+        return NULL;
+    }
     
-    DebugOutput(L"YouTubeCacher: CreateSubprocessContext - Parameters valid, proceeding");
+    // Allocate legacy context structure
+    SubprocessContext* context = (SubprocessContext*)SAFE_MALLOC(sizeof(SubprocessContext));
+    if (!context) {
+        ThreadSafeDebugOutput(L"CreateSubprocessContext: Failed to allocate context");
+        return NULL;
+    }
     
-    wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Config ytDlpPath: %ls", config->ytDlpPath);
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request URL: %ls", request->url ? request->url : L"NULL");
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request outputPath: %ls", request->outputPath ? request->outputPath : L"NULL");
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request tempDir: %ls", request->tempDir ? request->tempDir : L"NULL");
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: CreateSubprocessContext - Request operation: %d\n", request->operation);
-    OutputDebugStringW(debugMsg);
-    
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Allocating context memory\n");
-    SubprocessContext* context = NULL;
-    SAFE_ALLOC(context, sizeof(SubprocessContext), cleanup_early);
-    
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Context allocated, zeroing memory\n");
     memset(context, 0, sizeof(SubprocessContext));
     
-    // Initialize thread context
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Initializing thread context\n");
+    // Initialize thread context for compatibility
     if (!InitializeThreadContext(&context->threadContext)) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Failed to initialize thread context\n");
+        ThreadSafeDebugOutput(L"CreateSubprocessContext: Failed to initialize thread context");
         SAFE_FREE(context);
         return NULL;
     }
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Thread context initialized successfully\n");
     
-    // Copy configuration and request (deep copy for thread safety)
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Allocating config and request copies\n");
-    SAFE_ALLOC(context->config, sizeof(YtDlpConfig), cleanup);
-    SAFE_ALLOC(context->request, sizeof(YtDlpRequest), cleanup);
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Config and request memory allocated\n");
-    
-    // Deep copy config
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Deep copying config\n");
+    // Deep copy configuration
+    context->config = (YtDlpConfig*)SAFE_MALLOC(sizeof(YtDlpConfig));
+    if (!context->config) {
+        CleanupThreadContext(&context->threadContext);
+        SAFE_FREE(context);
+        return NULL;
+    }
     memcpy(context->config, config, sizeof(YtDlpConfig));
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Config copied successfully\n");
     
     // Deep copy request
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Deep copying request structure\n");
+    context->request = (YtDlpRequest*)SAFE_MALLOC(sizeof(YtDlpRequest));
+    if (!context->request) {
+        SAFE_FREE(context->config);
+        CleanupThreadContext(&context->threadContext);
+        SAFE_FREE(context);
+        return NULL;
+    }
     memcpy(context->request, request, sizeof(YtDlpRequest));
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Request structure copied\n");
     
+    // Deep copy strings in request
     if (request->url) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Duplicating URL string\n");
         context->request->url = SAFE_WCSDUP(request->url);
         if (!context->request->url) {
-            OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Failed to duplicate URL string\n");
-            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context->config);
             SAFE_FREE(context->request);
+            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context);
             return NULL;
         }
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - URL string duplicated successfully\n");
     }
     
     if (request->outputPath) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Duplicating outputPath string\n");
         context->request->outputPath = SAFE_WCSDUP(request->outputPath);
         if (!context->request->outputPath) {
-            OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Failed to duplicate outputPath string\n");
             if (context->request->url) SAFE_FREE(context->request->url);
-            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context->config);
             SAFE_FREE(context->request);
+            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context);
             return NULL;
         }
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - outputPath string duplicated successfully\n");
     }
     
     if (request->tempDir) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Duplicating tempDir string\n");
         context->request->tempDir = SAFE_WCSDUP(request->tempDir);
         if (!context->request->tempDir) {
-            OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Failed to duplicate tempDir string\n");
             if (context->request->url) SAFE_FREE(context->request->url);
             if (context->request->outputPath) SAFE_FREE(context->request->outputPath);
-            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context->config);
             SAFE_FREE(context->request);
+            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context);
             return NULL;
         }
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - tempDir string duplicated successfully\n");
     }
     
     if (request->customArgs) {
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Duplicating customArgs string\n");
         context->request->customArgs = SAFE_WCSDUP(request->customArgs);
         if (!context->request->customArgs) {
-            OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Failed to duplicate customArgs string\n");
             if (context->request->url) SAFE_FREE(context->request->url);
             if (context->request->outputPath) SAFE_FREE(context->request->outputPath);
             if (context->request->tempDir) SAFE_FREE(context->request->tempDir);
-            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context->config);
             SAFE_FREE(context->request);
+            CleanupThreadContext(&context->threadContext);
             SAFE_FREE(context);
             return NULL;
         }
-        OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - customArgs string duplicated successfully\n");
     }
     
     // Set callback information
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Setting callback information\n");
     context->progressCallback = progressCallback;
     context->callbackUserData = callbackUserData;
     context->parentWindow = parentWindow;
     
-    OutputDebugStringW(L"YouTubeCacher: CreateSubprocessContext - Context created successfully, RETURNING\n");
+    ThreadSafeDebugOutput(L"CreateSubprocessContext: Legacy context created successfully");
     return context;
-
-cleanup:
-    if (context) {
-        CleanupThreadContext(&context->threadContext);
-        SAFE_FREE_AND_NULL(context->config);
-        SAFE_FREE_AND_NULL(context->request);
-        SAFE_FREE_AND_NULL(context);
-    }
-
-cleanup_early:
-    REPORT_ERROR(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, L"Failed to create subprocess context");
-    return NULL;
 }
 
 void FreeSubprocessContext(SubprocessContext* context) {
     if (!context) return;
+    
+    ThreadSafeDebugOutput(L"FreeSubprocessContext: Using thread-safe cleanup");
+    
+    // Cleanup thread-safe backend first
+    CleanupLegacySubprocessContext(context);
     
     // Cleanup thread context
     CleanupThreadContext(&context->threadContext);
@@ -2510,12 +2216,10 @@ void FreeSubprocessContext(SubprocessContext* context) {
         FreeYtDlpResult(context->result);
     }
     
-    // Free accumulated output
-    if (context->accumulatedOutput) {
-        SAFE_FREE(context->accumulatedOutput);
-    }
+    // Note: accumulatedOutput is now used to store ThreadSafeSubprocessContext pointer
+    // It's cleaned up by CleanupLegacySubprocessContext above
     
-    // Close handles
+    // Close handles (these should already be cleaned up by thread-safe backend)
     if (context->hProcess) {
         CloseHandle(context->hProcess);
     }
@@ -2532,167 +2236,58 @@ void FreeSubprocessContext(SubprocessContext* context) {
 BOOL StartSubprocessExecution(SubprocessContext* context) {
     if (!context) return FALSE;
     
-    // Create managed thread with proper lifecycle management
-    if (!CreateManagedThread(&context->threadContext, SubprocessWorkerThread, context, 
-                            L"SubprocessWorker", 60000)) { // 60 second timeout
-        return FALSE;
-    }
+    ThreadSafeDebugOutput(L"StartSubprocessExecution: Using thread-safe backend");
     
-    return TRUE;
+    // Use the new thread-safe implementation
+    return StartThreadSafeSubprocessFromLegacyContext(context);
 }
 
 BOOL IsSubprocessRunning(const SubprocessContext* context) {
     if (!context) return FALSE;
     
-    EnterCriticalSection((LPCRITICAL_SECTION)&context->threadContext.criticalSection);
-    BOOL isRunning = context->threadContext.isRunning;
-    LeaveCriticalSection((LPCRITICAL_SECTION)&context->threadContext.criticalSection);
-    
-    return isRunning;
+    // Use the new thread-safe implementation
+    return IsLegacySubprocessRunning(context);
 }
 
 BOOL CancelSubprocessExecution(SubprocessContext* context) {
     if (!context) return FALSE;
     
-    return SetCancellationFlag((ThreadContext*)&context->threadContext);
+    ThreadSafeDebugOutput(L"CancelSubprocessExecution: Using thread-safe backend");
+    
+    // Use the new thread-safe implementation
+    return CancelLegacySubprocessExecution(context);
 }
 
 BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs) {
     if (!context) return FALSE;
     
-    DWORD startTime = GetTickCount();
+    ThreadSafeDebugOutput(L"WaitForSubprocessCompletion: Using thread-safe backend");
     
-    while (!context->completed) {
-        if (timeoutMs != INFINITE) {
-            DWORD elapsed = GetTickCount() - startTime;
-            if (elapsed >= timeoutMs) {
-                return FALSE; // Timeout
-            }
-        }
-        
-        Sleep(100); // Check every 100ms
-    }
-    
-    return TRUE;
+    // Use the new thread-safe implementation
+    return WaitForLegacySubprocessCompletion(context, timeoutMs);
 }
 
 // Convenience function for simple multithreaded execution (NO POPUP DIALOGS)
+// Updated to use thread-safe subprocess handling
 YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
                                              HWND parentWindow, const wchar_t* operationTitle) {
     if (!config || !request) return NULL;
     
-    // REMOVED: Popup progress dialog - use main window progress instead
-    // Simply execute synchronously - the calling code should handle threading if needed
+    // Use the new thread-safe execution method
+    ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Using thread-safe execution");
     (void)parentWindow;     // Suppress unused parameter warning
     (void)operationTitle;   // Suppress unused parameter warning
     
-    return ExecuteYtDlpRequest(config, request);
+    return ExecuteYtDlpRequestThreadSafe(config, request);
 }
 
 // Worker thread function that executes yt-dlp subprocess
+// Updated to use thread-safe subprocess handling
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread started");
+    ThreadSafeDebugOutput(L"YouTubeCacher: SubprocessWorkerThread started (using thread-safe implementation)");
     
-    SubprocessContext* context = (SubprocessContext*)lpParam;
-    if (!context || !context->config || !context->request) {
-        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - invalid context");
-        return 1;
-    }
-    
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - context valid");
-    
-    wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - URL: %ls", context->request->url ? context->request->url : L"NULL");
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - OutputPath: %ls", context->request->outputPath ? context->request->outputPath : L"NULL");
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - TempDir: %ls", context->request->tempDir ? context->request->tempDir : L"NULL");
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Operation: %d", context->request->operation);
-    DebugOutput(debugMsg);
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - YtDlpPath: %ls", context->config->ytDlpPath);
-    DebugOutput(debugMsg);
-    
-    // Mark thread as running
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Marking thread as running");
-    EnterCriticalSection(&context->threadContext.criticalSection);
-    context->threadContext.isRunning = TRUE;
-    LeaveCriticalSection(&context->threadContext.criticalSection);
-    
-    // Initialize result structure
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Initializing result structure");
-    context->result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
-    if (!context->result) {
-        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Failed to allocate result structure");
-        context->completed = TRUE;
-        return 1;
-    }
-    memset(context->result, 0, sizeof(YtDlpResult));
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Result structure initialized");
-    
-    // Report initial progress
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Reporting initial progress");
-    if (context->progressCallback) {
-        context->progressCallback(0, L"Initializing yt-dlp process...", context->callbackUserData);
-    }
-    
-    // Build command line arguments
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Building command line arguments");
-    wchar_t arguments[4096];
-    if (!GetYtDlpArgsForOperation(context->request->operation, context->request->url, 
-                                 context->request->outputPath, context->config, arguments, 4096)) {
-        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - FAILED to build yt-dlp arguments");
-        context->result->success = FALSE;
-        context->result->exitCode = 1;
-        context->result->errorMessage = SAFE_WCSDUP(L"Failed to build yt-dlp arguments");
-        context->completed = TRUE;
-        return 1;
-    }
-    swprintf(debugMsg, 512, L"YouTubeCacher: SubprocessWorkerThread - Arguments: %ls", arguments);
-    DebugOutput(debugMsg);
-    
-    // Check for cancellation before starting process
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Checking for cancellation");
-    if (IsCancellationRequested(&context->threadContext)) {
-        DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Operation was cancelled");
-        context->result->success = FALSE;
-        context->result->errorMessage = SAFE_WCSDUP(L"Operation cancelled by user");
-        context->completed = TRUE;
-        return 0;
-    }
-    
-    // Execute using the synchronous method for simplicity in this implementation
-    YtDlpResult* result = ExecuteYtDlpRequest(context->config, context->request);
-    if (result) {
-        // Transfer result
-        context->result = result;
-    } else {
-        context->result->success = FALSE;
-        context->result->errorMessage = SAFE_WCSDUP(L"Failed to execute yt-dlp request");
-    }
-    
-    // Final progress update
-    if (context->progressCallback) {
-        if (context->result->success) {
-            context->progressCallback(100, L"Completed successfully", context->callbackUserData);
-        } else {
-            context->progressCallback(100, L"Operation failed", context->callbackUserData);
-        }
-    }
-    
-    // Mark as completed
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Marking as completed");
-    context->completed = TRUE;
-    context->completionTime = GetTickCount();
-    
-    // Mark thread as no longer running
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - Marking thread as no longer running");
-    EnterCriticalSection(&context->threadContext.criticalSection);
-    context->threadContext.isRunning = FALSE;
-    LeaveCriticalSection(&context->threadContext.criticalSection);
-    
-    DebugOutput(L"YouTubeCacher: SubprocessWorkerThread - EXITING");
-    return 0;
+    // Delegate to the thread-safe implementation
+    return ThreadSafeSubprocessWorkerThread(lpParam);
 }
 
 // Unified download worker thread - simplified version that delegates to subprocess worker

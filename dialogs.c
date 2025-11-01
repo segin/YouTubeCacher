@@ -421,9 +421,9 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     RECT finalTextRect = {0, 0, finalTextWidth, 0};
     textHeight = DrawTextW(hdc, messageText, -1, &finalTextRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
     
-    // Position elements
+    // Position elements using proper calculations
     int iconX = margin;
-    int iconY = margin;
+    int iconY = margin + ScaleForDpi(1, dpi);  // Slight adjustment for better alignment
     int iconCenterY = iconY + iconSize / 2;
     int textStartY = iconCenterY - lineHeight / 2;
     
@@ -435,9 +435,10 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     int contentBottom = max(iconY + iconSize, messageY + messageHeight);
     int buttonY = contentBottom + groupSpacing;
     
-    // Calculate collapsed height
+    // Calculate collapsed height based on content
     int collapsedHeight = buttonY + buttonHeight + margin;
-    int minCollapsedHeight = ScaleForDpi(150, dpi);
+    // Ensure minimum height accounts for title bar and borders
+    int minCollapsedHeight = ScaleForDpi(140, dpi);  
     collapsedHeight = max(collapsedHeight, minCollapsedHeight);
     
     // Calculate expanded height
@@ -480,7 +481,7 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN), NULL, copyX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
     SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN), NULL, okX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
     
-    // Position expanded controls
+    // Position expanded controls using proper calculations
     if (expanded) {
         int tabY = buttonY + buttonHeight + groupSpacing;
         int tabWidth = dialogWidth - 2 * margin;
@@ -488,9 +489,9 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
         SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL), NULL, margin, tabY, tabWidth, tabHeight, SWP_NOZORDER);
         
         int textX = margin + ScaleForDpi(5, dpi);
-        int textY = tabY + ScaleForDpi(20, dpi);
+        int textY = tabY + ScaleForDpi(24, dpi);  // Standard tab header height
         int textW = tabWidth - ScaleForDpi(10, dpi);
-        int textH = tabHeight - ScaleForDpi(25, dpi);
+        int textH = tabHeight - ScaleForDpi(29, dpi);  // Account for tab header
         
         SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), NULL, textX, textY, textW, textH, SWP_NOZORDER);
         SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), NULL, textX, textY, textW, textH, SWP_NOZORDER);

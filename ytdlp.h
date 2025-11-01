@@ -66,6 +66,7 @@ void FreeYtDlpResult(YtDlpResult* result);
 
 // Error message processing
 wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output);
+wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, const wchar_t* url);
 
 // Enhanced error handling
 DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode, 

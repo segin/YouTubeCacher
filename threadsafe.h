@@ -32,4 +32,8 @@ BOOL IsThreadSafetyInitialized(void);
 void ThreadSafeDebugOutput(const wchar_t* message);
 void ThreadSafeDebugOutputF(const wchar_t* format, ...);
 
+// Forward declarations - these types are defined in other headers
+// ThreadSafeSubprocessContext is defined in threading.h
+// YtDlpConfig, YtDlpRequest, YtDlpResult, SubprocessContext are defined in YouTubeCacher.h
+
 #endif // THREADSAFE_H

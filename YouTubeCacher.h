@@ -184,6 +184,9 @@ typedef struct {
     BOOL isValid;
 } CachedVideoMetadata;
 
+// Forward declarations for structures used in headers
+// SubprocessContext is defined later in this file
+
 // Include module headers after basic type definitions
 #include "appstate.h"
 #include "settings.h"
@@ -300,6 +303,13 @@ typedef struct {
     wchar_t* accumulatedOutput;
     size_t outputBufferSize;
 } SubprocessContext;
+
+// Legacy context adapter functions for thread-safe subprocess handling
+BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext);
+BOOL IsLegacySubprocessRunning(const SubprocessContext* legacyContext);
+BOOL WaitForLegacySubprocessCompletion(SubprocessContext* legacyContext, DWORD timeoutMs);
+BOOL CancelLegacySubprocessExecution(SubprocessContext* legacyContext);
+void CleanupLegacySubprocessContext(SubprocessContext* legacyContext);
 
 // Structure for non-blocking download context
 typedef struct NonBlockingDownloadContext {

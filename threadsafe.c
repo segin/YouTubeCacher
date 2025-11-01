@@ -1079,3 +1079,136 @@ BOOL GetFinalThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, wc
     
     return success;
 }
+
+// Legacy adapter functions for compatibility with existing ytdlp.c code
+
+/**
+ * Thread-safe worker thread function for legacy SubprocessContext
+ * This adapts the old SubprocessContext to use the new thread-safe implementation
+ */
+DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
+    SubprocessContext* legacyContext = (SubprocessContext*)lpParam;
+    if (!legacyContext || !legacyContext->config || !legacyContext->request) {
+        ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Invalid legacy context");
+        return 1;
+    }
+
+    ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Starting thread-safe worker for legacy context");
+
+    // Mark legacy context thread as running
+    EnterCriticalSection(&legacyContext->threadContext.criticalSection);
+    legacyContext->threadContext.isRunning = TRUE;
+    LeaveCriticalSection(&legacyContext->threadContext.criticalSection);
+
+    // Create a thread-safe subprocess context
+    ThreadSafeSubprocessContext* context = (ThreadSafeSubprocessContext*)SAFE_MALLOC(sizeof(ThreadSafeSubprocessContext));
+    if (!context) {
+        ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to allocate thread-safe context");
+        legacyContext->completed = TRUE;
+        return 1;
+    }
+
+    // Initialize the thread-safe context
+    if (!InitializeThreadSafeSubprocessContext(context)) {
+        ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to initialize thread-safe context");
+        SAFE_FREE(context);
+        legacyContext->completed = TRUE;
+        return 1;
+    }
+
+    // Build command line arguments
+    wchar_t arguments[4096];
+    if (!GetYtDlpArgsForOperation(legacyContext->request->operation, legacyContext->request->url, 
+                                 legacyContext->request->outputPath, legacyContext->config, arguments, 4096)) {
+        ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to build arguments");
+        CleanupThreadSafeSubprocessContext(context);
+        SAFE_FREE(context);
+        legacyContext->completed = TRUE;
+        return 1;
+    }
+
+    // Configure the thread-safe context
+    SetSubprocessExecutable(context, legacyContext->config->ytDlpPath);
+    SetSubprocessArguments(context, arguments);
+    SetSubprocessTimeout(context, 300000); // 5 minutes
+    SetSubprocessProgressCallback(context, legacyContext->progressCallback, legacyContext->callbackUserData);
+    SetSubprocessParentWindow(context, legacyContext->parentWindow);
+
+    // Execute the subprocess with output collection
+    if (!ExecuteThreadSafeSubprocessWithOutput(context)) {
+        ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to start subprocess");
+        CleanupThreadSafeSubprocessContext(context);
+        SAFE_FREE(context);
+        legacyContext->completed = TRUE;
+        return 1;
+    }
+
+    // Wait for completion
+    if (!WaitForThreadSafeSubprocessWithOutputCompletion(context, 300000)) {
+        ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Subprocess timed out");
+        CancelThreadSafeSubprocess(context);
+        CleanupThreadSafeSubprocessContext(context);
+        SAFE_FREE(context);
+        legacyContext->completed = TRUE;
+        return 1;
+    }
+
+    // Create result structure
+    YtDlpResult* result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
+    if (!result) {
+        ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to allocate result");
+        CleanupThreadSafeSubprocessContext(context);
+        SAFE_FREE(context);
+        legacyContext->completed = TRUE;
+        return 1;
+    }
+
+    memset(result, 0, sizeof(YtDlpResult));
+
+    // Get final output and exit code
+    wchar_t* output = NULL;
+    size_t outputLength = 0;
+    DWORD exitCode = 0;
+    
+    if (GetFinalThreadSafeSubprocessOutput(context, &output, &outputLength, &exitCode)) {
+        result->success = (exitCode == 0);
+        result->exitCode = exitCode;
+        result->output = output;
+
+        // Create error message if failed
+        if (!result->success) {
+            result->errorMessage = CreateUserFriendlyYtDlpError(exitCode, output, legacyContext->request->url);
+        }
+    } else {
+        result->success = FALSE;
+        result->exitCode = (DWORD)-1;
+        result->output = SAFE_WCSDUP(L"Failed to retrieve subprocess output");
+        result->errorMessage = CreateUserFriendlyYtDlpError((DWORD)-1, NULL, legacyContext->request->url);
+    }
+
+    // Store result in legacy context
+    legacyContext->result = result;
+    legacyContext->completed = TRUE;
+    legacyContext->completionTime = GetTickCount();
+
+    // Final progress update
+    if (legacyContext->progressCallback) {
+        if (result->success) {
+            legacyContext->progressCallback(100, L"Completed successfully", legacyContext->callbackUserData);
+        } else {
+            legacyContext->progressCallback(100, L"Operation failed", legacyContext->callbackUserData);
+        }
+    }
+
+    // Mark thread as no longer running
+    EnterCriticalSection(&legacyContext->threadContext.criticalSection);
+    legacyContext->threadContext.isRunning = FALSE;
+    LeaveCriticalSection(&legacyContext->threadContext.criticalSection);
+
+    // Clean up thread-safe context
+    CleanupThreadSafeSubprocessContext(context);
+    SAFE_FREE(context);
+
+    ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Thread-safe worker completed successfully");
+    return 0;
+}
