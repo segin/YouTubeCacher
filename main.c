@@ -195,6 +195,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         return 1;
     }
     
+    // Initialize thread safety system for global state protection
+    if (!InitializeThreadSafety()) {
+        SHOW_ERROR_DIALOG(NULL, YTC_SEVERITY_FATAL, YTC_ERROR_INITIALIZATION, 
+                         L"Failed to initialize thread safety system.\r\n\r\n"
+                         L"The application cannot continue without proper thread synchronization.");
+        CleanupMemoryManager();
+        CleanupErrorLogging();
+        return 1;
+    }
+    
     // REMOVED: TestMemoryAllocationFailureScenarios() - was slowing startup with debug output
     
     // Force visual styles activation before anything else
@@ -260,6 +270,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     
     // Cleanup the global IPC system
     CleanupGlobalIPC();
+    
+    // Cleanup thread safety system
+    CleanupThreadSafety();
     
     // Cleanup memory manager
     CleanupMemoryManager();
