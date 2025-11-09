@@ -122,10 +122,13 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
             return ParseFileDestinationLine(line, progress);
             
         case LINE_TYPE_ERROR:
+            // Store error message but DON'T change state to FAILED yet
+            // Many yt-dlp "errors" are actually warnings that don't prevent download
+            // Let the process exit code determine actual failure
             progress->hasError = TRUE;
             if (progress->errorMessage) SAFE_FREE(progress->errorMessage);
             progress->errorMessage = SAFE_WCSDUP(line);
-            UpdateDownloadState(progress, DOWNLOAD_STATE_FAILED, L"Download failed");
+            // Don't call UpdateDownloadState here - wait for process exit code
             return TRUE;
             
         case LINE_TYPE_WARNING:
@@ -1040,8 +1043,17 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     CloseHandle(context->hOutputWrite);
     SAFE_FREE(cmdLine);
     
-    // Register the download process with application state for cancellation support
-    SetActiveDownload(pi.hProcess, pi.dwProcessId, context->request->tempDir);
+    // Duplicate the process handle for application state cancellation support
+    // This ensures we have a valid handle even after we close our copy
+    HANDLE hDuplicatedProcess = NULL;
+    if (DuplicateHandle(GetCurrentProcess(), pi.hProcess, GetCurrentProcess(), 
+                       &hDuplicatedProcess, PROCESS_TERMINATE | SYNCHRONIZE, 
+                       FALSE, 0)) {
+        SetActiveDownload(hDuplicatedProcess, pi.dwProcessId, context->request->tempDir);
+    } else {
+        // Fallback: use original handle but don't close it later
+        SetActiveDownload(pi.hProcess, pi.dwProcessId, context->request->tempDir);
+    }
     CloseHandle(pi.hThread); // We don't need the thread handle
     
     // Initialize output buffer

@@ -383,13 +383,14 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     int dpi = GetDpiForWindowSafe(hDlg);
     
     // Calculate base metrics per Microsoft Win32 UI standards
-    int margin = ScaleForDpi(11, dpi);
-    int iconSize = ScaleForDpi(32, dpi);
-    int buttonHeight = ScaleForDpi(23, dpi);
-    int buttonWidth = ScaleForDpi(75, dpi);
-    int buttonGap = ScaleForDpi(6, dpi);
-    int controlSpacing = ScaleForDpi(6, dpi);
-    int groupSpacing = ScaleForDpi(10, dpi);
+    // All measurements based on Dialog Units (DLU): 1 DLU ≈ 1.5px at 96 DPI
+    int margin = ScaleForDpi(11, dpi);           // 7 DLU horizontal/vertical margin
+    int iconSize = ScaleForDpi(32, dpi);         // Standard system icon size
+    int buttonHeight = ScaleForDpi(23, dpi);     // 14 DLU standard button height
+    int buttonWidth = ScaleForDpi(75, dpi);      // 50 DLU standard button width
+    int buttonGap = ScaleForDpi(6, dpi);         // 4 DLU button spacing
+    int controlSpacing = ScaleForDpi(6, dpi);    // 4 DLU control spacing
+    int groupSpacing = ScaleForDpi(11, dpi);     // 7 DLU group spacing (was 10, now correct)
     
     // Get current message text for sizing
     wchar_t messageText[1024];
@@ -432,18 +433,21 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     int messageWidth = finalTextWidth;
     int messageHeight = textHeight;
     
+    // Microsoft UI Guidelines: 7 DLU (11px @ 96 DPI) between control groups
+    // Content group: icon + message
+    // Button group: buttons
+    // Tab group: tab control (when expanded)
     int contentBottom = max(iconY + iconSize, messageY + messageHeight);
-    int buttonY = contentBottom + groupSpacing;
+    int buttonY = contentBottom + groupSpacing;  // 7 DLU between content and buttons
     
-    // Calculate collapsed height based on content
+    // Calculate collapsed height: margin + content + groupSpacing + buttons + margin
+    // The bottom margin should match the top margin for visual balance
     int collapsedHeight = buttonY + buttonHeight + margin;
-    // Ensure minimum height accounts for title bar and borders
-    int minCollapsedHeight = ScaleForDpi(140, dpi);  
-    collapsedHeight = max(collapsedHeight, minCollapsedHeight);
     
-    // Calculate expanded height
-    int tabHeight = ScaleForDpi(290, dpi);
-    int expandedHeight = collapsedHeight + groupSpacing + tabHeight + margin;
+    // Calculate expanded height: collapsed + groupSpacing + tab + margin
+    // When expanded, we add: groupSpacing (7 DLU) + tab control + bottom margin
+    int tabHeight = ScaleForDpi(200, dpi);  // Reduced from 290 to eliminate excess space
+    int expandedHeight = buttonY + buttonHeight + groupSpacing + tabHeight + margin;
     
     int finalHeight = expanded ? expandedHeight : collapsedHeight;
     
@@ -482,16 +486,20 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN), NULL, okX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
     
     // Position expanded controls using proper calculations
+    // Microsoft UI Guidelines: 7 DLU spacing between button group and tab control group
     if (expanded) {
-        int tabY = buttonY + buttonHeight + groupSpacing;
+        int tabY = buttonY + buttonHeight + groupSpacing;  // 7 DLU below buttons
         int tabWidth = dialogWidth - 2 * margin;
         
         SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL), NULL, margin, tabY, tabWidth, tabHeight, SWP_NOZORDER);
         
-        int textX = margin + ScaleForDpi(5, dpi);
-        int textY = tabY + ScaleForDpi(24, dpi);  // Standard tab header height
-        int textW = tabWidth - ScaleForDpi(10, dpi);
-        int textH = tabHeight - ScaleForDpi(29, dpi);  // Account for tab header
+        // Tab control internal padding: 3px on sides, 24px for tab header
+        int tabInternalMargin = ScaleForDpi(3, dpi);
+        int tabHeaderHeight = ScaleForDpi(24, dpi);
+        int textX = margin + tabInternalMargin;
+        int textY = tabY + tabHeaderHeight;
+        int textW = tabWidth - (2 * tabInternalMargin);
+        int textH = tabHeight - tabHeaderHeight - tabInternalMargin;  // Account for header + bottom padding
         
         SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), NULL, textX, textY, textW, textH, SWP_NOZORDER);
         SetWindowPos(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), NULL, textX, textY, textW, textH, SWP_NOZORDER);
