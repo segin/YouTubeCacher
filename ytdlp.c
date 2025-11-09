@@ -2268,17 +2268,53 @@ BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs) {
 }
 
 // Convenience function for simple multithreaded execution (NO POPUP DIALOGS)
-// Updated to use thread-safe subprocess handling
+// Uses enhanced subprocess execution with progress updates to main window
 YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
                                              HWND parentWindow, const wchar_t* operationTitle) {
     if (!config || !request) return NULL;
     
-    // Use the new thread-safe execution method
-    ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Using thread-safe execution");
-    (void)parentWindow;     // Suppress unused parameter warning
+    ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Using enhanced execution with progress updates");
     (void)operationTitle;   // Suppress unused parameter warning
     
-    return ExecuteYtDlpRequestThreadSafe(config, request);
+    // Create enhanced subprocess context with IPC progress callback
+    IPCContext* ipc = GetGlobalIPCContext();
+    if (!ipc || !parentWindow) {
+        // Fallback to thread-safe execution without progress
+        ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: No IPC available, using basic execution");
+        return ExecuteYtDlpRequestThreadSafe(config, request);
+    }
+    
+    // Create enhanced context with progress callback
+    EnhancedSubprocessContext* enhancedContext = CreateEnhancedSubprocessContext(
+        config, request, NULL, NULL, parentWindow);
+    
+    if (!enhancedContext) {
+        ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Failed to create enhanced context");
+        return ExecuteYtDlpRequestThreadSafe(config, request);
+    }
+    
+    // Start enhanced execution
+    if (!StartEnhancedSubprocessExecution(enhancedContext)) {
+        ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Failed to start enhanced execution");
+        FreeEnhancedSubprocessContext(enhancedContext);
+        return ExecuteYtDlpRequestThreadSafe(config, request);
+    }
+    
+    // Wait for completion
+    ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Waiting for enhanced execution to complete");
+    while (!enhancedContext->baseContext->completed) {
+        Sleep(100);
+    }
+    
+    // Get result
+    YtDlpResult* result = enhancedContext->baseContext->result;
+    enhancedContext->baseContext->result = NULL; // Transfer ownership
+    
+    // Cleanup
+    FreeEnhancedSubprocessContext(enhancedContext);
+    
+    ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Enhanced execution completed");
+    return result;
 }
 
 // Worker thread function that executes yt-dlp subprocess
