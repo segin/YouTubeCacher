@@ -100,6 +100,10 @@ BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) 
 void CleanupCacheManager(CacheManager* manager) {
     if (!manager) return;
     
+    // Save cache to disk before cleanup
+    DebugOutput(L"YouTubeCacher: CleanupCacheManager - Saving cache before cleanup");
+    SaveCacheToFile(manager);
+    
     EnterCriticalSection(&manager->lock);
     
     // Free all cache entries
@@ -115,6 +119,8 @@ void CleanupCacheManager(CacheManager* manager) {
     
     LeaveCriticalSection(&manager->lock);
     DeleteCriticalSection(&manager->lock);
+    
+    DebugOutput(L"YouTubeCacher: CleanupCacheManager - Cleanup complete");
 }
 
 // Free a single cache entry
@@ -480,6 +486,9 @@ BOOL SaveCacheToFile(CacheManager* manager) {
     }
     
     LeaveCriticalSection(&manager->lock);
+    
+    // Explicitly flush to ensure data is written to disk
+    fflush(file);
     fclose(file);
     
     swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - COMPLETE: Wrote %d entries to file", entryCount);
