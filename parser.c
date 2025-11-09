@@ -1106,14 +1106,21 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                 }
                 
                 // Process complete lines with enhanced processing
+                // yt-dlp uses both \n and \r as line terminators
+                // Progress updates use \r to overwrite the same line
                 char* start = lineAccumulator;
-                char* newline;
-                while ((newline = strchr(start, '\n')) != NULL) {
-                    *newline = '\0';
+                char* lineEnd;
+                
+                // Look for either \n or \r as line terminators
+                while ((lineEnd = strpbrk(start, "\n\r")) != NULL) {
+                    char terminator = *lineEnd;
+                    *lineEnd = '\0';
                     
-                    // Remove \r if present
-                    size_t lineLen = newline - start;
-                    if (lineLen > 0 && start[lineLen - 1] == '\r') {
+                    // Calculate line length
+                    size_t lineLen = lineEnd - start;
+                    
+                    // Remove trailing \r or \n if present
+                    if (lineLen > 0 && (start[lineLen - 1] == '\r' || start[lineLen - 1] == '\n')) {
                         start[lineLen - 1] = '\0';
                         lineLen--;
                     }
@@ -1159,7 +1166,12 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                         }
                     }
                     
-                    start = newline + 1;
+                    start = lineEnd + 1;
+                    
+                    // If we hit a \r, skip any following \n (handle \r\n sequences)
+                    if (terminator == '\r' && *start == '\n') {
+                        start++;
+                    }
                 }
                 
                 // Move remaining incomplete data to start of buffer

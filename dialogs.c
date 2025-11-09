@@ -382,15 +382,29 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     // Get DPI for this window
     int dpi = GetDpiForWindowSafe(hDlg);
     
-    // Calculate base metrics per Microsoft Win32 UI standards
-    // All measurements based on Dialog Units (DLU): 1 DLU ≈ 1.5px at 96 DPI
-    int margin = ScaleForDpi(11, dpi);           // 7 DLU horizontal/vertical margin
-    int iconSize = ScaleForDpi(32, dpi);         // Standard system icon size
-    int buttonHeight = ScaleForDpi(23, dpi);     // 14 DLU standard button height
-    int buttonWidth = ScaleForDpi(75, dpi);      // 50 DLU standard button width
-    int buttonGap = ScaleForDpi(6, dpi);         // 4 DLU button spacing
-    int controlSpacing = ScaleForDpi(6, dpi);    // 4 DLU control spacing
-    int groupSpacing = ScaleForDpi(11, dpi);     // 7 DLU group spacing (was 10, now correct)
+    // ============================================================================
+    // Microsoft Windows UI Guidelines (Windows XP Era) - Dialog Unit System
+    // ============================================================================
+    // Dialog Units (DLU) to Pixels conversion at 96 DPI:
+    // - 1 horizontal DLU = 1/4 average character width ≈ 1.5 pixels
+    // - 1 vertical DLU = 1/8 average character height ≈ 1.5 pixels
+    // 
+    // Standard Spacing (from Microsoft UI Guidelines):
+    // - Dialog margins: 7 DLU = 10-11 pixels
+    // - Control spacing (related): 4 DLU = 6 pixels  
+    // - Group spacing (unrelated): 7 DLU = 10-11 pixels
+    // - Button height: 14 DLU = 21 pixels
+    // - Button width (minimum): 50 DLU = 75 pixels
+    // ============================================================================
+    
+    // Using actual pixel values that match DLU guidelines at 96 DPI
+    int margin = ScaleForDpi(7, dpi);            // 7 DLU dialog margin
+    int iconSize = ScaleForDpi(32, dpi);         // Standard system icon (32×32)
+    int buttonHeight = ScaleForDpi(14, dpi);     // 14 DLU button height
+    int buttonWidth = ScaleForDpi(50, dpi);      // 50 DLU minimum button width
+    int buttonGap = ScaleForDpi(4, dpi);         // 4 DLU between buttons
+    int controlSpacing = ScaleForDpi(4, dpi);    // 4 DLU between related controls
+    int groupSpacing = ScaleForDpi(7, dpi);      // 7 DLU between control groups
     
     // Get current message text for sizing
     wchar_t messageText[1024];
@@ -401,10 +415,6 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
     HFONT hOldFont = NULL;
     if (hFont) hOldFont = (HFONT)SelectObject(hdc, hFont);
-    
-    TEXTMETRICW tm;
-    GetTextMetricsW(hdc, &tm);
-    int lineHeight = tm.tmHeight;
     
     // Calculate dialog dimensions
     int minWidth = ScaleForDpi(320, dpi);
@@ -422,34 +432,73 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     RECT finalTextRect = {0, 0, finalTextWidth, 0};
     textHeight = DrawTextW(hdc, messageText, -1, &finalTextRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
     
-    // Position elements using proper calculations
-    int iconX = margin;
-    int iconY = margin + ScaleForDpi(1, dpi);  // Slight adjustment for better alignment
-    int iconCenterY = iconY + iconSize / 2;
-    int textStartY = iconCenterY - lineHeight / 2;
+    // ============================================================================
+    // Position elements per Microsoft UI Guidelines
+    // ============================================================================
+    // Layout: [margin][icon][controlSpacing][message text][margin]
+    //         [margin][content area...                    ][margin]
+    //         [margin][groupSpacing]
+    //         [margin][buttons...                         ][margin]
+    // ============================================================================
     
-    int messageX = iconX + iconSize + iconGap;
-    int messageY = textStartY;
+    int iconX = margin;
+    int iconY = margin;  // Icon at exact margin, no arbitrary adjustment
+    
+    // For icon-text alignment, Microsoft guidelines say:
+    // "Align the first line of text with the top of the icon"
+    // NOT center-aligned, but TOP-aligned
+    int messageX = iconX + iconSize + controlSpacing;
+    int messageY = iconY;  // Top-align text with icon
     int messageWidth = finalTextWidth;
     int messageHeight = textHeight;
     
-    // Microsoft UI Guidelines: 7 DLU (11px @ 96 DPI) between control groups
-    // Content group: icon + message
-    // Button group: buttons
-    // Tab group: tab control (when expanded)
-    int contentBottom = max(iconY + iconSize, messageY + messageHeight);
-    int buttonY = contentBottom + groupSpacing;  // 7 DLU between content and buttons
+    // ============================================================================
+    // Calculate dialog height per Microsoft UI Guidelines
+    // ============================================================================
+    // Vertical layout:
+    // [margin]              - 7 DLU top margin
+    // [content area]        - icon and/or message (whichever is taller)
+    // [groupSpacing]        - 7 DLU between content and buttons
+    // [buttons]             - 14 DLU button height
+    // [margin]              - 7 DLU bottom margin
+    // 
+    // When expanded, add:
+    // [groupSpacing]        - 7 DLU between buttons and tab
+    // [tab control]         - variable height
+    // [margin]              - 7 DLU bottom margin (replaces previous margin)
+    // ============================================================================
     
-    // Calculate collapsed height: margin + content + groupSpacing + buttons + margin
-    // The bottom margin should match the top margin for visual balance
-    int collapsedHeight = buttonY + buttonHeight + margin;
+    // Content area height = max of icon height or message height
+    int contentHeight = max(iconSize, messageHeight);
     
-    // Calculate expanded height: collapsed + groupSpacing + tab + margin
-    // When expanded, we add: groupSpacing (7 DLU) + tab control + bottom margin
-    int tabHeight = ScaleForDpi(200, dpi);  // Reduced from 290 to eliminate excess space
-    int expandedHeight = buttonY + buttonHeight + groupSpacing + tabHeight + margin;
+    // Button Y position = margin + content + groupSpacing
+    int buttonY = margin + contentHeight + groupSpacing;
     
-    int finalHeight = expanded ? expandedHeight : collapsedHeight;
+    // CLIENT AREA HEIGHT CALCULATION (not including window frame)
+    // Collapsed: margin + content + groupSpacing + buttons + margin
+    int collapsedClientHeight = margin + contentHeight + groupSpacing + buttonHeight + margin;
+    
+    // Expanded: margin + content + groupSpacing + buttons + groupSpacing + tab + margin
+    int tabHeight = ScaleForDpi(200, dpi);
+    int expandedClientHeight = margin + contentHeight + groupSpacing + buttonHeight + groupSpacing + tabHeight + margin;
+    
+    // ============================================================================
+    // Convert CLIENT AREA to WINDOW SIZE
+    // ============================================================================
+    // Microsoft UI Guidelines: Use AdjustWindowRectEx to account for:
+    // - Title bar (SM_CYCAPTION)
+    // - Dialog frame borders (SM_CYDLGFRAME for non-resizable dialogs)
+    // - Menu bar (if present)
+    // ============================================================================
+    
+    RECT clientRect = {0, 0, dialogWidth, expanded ? expandedClientHeight : collapsedClientHeight};
+    DWORD style = GetWindowLongW(hDlg, GWL_STYLE);
+    DWORD exStyle = GetWindowLongW(hDlg, GWL_EXSTYLE);
+    
+    // AdjustWindowRectEx calculates window size from client size
+    AdjustWindowRectEx(&clientRect, style, FALSE, exStyle);
+    
+    int finalHeight = clientRect.bottom - clientRect.top;
     
     // Position dialog on screen
     RECT rect;
