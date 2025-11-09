@@ -71,7 +71,6 @@
 
 - [x] 5. Enhance subprocess handling with thread safety
 
-
   - [x] 5.1 Create thread-safe subprocess context structure
 
     - Define ThreadSafeSubprocessContext with proper synchronization
@@ -96,10 +95,7 @@
 - [x] 6. Integration and testing
 
 
-
-
   - [x] 6.1 Initialize thread safety system at application startup
-
 
     - Add thread safety initialization to main application startup
     - Ensure proper cleanup of thread safety resources at shutdown
@@ -107,7 +103,6 @@
     - _Requirements: 1.1, 2.1, 3.1, 4.1_
 
   - [x] 6.2 Update build system and headers
-
 
     - Add threadsafe.c to Makefile compilation targets
     - Include threadsafe.h in master YouTubeCacher.h header

@@ -458,6 +458,11 @@ void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloa
             GetDlgItemTextW(hDlg, IDC_VIDEO_TITLE, title, 512);
             GetDlgItemTextW(hDlg, IDC_VIDEO_DURATION, duration, 64);
             
+            // Format duration to ensure proper MM:SS or HH:MM:SS format
+            if (wcslen(duration) > 0) {
+                FormatDuration(duration, 64);
+            }
+            
             OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - UI text fields retrieved\n");
             
             OutputDebugStringW(L"YouTubeCacher: HandleDownloadCompletion - Title will be base64 encoded for cache storage\n");
