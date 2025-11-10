@@ -896,9 +896,10 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
                 // Use proper yt-dlp template syntax with single % for template variables
                 // Double %% is only needed in C format strings, not in the actual command
                 // Note: yt-dlp progress dict fields are: downloaded_bytes, total_bytes, speed, eta
+                // REMOVED --print-json because it outputs massive JSON blob that breaks parsing
                 swprintf(operationArgs, 4096, 
                     L"--newline --no-colors --force-overwrites "
-                    L"--write-info-json --print-json "
+                    L"--write-info-json "
                     L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
                     L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);
