@@ -490,6 +490,17 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
     }
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->executablePath, context->arguments);
 
+    // Log the command being executed for debugging
+    wchar_t logMsg[8192];
+    int logLen = swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command: %ls", cmdLine);
+    if (logLen > 0 && logLen < 8192) {
+        ThreadSafeDebugOutput(logMsg);
+    } else {
+        // Command too long, log truncated version
+        swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command (truncated): %.500ls...", cmdLine);
+        ThreadSafeDebugOutput(logMsg);
+    }
+
     // Copy working directory if set
     wchar_t* workDir = NULL;
     if (context->workingDirectory) {
@@ -540,9 +551,15 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
     CloseHandle(hOutputWrite); // Close write handle in parent process
 
     if (!processCreated) {
+        DWORD error = GetLastError();
+        wchar_t errorMsg[256];
+        swprintf(errorMsg, 256, L"StartThreadSafeSubprocess: CreateProcessW failed with error %lu", error);
+        ThreadSafeDebugOutput(errorMsg);
         CloseHandle(hOutputRead);
         return FALSE;
     }
+    
+    ThreadSafeDebugOutputF(L"StartThreadSafeSubprocess: Process created successfully, PID=%lu", pi.dwProcessId);
 
     // Store process information safely
     EnterCriticalSection(&context->processStateLock);

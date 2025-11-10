@@ -1016,6 +1016,11 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->config->ytDlpPath, arguments);
     
+    // Log the exact command being executed
+    wchar_t logMsg[8192];
+    swprintf(logMsg, 8192, L"YouTubeCacher: EnhancedSubprocessWorkerThread - Executing command: %ls", cmdLine);
+    DebugOutput(logMsg);
+    
     // Update state to checking URL
     UpdateDownloadState(progress, DOWNLOAD_STATE_CHECKING_URL, L"Starting yt-dlp process");
     if (context->progressCallback) {
