@@ -109,7 +109,9 @@
     - Ensure proper linking of thread safety functions
     - _Requirements: All requirements_
 
-  - [ ]* 6.3 Create basic functionality tests
+  - [ ] 6.3 Create basic functionality tests
+
+
     - Write test functions for concurrent global state access
     - Test thread creation and cleanup under various scenarios
     - Verify subprocess handling works correctly with multiple threads

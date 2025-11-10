@@ -893,11 +893,13 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             if (url && outputPath) {
                 // Machine-parseable progress format with pipe delimiters and raw numeric values
                 // Format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-                // Fixed progress template syntax for current yt-dlp versions
+                // Use proper yt-dlp template syntax with single % for template variables
+                // Double %% is only needed in C format strings, not in the actual command
+                // Note: yt-dlp progress dict fields are: downloaded_bytes, total_bytes, speed, eta
                 swprintf(operationArgs, 4096, 
                     L"--newline --no-colors --force-overwrites "
                     L"--write-info-json --print-json "
-                    L"--progress-template \"download:%%(_downloaded_bytes)d|%%(_total_bytes)d|%%(_speed)d|%%(_eta)d\" "
+                    L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
                     L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);
             } else {

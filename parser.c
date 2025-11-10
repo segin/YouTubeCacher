@@ -1073,6 +1073,13 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     static char lineAccumulator[8192] = {0};
     static size_t fillCounter = 0;
     
+    // Timeout tracking
+    DWORD startTime = GetTickCount();
+    DWORD timeoutMs = context->config->timeoutSeconds * 1000;
+    DWORD lastOutputTime = startTime;
+    DWORD noOutputWarningTime = 0;
+    const DWORD NO_OUTPUT_WARNING_THRESHOLD = 30000; // Warn after 30 seconds of no output
+    
     while (processRunning || fillCounter > 0) {
         loopCount++;
         
@@ -1083,10 +1090,30 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
             break;
         }
         
+        // Check for timeout
+        DWORD currentTime = GetTickCount();
+        DWORD elapsedTime = currentTime - startTime;
+        if (elapsedTime > timeoutMs) {
+            wchar_t timeoutMsg[256];
+            swprintf(timeoutMsg, 256, L"YouTubeCacher: EnhancedSubprocessWorkerThread - Timeout after %lu seconds", timeoutMs / 1000);
+            DebugOutput(timeoutMsg);
+            TerminateProcess(pi.hProcess, 1);
+            UpdateDownloadState(progress, DOWNLOAD_STATE_FAILED, L"Download timed out");
+            break;
+        }
+        
         // Check if process is still running
         DWORD waitResult = WaitForSingleObject(pi.hProcess, 100); // 100ms timeout
         if (waitResult == WAIT_OBJECT_0) {
             processRunning = FALSE;
+        }
+        
+        // Warn if no output for extended period (but process still running)
+        DWORD timeSinceLastOutput = currentTime - lastOutputTime;
+        if (processRunning && timeSinceLastOutput > NO_OUTPUT_WARNING_THRESHOLD && noOutputWarningTime == 0) {
+            DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - No output for 30+ seconds, but process still running");
+            noOutputWarningTime = currentTime;
+            UpdateDownloadState(progress, DOWNLOAD_STATE_DOWNLOADING, L"Download in progress (no progress info available)");
         }
         
         // Read available output
@@ -1131,6 +1158,10 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                         int converted = MultiByteToWideChar(CP_UTF8, 0, start, (int)lineLen, wideLineBuffer, 2047);
                         if (converted > 0) {
                             wideLineBuffer[converted] = L'\0';
+                            
+                            // Update last output time since we received data
+                            lastOutputTime = GetTickCount();
+                            noOutputWarningTime = 0; // Reset warning flag
                             
                             // Process the line with enhanced processing
                             EnterCriticalSection(&enhancedContext->progressLock);

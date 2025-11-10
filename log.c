@@ -6,8 +6,19 @@ void WriteToLogfile(const wchar_t* message) {
     GetDebugState(&enableDebug, &enableLogfile);
     if (!enableLogfile) return;
     
-    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
-    if (logFile) {
+    // Open log file for append using Windows API
+    HANDLE hLogFile = CreateFileW(L"YouTubeCacher-log.txt",
+                                  GENERIC_WRITE,
+                                  FILE_SHARE_READ,
+                                  NULL,
+                                  OPEN_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  NULL);
+    
+    if (hLogFile != INVALID_HANDLE_VALUE) {
+        // Move to end of file
+        SetFilePointer(hLogFile, 0, NULL, FILE_END);
+        
         // Get current timestamp
         SYSTEMTIME st;
         GetLocalTime(&st);
@@ -21,15 +32,32 @@ void WriteToLogfile(const wchar_t* message) {
                 cleanMessage[--len] = L'\0';
             }
             
-            fwprintf(logFile, L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] %ls\r\n",
+            // Format log entry with Windows line endings
+            wchar_t logEntry[4096];
+            swprintf(logEntry, 4096, L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] %ls\r\n",
                     st.wYear, st.wMonth, st.wDay,
                     st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
                     cleanMessage);
             
+            // Convert to UTF-8 for file writing
+            int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
+            if (utf8Size > 0) {
+                char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
+                if (utf8Buffer) {
+                    WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
+                    
+                    DWORD bytesWritten;
+                    WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
+                    FlushFileBuffers(hLogFile);
+                    
+                    SAFE_FREE(utf8Buffer);
+                }
+            }
+            
             SAFE_FREE(cleanMessage);
         }
         
-        fclose(logFile);
+        CloseHandle(hLogFile);
     }
 }
 
@@ -39,18 +67,48 @@ void WriteSessionStartToLogfile(void) {
     GetDebugState(&enableDebug, &enableLogfile);
     if (!enableLogfile) return;
     
-    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
-    if (logFile) {
+    // Open log file for append using Windows API
+    HANDLE hLogFile = CreateFileW(L"YouTubeCacher-log.txt",
+                                  GENERIC_WRITE,
+                                  FILE_SHARE_READ,
+                                  NULL,
+                                  OPEN_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  NULL);
+    
+    if (hLogFile != INVALID_HANDLE_VALUE) {
+        // Move to end of file
+        SetFilePointer(hLogFile, 0, NULL, FILE_END);
+        
         // Get current timestamp
         SYSTEMTIME st;
         GetLocalTime(&st);
         
-        fwprintf(logFile, L"=== YouTubeCacher Session Started: %04d-%02d-%02d %02d:%02d:%02d ===\r\n",
+        // Format log entry with Windows line endings
+        wchar_t logEntry[1024];
+        swprintf(logEntry, 1024, 
+                L"=== YouTubeCacher Session Started: %04d-%02d-%02d %02d:%02d:%02d ===\r\n"
+                L"=== Version: %ls ===\r\n",
                 st.wYear, st.wMonth, st.wDay,
-                st.wHour, st.wMinute, st.wSecond);
-        fwprintf(logFile, L"=== Version: %ls ===\r\n", APP_VERSION);
+                st.wHour, st.wMinute, st.wSecond,
+                APP_VERSION);
         
-        fclose(logFile);
+        // Convert to UTF-8 for file writing
+        int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
+        if (utf8Size > 0) {
+            char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
+            if (utf8Buffer) {
+                WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
+                
+                DWORD bytesWritten;
+                WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
+                FlushFileBuffers(hLogFile);
+                
+                SAFE_FREE(utf8Buffer);
+            }
+        }
+        
+        CloseHandle(hLogFile);
     }
 }
 
@@ -60,20 +118,55 @@ void WriteSessionEndToLogfile(const wchar_t* reason) {
     GetDebugState(&enableDebug, &enableLogfile);
     if (!enableLogfile) return;
     
-    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
-    if (logFile) {
+    // Open log file for append using Windows API
+    HANDLE hLogFile = CreateFileW(L"YouTubeCacher-log.txt",
+                                  GENERIC_WRITE,
+                                  FILE_SHARE_READ,
+                                  NULL,
+                                  OPEN_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  NULL);
+    
+    if (hLogFile != INVALID_HANDLE_VALUE) {
+        // Move to end of file
+        SetFilePointer(hLogFile, 0, NULL, FILE_END);
+        
         // Get current timestamp
         SYSTEMTIME st;
         GetLocalTime(&st);
         
-        fwprintf(logFile, L"=== YouTubeCacher Session Ended: %04d-%02d-%02d %02d:%02d:%02d ===\r\n",
-                st.wYear, st.wMonth, st.wDay,
-                st.wHour, st.wMinute, st.wSecond);
+        // Format log entry with Windows line endings
+        wchar_t logEntry[1024];
         if (reason) {
-            fwprintf(logFile, L"=== Reason: %ls ===\r\n", reason);
+            swprintf(logEntry, 1024,
+                    L"=== YouTubeCacher Session Ended: %04d-%02d-%02d %02d:%02d:%02d ===\r\n"
+                    L"=== Reason: %ls ===\r\n",
+                    st.wYear, st.wMonth, st.wDay,
+                    st.wHour, st.wMinute, st.wSecond,
+                    reason);
+        } else {
+            swprintf(logEntry, 1024,
+                    L"=== YouTubeCacher Session Ended: %04d-%02d-%02d %02d:%02d:%02d ===\r\n",
+                    st.wYear, st.wMonth, st.wDay,
+                    st.wHour, st.wMinute, st.wSecond);
         }
         
-        fclose(logFile);
+        // Convert to UTF-8 for file writing
+        int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
+        if (utf8Size > 0) {
+            char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
+            if (utf8Buffer) {
+                WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
+                
+                DWORD bytesWritten;
+                WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
+                FlushFileBuffers(hLogFile);
+                
+                SAFE_FREE(utf8Buffer);
+            }
+        }
+        
+        CloseHandle(hLogFile);
     }
 }
 
@@ -99,24 +192,54 @@ void WriteStructuredErrorToLogfile(const wchar_t* severity, int errorCode,
     GetDebugState(&enableDebug, &enableLogfile);
     if (!enableLogfile) return;
     
-    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
-    if (logFile) {
+    // Open log file for append using Windows API
+    HANDLE hLogFile = CreateFileW(L"YouTubeCacher-log.txt",
+                                  GENERIC_WRITE,
+                                  FILE_SHARE_READ,
+                                  NULL,
+                                  OPEN_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  NULL);
+    
+    if (hLogFile != INVALID_HANDLE_VALUE) {
+        // Move to end of file
+        SetFilePointer(hLogFile, 0, NULL, FILE_END);
+        
         // Get current timestamp
         SYSTEMTIME st;
         GetLocalTime(&st);
         
-        // Write structured error entry with Windows line endings
-        fwprintf(logFile, L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] [%ls] [%d] %ls\r\n",
+        // Format log entry with Windows line endings
+        wchar_t logEntry[4096];
+        swprintf(logEntry, 4096,
+                L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] [%ls] [%d] %ls\r\n"
+                L"  Function: %ls\r\n"
+                L"  File: %ls:%d\r\n"
+                L"  Thread: %lu\r\n"
+                L"\r\n",
                 st.wYear, st.wMonth, st.wDay,
                 st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
-                severity, errorCode, message);
+                severity, errorCode, message,
+                function ? function : L"Unknown",
+                file ? file : L"Unknown", line,
+                GetCurrentThreadId());
         
-        fwprintf(logFile, L"  Function: %ls\r\n", function ? function : L"Unknown");
-        fwprintf(logFile, L"  File: %ls:%d\r\n", file ? file : L"Unknown", line);
-        fwprintf(logFile, L"  Thread: %lu\r\n", GetCurrentThreadId());
-        fwprintf(logFile, L"\r\n");
+        // Convert to UTF-8 for file writing
+        int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
+        if (utf8Size > 0) {
+            char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
+            if (utf8Buffer) {
+                WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
+                
+                DWORD bytesWritten;
+                WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
+                FlushFileBuffers(hLogFile);
+                
+                SAFE_FREE(utf8Buffer);
+            }
+        }
         
-        fclose(logFile);
+        CloseHandle(hLogFile);
     }
 }
 
@@ -128,39 +251,54 @@ void WriteErrorContextToLogfile(const ErrorContext* context) {
     GetDebugState(&enableDebug, &enableLogfile);
     if (!enableLogfile) return;
     
-    FILE* logFile = _wfopen(L"YouTubeCacher-log.txt", L"a");
-    if (logFile) {
-        // Write error context header with Windows line endings
-        fwprintf(logFile, L"=== ERROR CONTEXT ===\r\n");
+    // Open log file for append using Windows API
+    HANDLE hLogFile = CreateFileW(L"YouTubeCacher-log.txt",
+                                  GENERIC_WRITE,
+                                  FILE_SHARE_READ,
+                                  NULL,
+                                  OPEN_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  NULL);
+    
+    if (hLogFile != INVALID_HANDLE_VALUE) {
+        // Move to end of file
+        SetFilePointer(hLogFile, 0, NULL, FILE_END);
+        
+        // Build the complete log entry with Windows line endings
+        wchar_t logEntry[16384];
+        int offset = 0;
+        
+        offset += swprintf(logEntry + offset, 16384 - offset, L"=== ERROR CONTEXT ===\r\n");
         
         // Basic error information
-        fwprintf(logFile, L"Error Code: %d\r\n", context->errorCode);
-        fwprintf(logFile, L"Severity: %d\r\n", context->severity);
-        fwprintf(logFile, L"Function: %ls\r\n", context->functionName);
-        fwprintf(logFile, L"File: %ls:%d\r\n", context->fileName, context->lineNumber);
-        fwprintf(logFile, L"Thread ID: %lu\r\n", context->threadId);
-        fwprintf(logFile, L"System Error: %lu\r\n", context->systemErrorCode);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"Error Code: %d\r\n", context->errorCode);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"Severity: %d\r\n", context->severity);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"Function: %ls\r\n", context->functionName);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"File: %ls:%d\r\n", context->fileName, context->lineNumber);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"Thread ID: %lu\r\n", context->threadId);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"System Error: %lu\r\n", context->systemErrorCode);
         
         // Timestamp
-        fwprintf(logFile, L"Timestamp: %04d-%02d-%02d %02d:%02d:%02d.%03d UTC\r\n",
+        offset += swprintf(logEntry + offset, 16384 - offset,
+                L"Timestamp: %04d-%02d-%02d %02d:%02d:%02d.%03d UTC\r\n",
                 context->timestamp.wYear, context->timestamp.wMonth, context->timestamp.wDay,
                 context->timestamp.wHour, context->timestamp.wMinute, 
                 context->timestamp.wSecond, context->timestamp.wMilliseconds);
         
         // Messages
-        fwprintf(logFile, L"Technical Message: %ls\r\n", context->technicalMessage);
-        fwprintf(logFile, L"User Message: %ls\r\n", context->userMessage);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"Technical Message: %ls\r\n", context->technicalMessage);
+        offset += swprintf(logEntry + offset, 16384 - offset, L"User Message: %ls\r\n", context->userMessage);
         
         // Additional context
         if (wcslen(context->additionalContext) > 0) {
-            fwprintf(logFile, L"Additional Context:\r\n%ls\r\n", context->additionalContext);
+            offset += swprintf(logEntry + offset, 16384 - offset, L"Additional Context:\r\n%ls\r\n", context->additionalContext);
         }
         
         // Context variables
         if (context->contextVariableCount > 0) {
-            fwprintf(logFile, L"Context Variables:\r\n");
-            for (int i = 0; i < context->contextVariableCount; i++) {
-                fwprintf(logFile, L"  %ls: %ls\r\n", 
+            offset += swprintf(logEntry + offset, 16384 - offset, L"Context Variables:\r\n");
+            for (int i = 0; i < context->contextVariableCount && offset < 16000; i++) {
+                offset += swprintf(logEntry + offset, 16384 - offset, L"  %ls: %ls\r\n", 
                         context->contextVariables[i].name,
                         context->contextVariables[i].value);
             }
@@ -168,12 +306,27 @@ void WriteErrorContextToLogfile(const ErrorContext* context) {
         
         // Call stack
         if (wcslen(context->callStack) > 0) {
-            fwprintf(logFile, L"Call Stack:\r\n%ls\r\n", context->callStack);
+            offset += swprintf(logEntry + offset, 16384 - offset, L"Call Stack:\r\n%ls\r\n", context->callStack);
         }
         
-        fwprintf(logFile, L"=== END ERROR CONTEXT ===\r\n\r\n");
+        offset += swprintf(logEntry + offset, 16384 - offset, L"=== END ERROR CONTEXT ===\r\n\r\n");
         
-        fclose(logFile);
+        // Convert to UTF-8 for file writing
+        int utf8Size = WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, NULL, 0, NULL, NULL);
+        if (utf8Size > 0) {
+            char* utf8Buffer = (char*)SAFE_MALLOC(utf8Size);
+            if (utf8Buffer) {
+                WideCharToMultiByte(CP_UTF8, 0, logEntry, -1, utf8Buffer, utf8Size, NULL, NULL);
+                
+                DWORD bytesWritten;
+                WriteFile(hLogFile, utf8Buffer, utf8Size - 1, &bytesWritten, NULL);
+                FlushFileBuffers(hLogFile);
+                
+                SAFE_FREE(utf8Buffer);
+            }
+        }
+        
+        CloseHandle(hLogFile);
     }
 }
 
