@@ -277,6 +277,13 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         return;
     }
     
+    // Defensive: Check if context memory looks valid
+    // If initialized flag is corrupted (not 0 or 1), bail out
+    if (context->initialized != TRUE && context->initialized != FALSE) {
+        OutputDebugStringW(L"CleanupThreadSafeSubprocessContext: Context appears corrupted, skipping cleanup\r\n");
+        return;
+    }
+    
     // Check if already cleaned up to prevent double-cleanup
     if (!context->initialized) {
         return;
@@ -345,6 +352,7 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
 
     // Delete critical sections
     // Note: initialized was already set to FALSE at the start of this function
+    // The initialized check at the start of this function should prevent double-deletion
     DeleteCriticalSection(&context->processStateLock);
     DeleteCriticalSection(&context->outputLock);
     DeleteCriticalSection(&context->configLock);
