@@ -1928,7 +1928,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             WNDPROC originalProc = GetOriginalTextFieldProc();
             if (originalProc) {
                 HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
-                SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)originalProc);
+                if (hTextField) {
+                    SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)originalProc);
+                }
+                // Clear the stored procedure to prevent double-restoration
+                SetOriginalTextFieldProc(NULL);
             }
             
             // Just destroy the window - cleanup will happen in WM_DESTROY
@@ -2215,9 +2219,20 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             return TRUE;
         }
             
-        case WM_DESTROY:
+        case WM_DESTROY: {
             // Write session end marker for clean shutdown
             WriteSessionEndToLogfile(L"Clean program shutdown");
+            
+            // Restore original text field window procedure FIRST to avoid issues with third-party hooks
+            // (This is a safety check in case WM_CLOSE wasn't called)
+            WNDPROC origProc = GetOriginalTextFieldProc();
+            if (origProc) {
+                HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
+                if (hTextField) {
+                    SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)origProc);
+                }
+                SetOriginalTextFieldProc(NULL);
+            }
             
             // Clean up ListView item data
             CleanupListViewItemData(GetDlgItem(hDlg, IDC_LIST));
@@ -2228,8 +2243,24 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 CleanupApplicationState(state);
             }
             
+            // Explicitly destroy all child windows to prevent third-party hook interference
+            // This ensures all window procedures are properly unwound before final cleanup
+            HWND hChild = GetWindow(hDlg, GW_CHILD);
+            while (hChild) {
+                HWND hNext = GetWindow(hChild, GW_HWNDNEXT);
+                DestroyWindow(hChild);
+                hChild = hNext;
+            }
+            
+            // Process any remaining messages to ensure clean shutdown
+            MSG msg;
+            while (PeekMessageW(&msg, hDlg, 0, 0, PM_REMOVE)) {
+                // Discard messages for this window
+            }
+            
             PostQuitMessage(0);
             return TRUE;
+        }
     }
     return FALSE;
 }
