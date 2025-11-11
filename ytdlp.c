@@ -2289,7 +2289,7 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
     
     // Create enhanced context with progress callback
     EnhancedSubprocessContext* enhancedContext = CreateEnhancedSubprocessContext(
-        config, request, NULL, NULL, parentWindow);
+        config, request, MainWindowProgressCallback, (void*)parentWindow, parentWindow);
     
     if (!enhancedContext) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Failed to create enhanced context");

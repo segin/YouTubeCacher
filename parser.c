@@ -241,6 +241,7 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
         
         long long downloadedBytes = 0;
         long long totalBytes = 0;
+        double speedBytesPerSec = 0;
         
         while (token && tokenIndex < 4) {
             switch (tokenIndex) {
@@ -256,12 +257,13 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
                     }
                     break;
                 }
-                case 2: { // Speed (we'll parse this for status message)
-                    // Speed parsing can be added here if needed
+                case 2: { // Speed in bytes/sec
+                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0 && wcscmp(token, L"NA") != 0) {
+                        speedBytesPerSec = wcstod(token, NULL);
+                    }
                     break;
                 }
-                case 3: { // ETA (we'll parse this for status message)
-                    // ETA parsing can be added here if needed
+                case 3: { // ETA (not used currently)
                     break;
                 }
             }
@@ -276,29 +278,92 @@ BOOL ParseProgressLine(const wchar_t* line, EnhancedProgressInfo* progress) {
             progress->progressPercentage = (int)((downloadedBytes * 100) / totalBytes);
             if (progress->progressPercentage > 100) progress->progressPercentage = 100;
             
-            // Update status message
+            // Format status message: "X MiB / Y GiB (Z%) @ A MiB/s"
             if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
             wchar_t statusMsg[256];
-            swprintf(statusMsg, 256, L"Downloading (%d%%)", progress->progressPercentage);
-            progress->statusMessage = SAFE_WCSDUP(statusMsg);
+            wchar_t downloadedStr[64], totalStr[64], speedStr[64];
             
+            // Format downloaded bytes
+            if (downloadedBytes >= 1024LL * 1024 * 1024) {
+                swprintf(downloadedStr, 64, L"%.2f GiB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024 * 1024) {
+                swprintf(downloadedStr, 64, L"%.1f MiB", downloadedBytes / (1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024) {
+                swprintf(downloadedStr, 64, L"%.1f KiB", downloadedBytes / 1024.0);
+            } else {
+                swprintf(downloadedStr, 64, L"%lld B", downloadedBytes);
+            }
+            
+            // Format total bytes
+            if (totalBytes >= 1024LL * 1024 * 1024) {
+                swprintf(totalStr, 64, L"%.2f GiB", totalBytes / (1024.0 * 1024.0 * 1024.0));
+            } else if (totalBytes >= 1024 * 1024) {
+                swprintf(totalStr, 64, L"%.1f MiB", totalBytes / (1024.0 * 1024.0));
+            } else if (totalBytes >= 1024) {
+                swprintf(totalStr, 64, L"%.1f KiB", totalBytes / 1024.0);
+            } else {
+                swprintf(totalStr, 64, L"%lld B", totalBytes);
+            }
+            
+            if (speedBytesPerSec > 0) {
+                // Format speed
+                long long speedBytes = (long long)speedBytesPerSec;
+                if (speedBytes >= 1024LL * 1024 * 1024) {
+                    swprintf(speedStr, 64, L"%.2f GiB", speedBytes / (1024.0 * 1024.0 * 1024.0));
+                } else if (speedBytes >= 1024 * 1024) {
+                    swprintf(speedStr, 64, L"%.1f MiB", speedBytes / (1024.0 * 1024.0));
+                } else if (speedBytes >= 1024) {
+                    swprintf(speedStr, 64, L"%.1f KiB", speedBytes / 1024.0);
+                } else {
+                    swprintf(speedStr, 64, L"%lld B", speedBytes);
+                }
+                swprintf(statusMsg, 256, L"%ls / %ls (%d%%) @ %ls/s", 
+                        downloadedStr, totalStr, progress->progressPercentage, speedStr);
+            } else {
+                swprintf(statusMsg, 256, L"%ls / %ls (%d%%)", 
+                        downloadedStr, totalStr, progress->progressPercentage);
+            }
+            
+            progress->statusMessage = SAFE_WCSDUP(statusMsg);
             return TRUE;
         } else if (downloadedBytes > 0) {
             // No total size available - use indeterminate progress (-1)
             progress->progressPercentage = -1;
             
-            // Update status message with downloaded amount
+            // Update status message with downloaded amount and speed
             if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
             wchar_t statusMsg[256];
-            if (downloadedBytes >= 1024 * 1024) {
-                swprintf(statusMsg, 256, L"Downloaded %.1f MB", downloadedBytes / (1024.0 * 1024.0));
-            } else if (downloadedBytes >= 1024) {
-                swprintf(statusMsg, 256, L"Downloaded %.1f KB", downloadedBytes / 1024.0);
-            } else {
-                swprintf(statusMsg, 256, L"Downloaded %lld bytes", downloadedBytes);
-            }
-            progress->statusMessage = SAFE_WCSDUP(statusMsg);
+            wchar_t downloadedStr[64], speedStr[64];
             
+            // Format downloaded bytes
+            if (downloadedBytes >= 1024LL * 1024 * 1024) {
+                swprintf(downloadedStr, 64, L"%.2f GiB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024 * 1024) {
+                swprintf(downloadedStr, 64, L"%.1f MiB", downloadedBytes / (1024.0 * 1024.0));
+            } else if (downloadedBytes >= 1024) {
+                swprintf(downloadedStr, 64, L"%.1f KiB", downloadedBytes / 1024.0);
+            } else {
+                swprintf(downloadedStr, 64, L"%lld B", downloadedBytes);
+            }
+            
+            if (speedBytesPerSec > 0) {
+                // Format speed
+                long long speedBytes = (long long)speedBytesPerSec;
+                if (speedBytes >= 1024LL * 1024 * 1024) {
+                    swprintf(speedStr, 64, L"%.2f GiB", speedBytes / (1024.0 * 1024.0 * 1024.0));
+                } else if (speedBytes >= 1024 * 1024) {
+                    swprintf(speedStr, 64, L"%.1f MiB", speedBytes / (1024.0 * 1024.0));
+                } else if (speedBytes >= 1024) {
+                    swprintf(speedStr, 64, L"%.1f KiB", speedBytes / 1024.0);
+                } else {
+                    swprintf(speedStr, 64, L"%lld B", speedBytes);
+                }
+                swprintf(statusMsg, 256, L"%ls @ %ls/s", downloadedStr, speedStr);
+            } else {
+                swprintf(statusMsg, 256, L"%ls", downloadedStr);
+            }
+            
+            progress->statusMessage = SAFE_WCSDUP(statusMsg);
             return TRUE;
         }
     }
@@ -1084,7 +1149,8 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     
     // Timeout tracking
     DWORD startTime = GetTickCount();
-    DWORD timeoutMs = context->config->timeoutSeconds * 1000;
+    // Use a very long timeout (24 hours) - downloads should be allowed to run as long as needed
+    DWORD timeoutMs = 24 * 60 * 60 * 1000; // 24 hours
     DWORD lastOutputTime = startTime;
     DWORD noOutputWarningTime = 0;
     const DWORD NO_OUTPUT_WARNING_THRESHOLD = 30000; // Warn after 30 seconds of no output
@@ -1291,10 +1357,19 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         LeaveCriticalSection(&enhancedContext->progressLock);
     }
     
-    // Cleanup
-    CloseHandle(context->hOutputRead);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
+    // Cleanup handles safely
+    if (context->hOutputRead && context->hOutputRead != INVALID_HANDLE_VALUE) {
+        CloseHandle(context->hOutputRead);
+        context->hOutputRead = NULL;
+    }
+    if (pi.hProcess && pi.hProcess != INVALID_HANDLE_VALUE) {
+        CloseHandle(pi.hProcess);
+        pi.hProcess = NULL;
+    }
+    if (pi.hThread && pi.hThread != INVALID_HANDLE_VALUE) {
+        CloseHandle(pi.hThread);
+        pi.hThread = NULL;
+    }
     
     // Mark as completed
     context->completed = TRUE;
