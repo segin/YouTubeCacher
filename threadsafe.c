@@ -620,15 +620,20 @@ BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
 
     // Set cancellation flag
     context->cancellationRequested = TRUE;
-    SetEvent(context->cancellationEvent);
-
-    // Try graceful termination first
-    EnterCriticalSection(&context->processStateLock);
-    if (context->processRunning && context->hProcess) {
-        // Send CTRL+C signal to the process group
-        GenerateConsoleCtrlEvent(CTRL_C_EVENT, context->processId);
+    
+    // Safely set cancellation event
+    if (context->cancellationEvent && context->cancellationEvent != INVALID_HANDLE_VALUE) {
+        SetEvent(context->cancellationEvent);
     }
-    LeaveCriticalSection(&context->processStateLock);
+
+    // Try graceful termination first - use TryEnterCriticalSection to avoid deadlock
+    if (TryEnterCriticalSection(&context->processStateLock)) {
+        if (context->processRunning && context->hProcess) {
+            // Send CTRL+C signal to the process group
+            GenerateConsoleCtrlEvent(CTRL_C_EVENT, context->processId);
+        }
+        LeaveCriticalSection(&context->processStateLock);
+    }
 
     return TRUE;
 }
