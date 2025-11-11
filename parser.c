@@ -104,7 +104,12 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
             return ParseInfoExtractionLine(line, progress);
             
         case LINE_TYPE_FORMAT_SELECTION:
-            UpdateDownloadState(progress, DOWNLOAD_STATE_PREPARING_DOWNLOAD, L"Selecting video format");
+            // Show more detailed status for format selection
+            if (wcsstr(line, L"format(s):")) {
+                UpdateDownloadState(progress, DOWNLOAD_STATE_PREPARING_DOWNLOAD, L"Format selected, preparing download");
+            } else {
+                UpdateDownloadState(progress, DOWNLOAD_STATE_PREPARING_DOWNLOAD, L"Selecting video format");
+            }
             AddPreDownloadMessage(progress, line);
             return TRUE;
             
@@ -514,7 +519,29 @@ BOOL ParseFileDestinationLine(const wchar_t* line, EnhancedProgressInfo* progres
 BOOL ParseInfoExtractionLine(const wchar_t* line, EnhancedProgressInfo* progress) {
     if (!line || !progress) return FALSE;
     
-    UpdateDownloadState(progress, DOWNLOAD_STATE_EXTRACTING_INFO, L"Extracting video information");
+    // Extract more detailed status messages from yt-dlp output
+    const wchar_t* statusMsg = L"Extracting video information";
+    
+    if (wcsstr(line, L"Extracting URL")) {
+        statusMsg = L"Extracting URL";
+    }
+    else if (wcsstr(line, L"Downloading webpage")) {
+        statusMsg = L"Downloading webpage";
+    }
+    else if (wcsstr(line, L"Downloading android") || wcsstr(line, L"Downloading ios")) {
+        statusMsg = L"Downloading player API";
+    }
+    else if (wcsstr(line, L"Downloading tv client") || wcsstr(line, L"Downloading web")) {
+        statusMsg = L"Downloading client config";
+    }
+    else if (wcsstr(line, L"Downloading m3u8")) {
+        statusMsg = L"Downloading stream manifest";
+    }
+    else if (wcsstr(line, L"Downloading player")) {
+        statusMsg = L"Downloading player data";
+    }
+    
+    UpdateDownloadState(progress, DOWNLOAD_STATE_EXTRACTING_INFO, statusMsg);
     
     // Check if this is a JSON metadata line (starts with '{' and contains video metadata)
     if (line[0] == L'{' && wcsstr(line, L"\"title\"")) {
