@@ -320,23 +320,12 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     context->outputBufferSize = 0;
     context->outputLength = 0;
 
-    // Close handles - no lock needed during cleanup
-    if (context->hProcess && context->hProcess != INVALID_HANDLE_VALUE) {
-        CloseHandle(context->hProcess);
-        context->hProcess = NULL;
-    }
-    if (context->hThread && context->hThread != INVALID_HANDLE_VALUE) {
-        CloseHandle(context->hThread);
-        context->hThread = NULL;
-    }
-    if (context->hOutputRead && context->hOutputRead != INVALID_HANDLE_VALUE) {
-        CloseHandle(context->hOutputRead);
-        context->hOutputRead = NULL;
-    }
-    if (context->hOutputWrite && context->hOutputWrite != INVALID_HANDLE_VALUE) {
-        CloseHandle(context->hOutputWrite);
-        context->hOutputWrite = NULL;
-    }
+    // Note: Handles are closed by the worker thread, so we just NULL them out here
+    // Attempting to close them again causes STATUS_INVALID_HANDLE exceptions
+    context->hProcess = NULL;
+    context->hThread = NULL;
+    context->hOutputRead = NULL;
+    context->hOutputWrite = NULL;
 
     // Close cancellation event
     if (context->cancellationEvent) {
