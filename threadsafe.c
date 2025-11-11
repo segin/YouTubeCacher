@@ -252,6 +252,7 @@ BOOL InitializeThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context)
 
     if (!context->outputBuffer) {
         CloseHandle(context->cancellationEvent);
+        context->cancellationEvent = NULL;
         DeleteCriticalSection(&context->processStateLock);
         DeleteCriticalSection(&context->outputLock);
         DeleteCriticalSection(&context->configLock);
