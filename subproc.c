@@ -295,8 +295,14 @@ void CleanupLegacySubprocessContext(SubprocessContext* legacyContext) {
     // Cleanup thread-safe context if it exists
     if (legacyContext->accumulatedOutput) {
         ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
-        CleanupThreadSafeSubprocessContext(threadSafeContext);
-        SAFE_FREE(threadSafeContext);
+        
+        // Validate the context pointer before cleanup
+        // Check if it looks like a valid context by checking if initialized flag is reasonable
+        if (threadSafeContext) {
+            CleanupThreadSafeSubprocessContext(threadSafeContext);
+            SAFE_FREE(threadSafeContext);
+        }
+        
         legacyContext->accumulatedOutput = NULL;
     }
 

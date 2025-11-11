@@ -297,8 +297,8 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         ForceKillThreadSafeSubprocess(context);
     }
 
-    // Clean up configuration strings
-    EnterCriticalSection(&context->configLock);
+    // Clean up configuration strings - skip if critical sections are corrupted
+    // Just free the memory directly without using locks since we're cleaning up anyway
     if (context->executablePath) {
         SAFE_FREE(context->executablePath);
         context->executablePath = NULL;
@@ -311,37 +311,32 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         SAFE_FREE(context->workingDirectory);
         context->workingDirectory = NULL;
     }
-    LeaveCriticalSection(&context->configLock);
 
-    // Clean up output buffer
-    EnterCriticalSection(&context->outputLock);
+    // Clean up output buffer - no lock needed during cleanup
     if (context->outputBuffer) {
         SAFE_FREE(context->outputBuffer);
         context->outputBuffer = NULL;
     }
     context->outputBufferSize = 0;
     context->outputLength = 0;
-    LeaveCriticalSection(&context->outputLock);
 
-    // Close handles
-    EnterCriticalSection(&context->processStateLock);
-    if (context->hProcess) {
+    // Close handles - no lock needed during cleanup
+    if (context->hProcess && context->hProcess != INVALID_HANDLE_VALUE) {
         CloseHandle(context->hProcess);
         context->hProcess = NULL;
     }
-    if (context->hThread) {
+    if (context->hThread && context->hThread != INVALID_HANDLE_VALUE) {
         CloseHandle(context->hThread);
         context->hThread = NULL;
     }
-    if (context->hOutputRead) {
+    if (context->hOutputRead && context->hOutputRead != INVALID_HANDLE_VALUE) {
         CloseHandle(context->hOutputRead);
         context->hOutputRead = NULL;
     }
-    if (context->hOutputWrite) {
+    if (context->hOutputWrite && context->hOutputWrite != INVALID_HANDLE_VALUE) {
         CloseHandle(context->hOutputWrite);
         context->hOutputWrite = NULL;
     }
-    LeaveCriticalSection(&context->processStateLock);
 
     // Close cancellation event
     if (context->cancellationEvent) {
