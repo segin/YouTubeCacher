@@ -329,8 +329,17 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     context->hOutputWrite = NULL;
 
     // Close cancellation event
-    if (context->cancellationEvent) {
-        CloseHandle(context->cancellationEvent);
+    if (context->cancellationEvent && context->cancellationEvent != INVALID_HANDLE_VALUE) {
+        // Defensive: Check if handle is still valid before closing
+        // Use DuplicateHandle to test validity without side effects
+        HANDLE hTest = NULL;
+        if (DuplicateHandle(GetCurrentProcess(), context->cancellationEvent, 
+                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            // Handle is valid, close both the test and original
+            CloseHandle(hTest);
+            CloseHandle(context->cancellationEvent);
+        }
+        // Always NULL it out regardless
         context->cancellationEvent = NULL;
     }
 
