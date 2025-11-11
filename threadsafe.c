@@ -276,14 +276,18 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         return;
     }
 
-    // Cancel any running process
-    CancelThreadSafeSubprocess(context);
+    // Only cancel if the process is still running
+    // If it's already completed, no need to cancel
+    if (!context->processCompleted) {
+        // Cancel any running process
+        CancelThreadSafeSubprocess(context);
 
-    // Wait for process to complete with timeout
-    WaitForThreadSafeSubprocessCompletion(context, 5000);
+        // Wait for process to complete with timeout
+        WaitForThreadSafeSubprocessCompletion(context, 5000);
 
-    // Force terminate if still running
-    ForceKillThreadSafeSubprocess(context);
+        // Force terminate if still running
+        ForceKillThreadSafeSubprocess(context);
+    }
 
     // Clean up configuration strings
     EnterCriticalSection(&context->configLock);
