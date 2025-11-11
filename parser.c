@@ -730,6 +730,10 @@ void UpdateDownloadState(EnhancedProgressInfo* progress, DownloadState newState,
         swprintf(debugMsg, 256, L"YouTubeCacher: Download state changed to: %d (%ls)", 
                 newState, description ? description : L"no description");
         DebugOutput(debugMsg);
+        
+        // Update the status message to reflect the new state
+        if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
+        progress->statusMessage = description ? SAFE_WCSDUP(description) : NULL;
     }
 }
 
