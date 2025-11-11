@@ -272,9 +272,17 @@ BOOL InitializeThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context)
  * Releases all resources and critical sections
  */
 void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
-    if (!context || !context->initialized) {
+    if (!context) {
         return;
     }
+    
+    // Check if already cleaned up to prevent double-cleanup
+    if (!context->initialized) {
+        return;
+    }
+    
+    // Mark as not initialized immediately to prevent re-entry
+    context->initialized = FALSE;
 
     // Only cancel if the process is still running
     // If it's already completed, no need to cancel
@@ -341,11 +349,8 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         context->cancellationEvent = NULL;
     }
 
-    // Mark as not initialized BEFORE deleting critical sections
-    // This prevents other threads from trying to use them
-    context->initialized = FALSE;
-    
     // Delete critical sections
+    // Note: initialized was already set to FALSE at the start of this function
     DeleteCriticalSection(&context->processStateLock);
     DeleteCriticalSection(&context->outputLock);
     DeleteCriticalSection(&context->configLock);
