@@ -2258,7 +2258,16 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 // Discard messages for this window
             }
             
+            // Hide the window to reduce third-party hook activity
+            ShowWindow(hDlg, SW_HIDE);
+            
             PostQuitMessage(0);
+            
+            // WORKAROUND: Third-party hooks (NetSight) crash during final window destruction
+            // After all cleanup is complete, exit immediately to avoid hook interference
+            // This is safe because all application state has been cleaned up above
+            ExitProcess(0);
+            
             return TRUE;
         }
     }
