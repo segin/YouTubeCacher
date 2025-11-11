@@ -519,8 +519,14 @@ void ClearActiveDownload(void) {
     
     EnterCriticalSection(&state->stateLock);
     
-    if (state->hDownloadProcess) {
-        CloseHandle(state->hDownloadProcess);
+    if (state->hDownloadProcess && state->hDownloadProcess != INVALID_HANDLE_VALUE) {
+        // Defensive: Validate handle before closing
+        HANDLE hTest = NULL;
+        if (DuplicateHandle(GetCurrentProcess(), state->hDownloadProcess, 
+                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            CloseHandle(hTest);
+            CloseHandle(state->hDownloadProcess);
+        }
         state->hDownloadProcess = NULL;
     }
     
