@@ -2223,14 +2223,33 @@ void FreeSubprocessContext(SubprocessContext* context) {
     // It's cleaned up by CleanupLegacySubprocessContext above
     
     // Close handles (these should already be cleaned up by thread-safe backend)
-    if (context->hProcess) {
-        CloseHandle(context->hProcess);
+    // Use defensive validation to prevent STATUS_INVALID_HANDLE crashes
+    if (context->hProcess && context->hProcess != INVALID_HANDLE_VALUE) {
+        HANDLE hTest = NULL;
+        if (DuplicateHandle(GetCurrentProcess(), context->hProcess, 
+                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            CloseHandle(hTest);
+            CloseHandle(context->hProcess);
+        }
+        context->hProcess = NULL;
     }
-    if (context->hOutputRead) {
-        CloseHandle(context->hOutputRead);
+    if (context->hOutputRead && context->hOutputRead != INVALID_HANDLE_VALUE) {
+        HANDLE hTest = NULL;
+        if (DuplicateHandle(GetCurrentProcess(), context->hOutputRead, 
+                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            CloseHandle(hTest);
+            CloseHandle(context->hOutputRead);
+        }
+        context->hOutputRead = NULL;
     }
-    if (context->hOutputWrite) {
-        CloseHandle(context->hOutputWrite);
+    if (context->hOutputWrite && context->hOutputWrite != INVALID_HANDLE_VALUE) {
+        HANDLE hTest = NULL;
+        if (DuplicateHandle(GetCurrentProcess(), context->hOutputWrite, 
+                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            CloseHandle(hTest);
+            CloseHandle(context->hOutputWrite);
+        }
+        context->hOutputWrite = NULL;
     }
     
     SAFE_FREE(context);
