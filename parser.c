@@ -1366,10 +1366,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         CloseHandle(pi.hProcess);
         pi.hProcess = NULL;
     }
-    if (pi.hThread && pi.hThread != INVALID_HANDLE_VALUE) {
-        CloseHandle(pi.hThread);
-        pi.hThread = NULL;
-    }
+    // Note: pi.hThread was already closed earlier after process creation
     
     // Mark as completed
     context->completed = TRUE;
