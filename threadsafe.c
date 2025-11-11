@@ -337,12 +337,14 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         context->cancellationEvent = NULL;
     }
 
+    // Mark as not initialized BEFORE deleting critical sections
+    // This prevents other threads from trying to use them
+    context->initialized = FALSE;
+    
     // Delete critical sections
     DeleteCriticalSection(&context->processStateLock);
     DeleteCriticalSection(&context->outputLock);
     DeleteCriticalSection(&context->configLock);
-
-    context->initialized = FALSE;
 }
 
 /**
@@ -618,7 +620,7 @@ BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
         return FALSE;
     }
 
-    // Set cancellation flag
+    // Set cancellation flag (atomic operation, no lock needed)
     context->cancellationRequested = TRUE;
     
     // Safely set cancellation event
@@ -626,13 +628,12 @@ BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
         SetEvent(context->cancellationEvent);
     }
 
-    // Try graceful termination first - use TryEnterCriticalSection to avoid deadlock
-    if (TryEnterCriticalSection(&context->processStateLock)) {
-        if (context->processRunning && context->hProcess) {
-            // Send CTRL+C signal to the process group
-            GenerateConsoleCtrlEvent(CTRL_C_EVENT, context->processId);
-        }
-        LeaveCriticalSection(&context->processStateLock);
+    // Try graceful termination - but don't crash if we can't get the lock
+    // The process will be force-killed later in cleanup anyway
+    if (context->processRunning && context->hProcess) {
+        // Try to send CTRL+C without using the lock
+        // This might race but it's better than crashing
+        GenerateConsoleCtrlEvent(CTRL_C_EVENT, context->processId);
     }
 
     return TRUE;
