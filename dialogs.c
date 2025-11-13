@@ -383,28 +383,27 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     int dpi = GetDpiForWindowSafe(hDlg);
     
     // ============================================================================
-    // Microsoft Windows UI Guidelines (Windows XP Era) - Dialog Unit System
+    // Microsoft Windows UI Guidelines - Modern Dialog Standards
     // ============================================================================
-    // Dialog Units (DLU) to Pixels conversion at 96 DPI:
-    // - 1 horizontal DLU = 1/4 average character width ≈ 1.5 pixels
-    // - 1 vertical DLU = 1/8 average character height ≈ 1.5 pixels
-    // 
-    // Standard Spacing (from Microsoft UI Guidelines):
-    // - Dialog margins: 7 DLU = 10-11 pixels
-    // - Control spacing (related): 4 DLU = 6 pixels  
-    // - Group spacing (unrelated): 7 DLU = 10-11 pixels
-    // - Button height: 14 DLU = 21 pixels
-    // - Button width (minimum): 50 DLU = 75 pixels
+    // Based on Windows 10/11 dialog standards:
+    // - Edge margins: 11px (7 DLU converted to pixels)
+    // - Button size: 75px wide × 23px high (standard push button)
+    // - Button spacing: 6px between adjacent buttons
+    // - Control spacing: 10px between icon and text
+    // - Icon to text gap: 10px
+    // - Bottom margin: 11px from button bottom to dialog edge
+    //
+    // These are PIXEL values at 96 DPI, scaled appropriately for HiDPI.
     // ============================================================================
     
-    // Using actual pixel values that match DLU guidelines at 96 DPI
-    int margin = ScaleForDpi(7, dpi);            // 7 DLU dialog margin
+    // Using modern Windows dialog standards with proper sizing
+    int margin = ScaleForDpi(11, dpi);           // 11px edge margins (7 DLU standard)
     int iconSize = ScaleForDpi(32, dpi);         // Standard system icon (32×32)
-    int buttonHeight = ScaleForDpi(14, dpi);     // 14 DLU button height
-    int buttonWidth = ScaleForDpi(50, dpi);      // 50 DLU minimum button width
-    int buttonGap = ScaleForDpi(4, dpi);         // 4 DLU between buttons
-    int controlSpacing = ScaleForDpi(4, dpi);    // 4 DLU between related controls
-    int groupSpacing = ScaleForDpi(7, dpi);      // 7 DLU between control groups
+    int buttonHeight = ScaleForDpi(23, dpi);     // 23px button height (14 DLU standard)
+    int buttonWidth = ScaleForDpi(75, dpi);      // 75px button width (50 DLU standard)
+    int buttonGap = ScaleForDpi(6, dpi);         // 6px between buttons
+    int controlSpacing = ScaleForDpi(10, dpi);   // 10px between icon and text
+    int groupSpacing = ScaleForDpi(10, dpi);     // 10px between content and buttons
     
     // Get current message text for sizing
     wchar_t messageText[1024];
@@ -442,15 +441,24 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     // ============================================================================
     
     int iconX = margin;
-    int iconY = margin;  // Icon at exact margin, no arbitrary adjustment
+    int iconY = margin;
     
-    // For icon-text alignment, Microsoft guidelines say:
-    // "Align the first line of text with the top of the icon"
-    // NOT center-aligned, but TOP-aligned
+    // Icon-text vertical alignment:
+    // - If text is shorter than icon: vertically center text with icon
+    // - If text is taller than icon: vertically center icon with text
     int messageX = iconX + iconSize + controlSpacing;
-    int messageY = iconY;  // Top-align text with icon
+    int messageY;
     int messageWidth = finalTextWidth;
     int messageHeight = textHeight;
+    
+    if (textHeight <= iconSize) {
+        // Text is shorter: center text vertically with icon
+        messageY = iconY + (iconSize - textHeight) / 2;
+    } else {
+        // Text is taller: keep text at margin, adjust icon to center with text
+        messageY = iconY;
+        iconY = iconY + (textHeight - iconSize) / 2;
+    }
     
     // ============================================================================
     // Calculate dialog height per Microsoft UI Guidelines

@@ -1,44 +1,109 @@
 0.0.1
 
+Memory Management:
 - Add comprehensive memory management system with leak detection
 - Add memory pools for frequent allocations
 - Add RAII resource management patterns (AutoResource, AutoString, AutoArray)
 - Add error-safe allocation patterns with AllocationSet and BulkCleanup
 - Add memory error handling with double-free and use-after-free detection
 - Add buffer overrun detection with guard patterns in debug builds
+- Add thread-safe allocation tracking with critical sections
+- Add memory leak detection with hash table optimization
 - Migrate all existing allocations to safe memory wrappers
-- Unify dialog system with consistent 2-tab layout
-- Add HiDPI and font-aware About dialog
-- Add dynamic layout system that adjusts to system DPI and font settings
-- Fix dialog line endings for proper Windows text control display
-- Add debug test buttons for dialog system testing (debug mode only)
-- Replace all legacy dialog functions with unified dialog system
-- Improve error message extraction for user-friendly display
-- Add intelligent metadata caching between Get Info and Download buttons
-- Fix video metadata extraction during download with JSON parsing
-- Add --write-info-json and --print-json flags to yt-dlp commands
-- Prevent double downloads and simplify metadata handling
-- Add proper video title and duration storage in cache
-- Add enhanced error reporting with detailed error codes and diagnostics
-- Fix startup and exit crashes related to memory management
+- Implement robust memory management with validated allocation tracking
+- Fix critical SafeFree bug with allocation integrity validation
+- Replace complex hash table with reliable linear search for allocation tracking
+- Fix double-free detection to respect leak detection state
 - Fix Base64DecodeWide memory corruption issues
 - Fix cached metadata allocation problems
 - Fix SAFE_REALLOC buffer overrun detection
 - Fix memory manager circular dependency in CreateMemoryPool
+- Fix allocation removal logic to prevent hash table corruption
+
+User Interface:
+- Unify dialog system with consistent 2-tab layout
+- Add HiDPI and font-aware About dialog
+- Add dynamic layout system that adjusts to system DPI and font settings
+- Fix dialog line endings for proper Windows text control display
 - Fix debug dialog line endings for Windows text controls
-- Remove duplicate cleanup calls causing exit crashes
+- Fix unified dialog layout per Microsoft UI standards
+- Add debug test buttons for dialog system testing (debug mode only)
+- Replace all legacy dialog functions with unified dialog system
+- Remove popup progress dialogs and use main window progress controls only
+- Fix UI freezing during downloads with asynchronous metadata retrieval
+- Fix unified dialog button sizes to proper Windows standards (75px × 23px)
+- Fix unified dialog edge padding to proper 11px margins (7 DLU standard)
+- Fix icon-text vertical alignment to center text with icon (or icon with text if text is taller)
+
+Download System:
+- Add intelligent metadata caching between Get Info and Download buttons
+- Fix video metadata extraction during download
+- Prevent double downloads and simplify metadata handling
+- Add proper video title and duration storage in cache
+- Format duration before storing in cache
+- Add download cancellation with automatic cleanup
+- Enable real-time progress updates during downloads
+- Fix download hang by processing carriage return line terminators
+- Fix yt-dlp progress tracking with proper template field names
+- Remove --print-json flag that was blocking progress updates
+- Fix download progress display and timeout issues
+- Add detailed status messages during download (webpage, player API, format selection)
+- Improve progress reporting with granular yt-dlp operation status updates
+- Preserve duration processing functionality
+
+Error Handling:
+- Add enhanced error reporting with detailed error codes and diagnostics
+- Implement error handling system with UnifiedDialog integration
+- Add error context system with detailed error tracking
+- Add error handling macros for memory allocation, parameter validation, and system calls
+- Update yt-dlp subprocess error handling with standardized error macros
+- Update UI error handling integration with new ErrorContext system
+- Update file operation error handling in cache.c with detailed context
 - Add comprehensive error logging and validation messages
+- Improve error message extraction for user-friendly display
 - Improve yt-dlp error message extraction for cleaner user display
-- Add thread-safe allocation tracking with critical sections
+
+Thread Safety and Concurrency:
+- Add thread-safe logging system with ThreadSafeDebugOutput functions
+- Implement thread-safe global state wrappers and access functions
+- Add ThreadContext structure with lifecycle tracking
+- Enhance ThreadContext with timeout, start time, and thread name fields
+- Implement CreateManagedThread with proper initialization and naming
+- Add WaitForThreadCompletion with timeout support
+- Implement ForceTerminateThread for unresponsive threads
+
+Performance:
+- Implement high-performance cache loading with optimized file processing
+- Fix slow startup and shutdown performance issues
+- Remove excessive newlines from log file
+
+Cache Management:
+- Fix cache_index.txt not being saved on program exit
+- Add comprehensive file deletion logging
+
+Crash Fixes:
+- Fix startup and exit crashes related to memory management
+- Remove duplicate cleanup calls causing exit crashes
+- Fix double-close crash on process thread handle
+- Fix crash in CancelThreadSafeSubprocess critical section
+- Remove critical section usage during cleanup to prevent corruption
+- Prevent double-cleanup of ThreadSafeSubprocessContext
+- Skip cancellation in cleanup if process already completed
+- Fix shutdown crash caused by improper window cleanup order
+- Fix multiple handle double-close crashes during download completion
+- Add defensive handle validation using DuplicateHandle before closing handles
+- Fix cancellationEvent double-close on initialization failure
+- Fix critical section deletion crashes from corrupted contexts
+- Add memory corruption detection in CleanupThreadSafeSubprocessContext
+- Fix invalid handle crashes in ClearActiveDownload
+- Add ExitProcess workaround for third-party hook interference during shutdown
+- Explicitly destroy child windows before final cleanup to prevent hook crashes
+
+Logging and Debugging:
+- Add detailed command line logging for yt-dlp execution
+- Fix truncated logging by using dynamic buffer allocation
 - Add proper Windows resource handling and cleanup
-- Add memory leak detection with hash table optimization
+
+Build System:
 - Update build system with debug/release flags and dbghelp library linking
-- Rewrite README for honest 0.0.1 release documentation
-- Remove overpromised features and focus on actual functionality
-- Move unimplemented features to planned section
-- Convert from AI-generated marketing copy to professional technical documentation
-- Remove "Windows only" from limitations (it's by design, not a limitation)
-- Clean up specification documents and remove completed tasks
-- Update steering documents for MSYS environment
-- Add proper version control discipline with commit/push workflow
 - Add strict compilation with -Wall -Wextra -Werror flags
