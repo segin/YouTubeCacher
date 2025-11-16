@@ -167,6 +167,7 @@ This implementation plan breaks down the dialog system enhancements into discret
 
 
 
+
   - Create validation system for component validation
   - Add visual feedback for validation errors
   - Integrate validation with dialog submission
@@ -185,7 +186,7 @@ This implementation plan breaks down the dialog system enhancements into discret
 
 
 
-- [ ] 4.2 Add visual validation feedback
+- [x] 4.2 Add visual validation feedback
   - Implement red border drawing for invalid controls
   - Implement error message display near invalid controls
   - Use `WM_PAINT` handler for custom border drawing
@@ -194,20 +195,27 @@ This implementation plan breaks down the dialog system enhancements into discret
 
 
 
-- [ ] 4.3 Integrate validation with dialogs
+- [x] 4.3 Integrate validation with dialogs
   - Update dialog OK/Apply button handlers to call validation
   - Prevent dialog close if validation fails
   - Set focus to first invalid control on validation failure
   - Show validation error summary if multiple errors
   - _Requirements: 8.5, 8.6_
 
-- [ ] 5. Update existing dialogs with enhancements
+- [x] 5. Update existing dialogs with enhancements
+
+
+
+
+
   - Apply accessibility features to all existing dialogs
   - Add keyboard navigation to all existing dialogs
   - Update Settings dialog to use reusable components
   - _Requirements: All requirements_
 
-- [ ] 5.1 Update unified dialog with accessibility
+- [x] 5.1 Update unified dialog with accessibility
+
+
   - Apply all accessibility features to `UnifiedDialogProc`
   - Set accessible names for all controls
   - Add screen reader notifications for state changes
@@ -215,19 +223,28 @@ This implementation plan breaks down the dialog system enhancements into discret
   - Test with Windows Narrator and NVDA
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 5.2 Update unified dialog with keyboard navigation
+- [x] 5.2 Update unified dialog with keyboard navigation
+
+
   - Configure proper tab order for all controls
   - Add accelerator keys to all buttons
   - Ensure focus indicators are visible
   - Test keyboard-only navigation
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.1, 3.2, 3.3, 3.4, 3.5, 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 5.3 Update Settings dialog with reusable components
+
+- [x] 5.3 Update Settings dialog with reusable components
+
+
+
+
   - Replace yt-dlp path controls with `FileBrowserComponent`
   - Replace download folder controls with `FolderBrowserComponent`
   - Add validation to all input fields
   - Test component functionality in Settings dialog
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
+
+
 
 - [ ] 5.4 Update About dialog with enhancements
   - Add accessible names to all controls

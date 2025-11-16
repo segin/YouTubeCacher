@@ -380,10 +380,75 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                 SetControlAccessibility(hTabCtrl, L"Details tabs", L"Additional information organized in tabs");
             }
             
+            // Set accessible names for tab content controls
+            HWND hTab1Text = GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT);
+            HWND hTab2Text = GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT);
+            HWND hTab3Text = GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT);
+            
+            if (hTab1Text) {
+                const wchar_t* tab1Name = config->tab1_name ? config->tab1_name : L"Details";
+                SetControlAccessibility(hTab1Text, tab1Name, L"Detailed information content");
+            }
+            if (hTab2Text && config->tab2_content) {
+                const wchar_t* tab2Name = config->tab2_name ? config->tab2_name : L"Information";
+                SetControlAccessibility(hTab2Text, tab2Name, L"Additional information content");
+            }
+            if (hTab3Text && config->tab3_content) {
+                const wchar_t* tab3Name = config->tab3_name ? config->tab3_name : L"Additional";
+                SetControlAccessibility(hTab3Text, tab3Name, L"Additional content");
+            }
+            
             // Notify screen readers that dialog is ready
             if (IsScreenReaderActive()) {
                 NotifyAccessibilityStateChange(hDlg, EVENT_OBJECT_SHOW);
+                // Announce the dialog message to screen readers
+                if (config->message) {
+                    NotifyAccessibilityStateChange(hMessageCtrl, EVENT_OBJECT_NAMECHANGE);
+                }
             }
+            
+            // Configure tab order for keyboard navigation
+            // Tab order: Details button -> Copy button -> OK button -> Tab control (if visible)
+            TabOrderConfig tabConfig;
+            TabOrderEntry entries[4];
+            int entryCount = 0;
+            
+            // Details button (if visible)
+            if (config->showDetailsButton && (config->details || config->tab2_content || config->tab3_content)) {
+                entries[entryCount].controlId = IDC_UNIFIED_DETAILS_BTN;
+                entries[entryCount].tabOrder = entryCount;
+                entries[entryCount].isTabStop = TRUE;
+                entryCount++;
+            }
+            
+            // Copy button (if visible)
+            if (config->showCopyButton) {
+                entries[entryCount].controlId = IDC_UNIFIED_COPY_BTN;
+                entries[entryCount].tabOrder = entryCount;
+                entries[entryCount].isTabStop = TRUE;
+                entryCount++;
+            }
+            
+            // OK button (always visible)
+            entries[entryCount].controlId = IDC_UNIFIED_OK_BTN;
+            entries[entryCount].tabOrder = entryCount;
+            entries[entryCount].isTabStop = TRUE;
+            entryCount++;
+            
+            // Tab control (if visible and has content)
+            if (config->details || config->tab2_content || config->tab3_content) {
+                entries[entryCount].controlId = IDC_UNIFIED_TAB_CONTROL;
+                entries[entryCount].tabOrder = entryCount;
+                entries[entryCount].isTabStop = TRUE;
+                entryCount++;
+            }
+            
+            tabConfig.entries = entries;
+            tabConfig.count = entryCount;
+            SetDialogTabOrder(hDlg, &tabConfig);
+            
+            // Validate accelerator keys to ensure no conflicts
+            ValidateAcceleratorKeys(hDlg);
             
             // Start in collapsed state
             ResizeUnifiedDialog(hDlg, FALSE);
@@ -402,6 +467,34 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                     ResizeUnifiedDialog(hDlg, isExpanded);
                     if (isExpanded) {
                         ShowUnifiedDialogTab(hDlg, TabCtrl_GetCurSel(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL)));
+                    }
+                    
+                    // Notify screen readers of state change
+                    if (IsScreenReaderActive()) {
+                        HWND hDetailsBtn = GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN);
+                        HWND hTabCtrl = GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL);
+                        
+                        // Announce button state change
+                        NotifyAccessibilityStateChange(hDetailsBtn, EVENT_OBJECT_STATECHANGE);
+                        
+                        // Announce tab control visibility change
+                        if (hTabCtrl) {
+                            NotifyAccessibilityStateChange(hTabCtrl, isExpanded ? EVENT_OBJECT_SHOW : EVENT_OBJECT_HIDE);
+                        }
+                        
+                        // If expanded, announce the current tab content
+                        if (isExpanded) {
+                            int currentTab = TabCtrl_GetCurSel(hTabCtrl);
+                            HWND hTabText = NULL;
+                            switch (currentTab) {
+                                case 0: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT); break;
+                                case 1: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT); break;
+                                case 2: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT); break;
+                            }
+                            if (hTabText) {
+                                NotifyAccessibilityStateChange(hTabText, EVENT_OBJECT_FOCUS);
+                            }
+                        }
                     }
                     return TRUE;
                     
@@ -422,6 +515,23 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
             if (pnmh->code == TCN_SELCHANGE && pnmh->idFrom == IDC_UNIFIED_TAB_CONTROL) {
                 int selectedTab = TabCtrl_GetCurSel(pnmh->hwndFrom);
                 ShowUnifiedDialogTab(hDlg, selectedTab);
+                
+                // Notify screen readers of tab change
+                if (IsScreenReaderActive()) {
+                    // Announce tab control selection change
+                    NotifyAccessibilityStateChange(pnmh->hwndFrom, EVENT_OBJECT_SELECTION);
+                    
+                    // Announce the newly visible tab content
+                    HWND hTabText = NULL;
+                    switch (selectedTab) {
+                        case 0: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT); break;
+                        case 1: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT); break;
+                        case 2: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT); break;
+                    }
+                    if (hTabText) {
+                        NotifyAccessibilityStateChange(hTabText, EVENT_OBJECT_SHOW);
+                    }
+                }
                 return TRUE;
             }
             break;
@@ -1216,6 +1326,114 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
             
+            // Set accessible names for all controls
+            HWND hIconCtrl = GetDlgItem(hDlg, iconId);
+            HWND hMessageCtrl = GetDlgItem(hDlg, messageId);
+            HWND hDetailsBtnCtrl = GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN);
+            HWND hCopyBtnCtrl = GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN);
+            HWND hOkBtnCtrl = GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN);
+            HWND hTabCtrlCtrl = errorDialog->hTabControl;
+            
+            // Set accessible name for icon based on dialog type
+            const wchar_t* iconDescription = NULL;
+            switch (errorDialog->dialogType) {
+                case DIALOG_TYPE_ERROR:
+                    iconDescription = L"Error icon";
+                    break;
+                case DIALOG_TYPE_WARNING:
+                    iconDescription = L"Warning icon";
+                    break;
+                case DIALOG_TYPE_SUCCESS:
+                    iconDescription = L"Success icon";
+                    break;
+                default:
+                    iconDescription = L"Information icon";
+                    break;
+            }
+            SetControlAccessibility(hIconCtrl, iconDescription, NULL);
+            
+            // Set accessible name for message text
+            SetControlAccessibility(hMessageCtrl, L"Message", NULL);
+            
+            // Set accessible names for buttons
+            SetControlAccessibility(hDetailsBtnCtrl, L"Details", L"Show or hide additional details");
+            SetControlAccessibility(hCopyBtnCtrl, L"Copy", L"Copy message to clipboard");
+            SetControlAccessibility(hOkBtnCtrl, L"OK", L"Close dialog");
+            
+            // Set accessible name for tab control
+            if (hTabCtrlCtrl) {
+                SetControlAccessibility(hTabCtrlCtrl, L"Details tabs", L"Additional information organized in tabs");
+            }
+            
+            // Set accessible names for tab content controls
+            HWND hTab1TextCtrl = GetDlgItem(hDlg, detailsTextId);
+            HWND hTab2TextCtrl = GetDlgItem(hDlg, diagTextId);
+            HWND hTab3TextCtrl = GetDlgItem(hDlg, solutionTextId);
+            
+            if (hTab1TextCtrl) {
+                const wchar_t* tab1Name = errorDialog->dialogType == DIALOG_TYPE_SUCCESS ? L"Details" : L"Error Details";
+                SetControlAccessibility(hTab1TextCtrl, tab1Name, L"Detailed information content");
+            }
+            if (hTab2TextCtrl) {
+                const wchar_t* tab2Name = errorDialog->dialogType == DIALOG_TYPE_SUCCESS ? L"Information" : L"Diagnostics";
+                SetControlAccessibility(hTab2TextCtrl, tab2Name, L"Diagnostic information content");
+            }
+            if (hTab3TextCtrl) {
+                const wchar_t* tab3Name = errorDialog->dialogType == DIALOG_TYPE_SUCCESS ? L"Summary" : L"Solutions";
+                SetControlAccessibility(hTab3TextCtrl, tab3Name, L"Solutions and recommendations");
+            }
+            
+            // Notify screen readers that dialog is ready
+            if (IsScreenReaderActive()) {
+                NotifyAccessibilityStateChange(hDlg, EVENT_OBJECT_SHOW);
+                // Announce the dialog message to screen readers
+                if (errorDialog->message) {
+                    NotifyAccessibilityStateChange(hMessageCtrl, EVENT_OBJECT_NAMECHANGE);
+                }
+            }
+            
+            // Configure tab order for keyboard navigation
+            // Tab order: Details button -> Copy button -> OK button -> Tab control (if visible)
+            TabOrderConfig tabConfig;
+            TabOrderEntry entries[4];
+            int entryCount = 0;
+            
+            // Details button (if visible)
+            BOOL hasDetails = errorDialog->details || errorDialog->diagnostics || errorDialog->solutions;
+            if (hasDetails) {
+                entries[entryCount].controlId = IDC_UNIFIED_DETAILS_BTN;
+                entries[entryCount].tabOrder = entryCount;
+                entries[entryCount].isTabStop = TRUE;
+                entryCount++;
+            }
+            
+            // Copy button (always visible)
+            entries[entryCount].controlId = IDC_UNIFIED_COPY_BTN;
+            entries[entryCount].tabOrder = entryCount;
+            entries[entryCount].isTabStop = TRUE;
+            entryCount++;
+            
+            // OK button (always visible)
+            entries[entryCount].controlId = IDC_UNIFIED_OK_BTN;
+            entries[entryCount].tabOrder = entryCount;
+            entries[entryCount].isTabStop = TRUE;
+            entryCount++;
+            
+            // Tab control (if visible and has content)
+            if (hasDetails) {
+                entries[entryCount].controlId = IDC_UNIFIED_TAB_CONTROL;
+                entries[entryCount].tabOrder = entryCount;
+                entries[entryCount].isTabStop = TRUE;
+                entryCount++;
+            }
+            
+            tabConfig.entries = entries;
+            tabConfig.count = entryCount;
+            SetDialogTabOrder(hDlg, &tabConfig);
+            
+            // Validate accelerator keys to ensure no conflicts
+            ValidateAcceleratorKeys(hDlg);
+            
             // Hide Details button and related controls for success dialogs if no additional content
             if (errorDialog->dialogType == DIALOG_TYPE_SUCCESS && !errorDialog->details && !errorDialog->diagnostics && !errorDialog->solutions) {
                 ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), SW_HIDE);
@@ -1228,7 +1446,11 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             // Start in collapsed state (this will trigger ResizeErrorDialog)
             ResizeErrorDialog(hDlg, FALSE);
             
-            return TRUE;
+            // Set initial focus
+            SetInitialDialogFocus(hDlg);
+            
+            // Return FALSE to allow our custom focus setting
+            return FALSE;
         }
         
         case WM_COMMAND:
@@ -1239,6 +1461,34 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                         ResizeErrorDialog(hDlg, errorDialog->isExpanded);
                         if (errorDialog->isExpanded) {
                             ShowErrorDialogTab(hDlg, TabCtrl_GetCurSel(errorDialog->hTabControl));
+                        }
+                        
+                        // Notify screen readers of state change
+                        if (IsScreenReaderActive()) {
+                            HWND hDetailsBtn = GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN);
+                            
+                            // Announce button state change
+                            NotifyAccessibilityStateChange(hDetailsBtn, EVENT_OBJECT_STATECHANGE);
+                            
+                            // Announce tab control visibility change
+                            if (errorDialog->hTabControl) {
+                                NotifyAccessibilityStateChange(errorDialog->hTabControl, 
+                                    errorDialog->isExpanded ? EVENT_OBJECT_SHOW : EVENT_OBJECT_HIDE);
+                            }
+                            
+                            // If expanded, announce the current tab content
+                            if (errorDialog->isExpanded) {
+                                int currentTab = TabCtrl_GetCurSel(errorDialog->hTabControl);
+                                HWND hTabText = NULL;
+                                switch (currentTab) {
+                                    case 0: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT); break;
+                                    case 1: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT); break;
+                                    case 2: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT); break;
+                                }
+                                if (hTabText) {
+                                    NotifyAccessibilityStateChange(hTabText, EVENT_OBJECT_FOCUS);
+                                }
+                            }
                         }
                     }
                     return TRUE;
@@ -1270,6 +1520,23 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             if (pnmh->idFrom == IDC_UNIFIED_TAB_CONTROL && pnmh->code == TCN_SELCHANGE) {
                 int selectedTab = TabCtrl_GetCurSel(errorDialog->hTabControl);
                 ShowErrorDialogTab(hDlg, selectedTab);
+                
+                // Notify screen readers of tab change
+                if (IsScreenReaderActive()) {
+                    // Announce tab control selection change
+                    NotifyAccessibilityStateChange(errorDialog->hTabControl, EVENT_OBJECT_SELECTION);
+                    
+                    // Announce the newly visible tab content
+                    HWND hTabText = NULL;
+                    switch (selectedTab) {
+                        case 0: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT); break;
+                        case 1: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT); break;
+                        case 2: hTabText = GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT); break;
+                    }
+                    if (hTabText) {
+                        NotifyAccessibilityStateChange(hTabText, EVENT_OBJECT_SHOW);
+                    }
+                }
                 return TRUE;
             }
             break;
@@ -1983,7 +2250,45 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             if (hSmallFont) SetPropW(hDlg, L"SmallFont", hSmallFont);
             
             ReleaseDC(hDlg, hdc);
-            return TRUE;
+            
+            // === ACCESSIBILITY ENHANCEMENTS ===
+            // Set accessible names for all controls
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_ICON), L"Application icon", NULL);
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_TITLE), L"Application title", NULL);
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_VERSION), L"Version number", NULL);
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_DESCRIPTION), L"Application description", NULL);
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_GITHUB_LINK), L"GitHub repository link", L"Opens the GitHub repository in your web browser");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_COPYRIGHT), L"Copyright information", NULL);
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_WARRANTY), L"Warranty disclaimer", NULL);
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_LICENSE_LINK), L"License information link", L"Opens the MIT License in your web browser");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ABOUT_CLOSE), L"Close", L"Close the About dialog");
+            
+            // === KEYBOARD NAVIGATION ENHANCEMENTS ===
+            // Configure tab order for focusable controls
+            TabOrderConfig tabConfig;
+            TabOrderEntry entries[3];
+            
+            // Only the links and close button should be in tab order
+            entries[0].controlId = IDC_ABOUT_GITHUB_LINK;
+            entries[0].tabOrder = 0;
+            entries[0].isTabStop = TRUE;
+            
+            entries[1].controlId = IDC_ABOUT_LICENSE_LINK;
+            entries[1].tabOrder = 1;
+            entries[1].isTabStop = TRUE;
+            
+            entries[2].controlId = IDC_ABOUT_CLOSE;
+            entries[2].tabOrder = 2;
+            entries[2].isTabStop = TRUE;
+            
+            tabConfig.entries = entries;
+            tabConfig.count = 3;
+            SetDialogTabOrder(hDlg, &tabConfig);
+            
+            // Set initial focus to Close button
+            SetInitialDialogFocus(hDlg);
+            
+            return FALSE; // Allow custom focus setting
         }
         
         case WM_COMMAND:

@@ -755,16 +755,187 @@ void ResizeControls(HWND hDlg) {
 }
 
 // Settings dialog procedure
+// Settings dialog component storage
+typedef struct {
+    FileBrowserComponent* ytdlpBrowser;
+    FolderBrowserComponent* downloadFolderBrowser;
+    FileBrowserComponent* playerBrowser;
+    ComponentRegistry* registry;
+} SettingsDialogComponents;
+
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-    UNREFERENCED_PARAMETER(lParam);
+    static SettingsDialogComponents* components = NULL;
     
     switch (message) {
         case WM_INITDIALOG: {
             // Apply modern Windows theming to dialog and controls
             ApplyModernThemeToDialog(hDlg);
             
-            // Load settings from registry (with defaults if not found)
-            LoadSettings(hDlg);
+            // Create component registry
+            components = (SettingsDialogComponents*)SAFE_MALLOC(sizeof(SettingsDialogComponents));
+            if (!components) {
+                EndDialog(hDlg, IDCANCEL);
+                return TRUE;
+            }
+            memset(components, 0, sizeof(SettingsDialogComponents));
+            
+            components->registry = CreateComponentRegistry();
+            if (!components->registry) {
+                SAFE_FREE(components);
+                EndDialog(hDlg, IDCANCEL);
+                return TRUE;
+            }
+            
+            // Store components pointer for later access
+            SetWindowLongPtrW(hDlg, GWLP_USERDATA, (LONG_PTR)components);
+            
+            // Get positions of existing resource-based controls to place components at same location
+            RECT ytdlpRect, folderRect, playerRect;
+            GetWindowRect(GetDlgItem(hDlg, IDC_YTDLP_PATH), &ytdlpRect);
+            GetWindowRect(GetDlgItem(hDlg, IDC_FOLDER_PATH), &folderRect);
+            GetWindowRect(GetDlgItem(hDlg, IDC_PLAYER_PATH), &playerRect);
+            
+            // Convert to client coordinates
+            POINT ytdlpPt = {ytdlpRect.left, ytdlpRect.top};
+            POINT folderPt = {folderRect.left, folderRect.top};
+            POINT playerPt = {playerRect.left, playerRect.top};
+            ScreenToClient(hDlg, &ytdlpPt);
+            ScreenToClient(hDlg, &folderPt);
+            ScreenToClient(hDlg, &playerPt);
+            
+            // Hide existing resource-based controls (we'll use components instead)
+            ShowWindow(GetDlgItem(hDlg, IDC_YTDLP_PATH), SW_HIDE);
+            ShowWindow(GetDlgItem(hDlg, IDC_YTDLP_BROWSE), SW_HIDE);
+            ShowWindow(GetDlgItem(hDlg, IDC_FOLDER_PATH), SW_HIDE);
+            ShowWindow(GetDlgItem(hDlg, IDC_FOLDER_BROWSE), SW_HIDE);
+            ShowWindow(GetDlgItem(hDlg, IDC_PLAYER_PATH), SW_HIDE);
+            ShowWindow(GetDlgItem(hDlg, IDC_PLAYER_BROWSE), SW_HIDE);
+            
+            // Create reusable components at the positions of the hidden controls
+            // Adjust Y position to account for label above edit control
+            int labelHeight = 14;
+            int labelSpacing = 3;
+            int componentWidth = 350;
+            
+            // yt-dlp path browser component
+            components->ytdlpBrowser = CreateFileBrowser(
+                hDlg, ytdlpPt.x, ytdlpPt.y - labelHeight - labelSpacing, componentWidth,
+                L"yt-dlp Executable Path:",
+                L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0",
+                IDC_YTDLP_PATH
+            );
+            if (components->ytdlpBrowser) {
+                RegisterComponent(components->registry, (UIComponent*)components->ytdlpBrowser);
+            }
+            
+            // Download folder browser component
+            components->downloadFolderBrowser = CreateFolderBrowser(
+                hDlg, folderPt.x, folderPt.y - labelHeight - labelSpacing, componentWidth,
+                L"Download Folder:",
+                IDC_FOLDER_PATH
+            );
+            if (components->downloadFolderBrowser) {
+                RegisterComponent(components->registry, (UIComponent*)components->downloadFolderBrowser);
+            }
+            
+            // Media player path browser component
+            components->playerBrowser = CreateFileBrowser(
+                hDlg, playerPt.x, playerPt.y - labelHeight - labelSpacing, componentWidth,
+                L"Media Player Path:",
+                L"Executable Files\0*.exe\0All Files\0*.*\0",
+                IDC_PLAYER_PATH
+            );
+            if (components->playerBrowser) {
+                RegisterComponent(components->registry, (UIComponent*)components->playerBrowser);
+            }
+            
+            // Load settings from registry and set component values
+            wchar_t ytdlpPath[MAX_EXTENDED_PATH] = {0};
+            wchar_t downloadPath[MAX_EXTENDED_PATH] = {0};
+            wchar_t playerPath[MAX_EXTENDED_PATH] = {0};
+            
+            // Read from registry using existing functions
+            HKEY hKey;
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+                DWORD dataSize = sizeof(ytdlpPath);
+                RegQueryValueExW(hKey, REG_YTDLP_PATH, NULL, NULL, (LPBYTE)ytdlpPath, &dataSize);
+                
+                dataSize = sizeof(downloadPath);
+                RegQueryValueExW(hKey, REG_DOWNLOAD_PATH, NULL, NULL, (LPBYTE)downloadPath, &dataSize);
+                
+                dataSize = sizeof(playerPath);
+                RegQueryValueExW(hKey, REG_PLAYER_PATH, NULL, NULL, (LPBYTE)playerPath, &dataSize);
+                
+                RegCloseKey(hKey);
+            }
+            
+            // Set default values if empty
+            if (wcslen(ytdlpPath) == 0) {
+                GetDefaultYtDlpPath(ytdlpPath, MAX_EXTENDED_PATH);
+            }
+            if (wcslen(downloadPath) == 0) {
+                GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+            }
+            
+            if (components->ytdlpBrowser) {
+                SetFileBrowserPath(components->ytdlpBrowser, ytdlpPath);
+            }
+            if (components->downloadFolderBrowser) {
+                SetFolderBrowserPath(components->downloadFolderBrowser, downloadPath);
+            }
+            if (components->playerBrowser) {
+                SetFileBrowserPath(components->playerBrowser, playerPath);
+            }
+            
+            // Load other settings (checkboxes, etc.) using existing LoadSettings function
+            // But we need to load checkboxes manually since we're not using the old controls
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+                DWORD enableDebug = 0, enableLogfile = 0, enableAutopaste = 0;
+                DWORD dataSize = sizeof(DWORD);
+                
+                RegQueryValueExW(hKey, REG_ENABLE_DEBUG, NULL, NULL, (LPBYTE)&enableDebug, &dataSize);
+                RegQueryValueExW(hKey, REG_ENABLE_LOGFILE, NULL, NULL, (LPBYTE)&enableLogfile, &dataSize);
+                RegQueryValueExW(hKey, REG_ENABLE_AUTOPASTE, NULL, NULL, (LPBYTE)&enableAutopaste, &dataSize);
+                
+                CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
+                CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, enableLogfile ? BST_CHECKED : BST_UNCHECKED);
+                CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, enableAutopaste ? BST_CHECKED : BST_UNCHECKED);
+                
+                RegCloseKey(hKey);
+            }
+            
+            // Set accessible names for controls
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ENABLE_DEBUG), L"Enable debug mode", L"Show debug information in the main window");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ENABLE_LOGFILE), L"Enable log file", L"Write debug information to a log file");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_ENABLE_AUTOPASTE), L"Enable auto-paste", L"Automatically paste URLs from clipboard");
+            SetControlAccessibility(GetDlgItem(hDlg, IDOK), L"OK", L"Save settings and close dialog");
+            SetControlAccessibility(GetDlgItem(hDlg, IDCANCEL), L"Cancel", L"Close dialog without saving");
+            
+            // Configure tab order
+            TabOrderConfig tabConfig;
+            TabOrderEntry entries[6];
+            entries[0].controlId = IDC_YTDLP_PATH + 1; // Edit control of first component
+            entries[0].tabOrder = 0;
+            entries[0].isTabStop = TRUE;
+            entries[1].controlId = IDC_FOLDER_PATH + 1; // Edit control of second component
+            entries[1].tabOrder = 1;
+            entries[1].isTabStop = TRUE;
+            entries[2].controlId = IDC_PLAYER_PATH + 1; // Edit control of third component
+            entries[2].tabOrder = 2;
+            entries[2].isTabStop = TRUE;
+            entries[3].controlId = IDC_ENABLE_DEBUG;
+            entries[3].tabOrder = 3;
+            entries[3].isTabStop = TRUE;
+            entries[4].controlId = IDOK;
+            entries[4].tabOrder = 4;
+            entries[4].isTabStop = TRUE;
+            entries[5].controlId = IDCANCEL;
+            entries[5].tabOrder = 5;
+            entries[5].isTabStop = TRUE;
+            
+            tabConfig.entries = entries;
+            tabConfig.count = 6;
+            SetDialogTabOrder(hDlg, &tabConfig);
             
             // Apply DPI-aware positioning (similar to error dialog)
             HWND hParent = GetParent(hDlg);
@@ -796,68 +967,27 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
             }
             
-            return TRUE;
+            // Set initial focus
+            SetInitialDialogFocus(hDlg);
+            
+            return FALSE; // Allow custom focus setting
         }
             
-        case WM_COMMAND:
+        case WM_COMMAND: {
+            // Handle component browse button clicks
+            if (components) {
+                if (components->ytdlpBrowser && HandleFileBrowserCommand(components->ytdlpBrowser, wParam, lParam)) {
+                    return TRUE;
+                }
+                if (components->downloadFolderBrowser && HandleFolderBrowserCommand(components->downloadFolderBrowser, wParam, lParam)) {
+                    return TRUE;
+                }
+                if (components->playerBrowser && HandleFileBrowserCommand(components->playerBrowser, wParam, lParam)) {
+                    return TRUE;
+                }
+            }
+            
             switch (LOWORD(wParam)) {
-                case IDC_YTDLP_BROWSE: {
-                    OPENFILENAMEW ofn = {0};
-                    wchar_t szFile[MAX_EXTENDED_PATH] = {0};
-                    
-                    ofn.lStructSize = sizeof(ofn);
-                    ofn.hwndOwner = hDlg;
-                    ofn.lpstrFile = szFile;
-                    ofn.nMaxFile = MAX_EXTENDED_PATH;
-                    ofn.lpstrFilter = L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0";
-                    ofn.nFilterIndex = 1;
-                    ofn.lpstrTitle = L"Select yt-dlp executable";
-                    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-                    
-                    if (GetOpenFileNameW(&ofn)) {
-                        SetDlgItemTextW(hDlg, IDC_YTDLP_PATH, szFile);
-                    }
-                    return TRUE;
-                }
-                
-                case IDC_FOLDER_BROWSE: {
-                    BROWSEINFOW bi = {0};
-                    wchar_t szPath[MAX_EXTENDED_PATH];
-                    LPITEMIDLIST pidl;
-                    
-                    bi.hwndOwner = hDlg;
-                    bi.lpszTitle = L"Select Download Folder";
-                    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-                    
-                    pidl = SHBrowseForFolderW(&bi);
-                    if (pidl != NULL) {
-                        if (SHGetPathFromIDListW(pidl, szPath)) {
-                            SetDlgItemTextW(hDlg, IDC_FOLDER_PATH, szPath);
-                        }
-                        CoTaskMemFree(pidl);
-                    }
-                    return TRUE;
-                }
-                
-                case IDC_PLAYER_BROWSE: {
-                    OPENFILENAMEW ofn = {0};
-                    wchar_t szFile[MAX_EXTENDED_PATH] = {0};
-                    
-                    ofn.lStructSize = sizeof(ofn);
-                    ofn.hwndOwner = hDlg;
-                    ofn.lpstrFile = szFile;
-                    ofn.nMaxFile = MAX_EXTENDED_PATH;
-                    ofn.lpstrFilter = L"Executable Files\0*.exe\0All Files\0*.*\0";
-                    ofn.nFilterIndex = 1;
-                    ofn.lpstrTitle = L"Select Media Player";
-                    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-                    
-                    if (GetOpenFileNameW(&ofn)) {
-                        SetDlgItemTextW(hDlg, IDC_PLAYER_PATH, szFile);
-                    }
-                    return TRUE;
-                }
-                
                 case IDC_ENABLE_DEBUG:
                     // Handle debug checkbox change - update visibility immediately
                     if (HIWORD(wParam) == BN_CLICKED) {
@@ -874,23 +1004,99 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                     }
                     return TRUE;
                 
-                case IDOK:
-                    // Save settings to registry
-                    SaveSettings(hDlg);
+                case IDOK: {
+                    if (!components) {
+                        EndDialog(hDlg, IDCANCEL);
+                        return TRUE;
+                    }
+                    
+                    // Validate all components before saving
+                    UIComponent* componentArray[3];
+                    int componentCount = 0;
+                    
+                    if (components->ytdlpBrowser) {
+                        componentArray[componentCount++] = (UIComponent*)components->ytdlpBrowser;
+                    }
+                    if (components->downloadFolderBrowser) {
+                        componentArray[componentCount++] = (UIComponent*)components->downloadFolderBrowser;
+                    }
+                    if (components->playerBrowser) {
+                        componentArray[componentCount++] = (UIComponent*)components->playerBrowser;
+                    }
+                    
+                    // Validate all components
+                    ComponentValidationSummary* validationSummary = ValidateDialog(componentArray, componentCount);
+                    if (validationSummary && !validationSummary->allValid) {
+                        // Show validation errors
+                        ShowValidationErrors(hDlg, validationSummary);
+                        FreeValidationSummary(validationSummary);
+                        return TRUE;
+                    }
+                    if (validationSummary) {
+                        FreeValidationSummary(validationSummary);
+                    }
+                    
+                    // Get values from components and save to registry
+                    const wchar_t* ytdlpPath = GetFileBrowserPath(components->ytdlpBrowser);
+                    const wchar_t* downloadPath = GetFolderBrowserPath(components->downloadFolderBrowser);
+                    const wchar_t* playerPath = GetFileBrowserPath(components->playerBrowser);
+                    
+                    // Save string settings to registry
+                    HKEY hKey;
+                    if (RegCreateKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, NULL, 0, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+                        if (ytdlpPath && wcslen(ytdlpPath) > 0) {
+                            RegSetValueExW(hKey, REG_YTDLP_PATH, 0, REG_SZ, (const BYTE*)ytdlpPath, (DWORD)((wcslen(ytdlpPath) + 1) * sizeof(wchar_t)));
+                        }
+                        if (downloadPath && wcslen(downloadPath) > 0) {
+                            RegSetValueExW(hKey, REG_DOWNLOAD_PATH, 0, REG_SZ, (const BYTE*)downloadPath, (DWORD)((wcslen(downloadPath) + 1) * sizeof(wchar_t)));
+                        }
+                        if (playerPath && wcslen(playerPath) > 0) {
+                            RegSetValueExW(hKey, REG_PLAYER_PATH, 0, REG_SZ, (const BYTE*)playerPath, (DWORD)((wcslen(playerPath) + 1) * sizeof(wchar_t)));
+                        }
+                        
+                        // Save checkbox settings
+                        BOOL enableDebug = (IsDlgButtonChecked(hDlg, IDC_ENABLE_DEBUG) == BST_CHECKED);
+                        BOOL enableLogfile = (IsDlgButtonChecked(hDlg, IDC_ENABLE_LOGFILE) == BST_CHECKED);
+                        BOOL enableAutopaste = (IsDlgButtonChecked(hDlg, IDC_ENABLE_AUTOPASTE) == BST_CHECKED);
+                        
+                        DWORD debugValue = enableDebug ? 1 : 0;
+                        DWORD logfileValue = enableLogfile ? 1 : 0;
+                        DWORD autopasteValue = enableAutopaste ? 1 : 0;
+                        
+                        RegSetValueExW(hKey, REG_ENABLE_DEBUG, 0, REG_DWORD, (const BYTE*)&debugValue, sizeof(DWORD));
+                        RegSetValueExW(hKey, REG_ENABLE_LOGFILE, 0, REG_DWORD, (const BYTE*)&logfileValue, sizeof(DWORD));
+                        RegSetValueExW(hKey, REG_ENABLE_AUTOPASTE, 0, REG_DWORD, (const BYTE*)&autopasteValue, sizeof(DWORD));
+                        
+                        RegCloseKey(hKey);
+                    }
+                    
                     EndDialog(hDlg, IDOK);
                     return TRUE;
+                }
                     
                 case IDCANCEL:
                     EndDialog(hDlg, IDCANCEL);
                     return TRUE;
             }
             break;
+        }
         
         case WM_SYSCOLORCHANGE:
             // System colors changed (including high contrast mode changes)
             // Apply high contrast colors if needed
             ApplyHighContrastColors(hDlg);
             return TRUE;
+        
+        case WM_DESTROY:
+            // Clean up components
+            if (components) {
+                if (components->registry) {
+                    DestroyComponentRegistry(components->registry);
+                }
+                SAFE_FREE(components);
+                components = NULL;
+            }
+            break;
     }
     return FALSE;
 }

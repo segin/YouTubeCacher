@@ -156,5 +156,5 @@ BEGIN
     LTEXT           "Copyright \251 2025 Kirn Gill II <segin2005@gmail.com>", IDC_ABOUT_COPYRIGHT, 30, 150, 320, 14, SS_CENTER
     LTEXT           "This program comes with absolutely no warranty.", IDC_ABOUT_WARRANTY, 30, 165, 320, 14, SS_CENTER
     CONTROL         "See the <a href=""https://mit-license.org/"">MIT License</a> for details.", IDC_ABOUT_LICENSE_LINK, "SysLink", LWS_TRANSPARENT | LWS_NOPREFIX, 30, 180, 320, 14
-    DEFPUSHBUTTON   "Close", IDC_ABOUT_CLOSE, 165, 195, 50, 20
+    DEFPUSHBUTTON   "&Close", IDC_ABOUT_CLOSE, 165, 195, 50, 20
 END

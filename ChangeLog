@@ -48,6 +48,17 @@ User Interface:
 - Implement `ValidateComponent` function for single component validation
 - Implement `ValidateDialog` function to validate all components in a dialog
 - Implement `ShowValidationErrors` function to display errors near controls
+- Update Settings dialog to use reusable FileBrowserComponent and FolderBrowserComponent
+- Replace yt-dlp path controls with FileBrowserComponent in Settings dialog
+- Replace download folder controls with FolderBrowserComponent in Settings dialog
+- Replace media player path controls with FileBrowserComponent in Settings dialog
+- Add validation to all Settings dialog input fields
+- Update Settings dialog to save values from components to registry
+- Update About dialog with accessibility enhancements
+- Add accessible names to all About dialog controls (icon, title, version, links, buttons)
+- Configure tab order for About dialog focusable controls (links and close button)
+- Add accelerator key to About dialog Close button (Alt+C)
+- Add high contrast mode support to About dialog with WM_SYSCOLORCHANGE handling
 - Implement `FreeValidationSummary` cleanup function
 - Add visual validation feedback with red borders for invalid controls
 - Implement `DrawValidationBorder` function to draw red borders around invalid controls
