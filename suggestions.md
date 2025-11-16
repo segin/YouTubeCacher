@@ -19,24 +19,6 @@ Based on my analysis of the YouTubeCacher codebase, here are the key areas for i
 - Add process cancellation support
 - Simplify output parsing with state machines
 
-## User Interface & UX
-
-### 6. **Dialog System Complexity**
-**Positive**: Recently improved with unified dialog system
-**Further improvements**:
-- Add dialog theming support
-- Implement proper accessibility features
-- Add keyboard navigation support
-- Create reusable UI components
-
-### 7. **HiDPI Support**
-**Current**: Basic DPI scaling implemented
-**Improvements**:
-- Test on various DPI settings
-- Ensure all UI elements scale properly
-- Add per-monitor DPI awareness
-- Optimize for different screen sizes
-
 ## Performance & Efficiency
 
 ### 8. **String Handling**
