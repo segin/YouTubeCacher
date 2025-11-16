@@ -261,6 +261,11 @@ typedef struct {
     
     BOOL showDetailsButton;         // Whether to show expandable details
     BOOL showCopyButton;           // Whether to show copy button
+    
+    // Accelerator key definitions (optional, NULL to use defaults)
+    const wchar_t* detailsButtonText;  // e.g., "&Details >>" for Alt+D
+    const wchar_t* copyButtonText;     // e.g., "&Copy" for Alt+C
+    const wchar_t* okButtonText;       // e.g., "&OK" for Alt+O
 } UnifiedDialogConfig;
 
 // Enhanced dialog structure (supports both error and success dialogs)
@@ -405,6 +410,18 @@ typedef struct {
 
 
 
+// Tab order management structures
+typedef struct {
+    int controlId;
+    int tabOrder;
+    BOOL isTabStop;
+} TabOrderEntry;
+
+typedef struct {
+    TabOrderEntry* entries;
+    int count;
+} TabOrderConfig;
+
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"
 #include "parser.h"
@@ -412,5 +429,6 @@ typedef struct {
 #include "ytdlp.h"
 #include "ui.h"
 #include "accessibility.h"
+#include "keyboard.h"
 
 #endif // YOUTUBECACHER_H

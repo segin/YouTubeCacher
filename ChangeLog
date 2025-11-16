@@ -11,6 +11,21 @@ User Interface:
 - Add WM_SYSCOLORCHANGE handling to all dialog procedures for theme change detection
 - Add accessible names to unified dialog controls (icon, message, buttons, tabs)
 - Add screen reader notifications when dialogs are shown
+- Add keyboard navigation system with tab order management
+- Implement SetDialogTabOrder function to configure tab order for dialog controls
+- Implement CalculateTabOrder function for automatic logical tab ordering (top-to-bottom, left-to-right)
+- Implement FreeTabOrderConfig cleanup function for tab order configurations
+- Add accelerator key system with conflict detection
+- Implement ValidateAcceleratorKeys function to check for accelerator key conflicts
+- Implement GetAcceleratorChar function to extract accelerator from button labels
+- Implement HasAcceleratorConflict function to detect duplicate accelerators
+- Add default accelerator keys to unified dialog buttons (Alt+D for Details, Alt+C for Copy, Alt+O for OK)
+- Add focus management system for proper keyboard navigation
+- Implement SetInitialDialogFocus function to set focus to logical first control
+- Implement GetNextFocusableControl function for custom focus navigation
+- Implement EnsureFocusVisible function to ensure focus indicators are visible
+- Update UnifiedDialogConfig structure to support custom accelerator key text
+- Update unified dialog to use accelerator keys in button text with ampersand notation
 
 0.0.1
 

@@ -322,6 +322,15 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                 }
             }
             
+            // Set button text with accelerator keys
+            const wchar_t* detailsText = config->detailsButtonText ? config->detailsButtonText : L"&Details >>";
+            const wchar_t* copyText = config->copyButtonText ? config->copyButtonText : L"&Copy";
+            const wchar_t* okText = config->okButtonText ? config->okButtonText : L"&OK";
+            
+            SetWindowTextW(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), detailsText);
+            SetWindowTextW(GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN), copyText);
+            SetWindowTextW(GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN), okText);
+            
             // Show/hide buttons based on config
             if (!config->showDetailsButton || (!config->details && !config->tab2_content && !config->tab3_content)) {
                 ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), SW_HIDE);
@@ -379,7 +388,11 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
             // Start in collapsed state
             ResizeUnifiedDialog(hDlg, FALSE);
             
-            return TRUE;
+            // Set initial focus to OK button
+            SetInitialDialogFocus(hDlg);
+            
+            // Return FALSE to allow our custom focus setting
+            return FALSE;
         }
         
         case WM_COMMAND:
@@ -621,8 +634,8 @@ void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), showState);
     ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), showState);
     
-    // Update details button text
-    SetWindowTextW(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), expanded ? L"<< Details" : L"Details >>");
+    // Update details button text (preserve accelerator key)
+    SetWindowTextW(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), expanded ? L"<< &Details" : L"&Details >>");
     
     if (hOldFont) SelectObject(hdc, hOldFont);
     ReleaseDC(hDlg, hdc);
@@ -912,9 +925,9 @@ void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     if (hDiagText) ShowWindow(hDiagText, showState);
     if (hSolutionText) ShowWindow(hSolutionText, showState);
     
-    // Update details button text
+    // Update details button text (preserve accelerator key)
     if (hDetailsBtn) {
-        SetWindowTextW(hDetailsBtn, expanded ? L"<< Details" : L"Details >>");
+        SetWindowTextW(hDetailsBtn, expanded ? L"<< &Details" : L"&Details >>");
     }
     
     // Cleanup
