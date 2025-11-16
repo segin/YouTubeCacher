@@ -43,6 +43,23 @@ User Interface:
 - Implement standard button layouts: OK, OK/Cancel, Yes/No, Yes/No/Cancel
 - Add right-aligned button positioning with proper spacing (6px between buttons)
 - Add Edit menu with Select All option (Ctrl+A accelerator)
+- Add validation framework for component validation
+- Implement ComponentValidationResult and ComponentValidationSummary structures
+- Implement ValidateComponent function for single component validation
+- Implement ValidateDialog function to validate all components in a dialog
+- Implement ShowValidationErrors function to display errors near controls
+- Implement FreeValidationSummary cleanup function
+- Add visual validation feedback with red borders for invalid controls
+- Implement DrawValidationBorder function to draw red borders around invalid controls
+- Implement SetControlErrorMessage function to display error messages
+- Implement SetEditValidationState function with window subclassing for border drawing
+- Implement HandleErrorLabelColor function for red text color in error labels
+- Add dialog validation integration functions
+- Implement ValidateDialogBeforeClose function to prevent dialog close on validation failure
+- Implement ClearDialogValidationErrors function to clear all validation errors
+- Implement HandleDialogValidation function for OK/Apply button validation
+- Add automatic focus management to first invalid control on validation failure
+- Add validation error summary message box for multiple validation errors
 
 0.0.1
 

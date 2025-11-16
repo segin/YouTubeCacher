@@ -36,4 +36,22 @@ const wchar_t* GetTextInputValue(LabeledTextInput* component);
 void SetTextInputValue(LabeledTextInput* component, const wchar_t* value);
 void SetCustomValidator(LabeledTextInput* component, CustomValidationFunc validator);
 
+// Validation framework functions
+BOOL ValidateComponent(UIComponent* component, wchar_t* errorMsg, size_t errorMsgSize);
+ComponentValidationSummary* ValidateDialog(UIComponent** components, int count);
+void ShowValidationErrors(HWND hDlg, ComponentValidationSummary* summary);
+void FreeValidationSummary(ComponentValidationSummary* summary);
+
+// Visual validation feedback functions
+void DrawValidationBorder(HWND hwnd, BOOL isInvalid);
+void SetControlErrorMessage(HWND hwndError, const wchar_t* errorMsg);
+void ClearControlErrorMessage(HWND hwndError);
+HBRUSH HandleErrorLabelColor(WPARAM wParam, LPARAM lParam, HWND hwndError);
+void SetEditValidationState(HWND hwndEdit, BOOL isInvalid);
+
+// Dialog validation integration functions
+BOOL ValidateDialogBeforeClose(HWND hDlg, UIComponent** components, int count);
+void ClearDialogValidationErrors(UIComponent** components, int count);
+BOOL HandleDialogValidation(HWND hDlg, UIComponent** components, int count, BOOL closeOnSuccess);
+
 #endif // COMPONENTS_H

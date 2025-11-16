@@ -528,6 +528,19 @@ typedef struct {
     int controlId;    // Base control ID for this component
 } ButtonRowComponent;
 
+// Validation framework structures
+typedef struct {
+    UIComponent* component;
+    BOOL isValid;
+    wchar_t errorMessage[256];
+} ComponentValidationResult;
+
+typedef struct {
+    ComponentValidationResult* results;
+    int count;
+    BOOL allValid;
+} ComponentValidationSummary;
+
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"
 #include "parser.h"

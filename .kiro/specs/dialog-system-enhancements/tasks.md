@@ -139,7 +139,7 @@ This implementation plan breaks down the dialog system enhancements into discret
   - _Requirements: 6.1, 6.2, 6.6, 6.7_
 
 
-- [ ] 3.4 Create labeled text input component
+- [x] 3.4 Create labeled text input component
 
   - Define `LabeledTextInput` structure with validation support
   - Define `ValidationType` enum (none, required, numeric, path, URL, custom)
@@ -153,6 +153,7 @@ This implementation plan breaks down the dialog system enhancements into discret
 
 - [x] 3.5 Create button row component
 
+
   - Define `ButtonRowComponent` structure and `ButtonLayout` enum
   - Define `ButtonConfig` structure for custom button configurations
   - Write `CreateButtonRow()` function for standard layouts (OK, OK/Cancel, etc.)
@@ -161,13 +162,19 @@ This implementation plan breaks down the dialog system enhancements into discret
   - Implement proper button spacing and alignment (right-aligned, 6px spacing)
   - _Requirements: 6.1, 6.5, 6.6, 6.7_
 
-- [ ] 4. Implement validation framework
+- [x] 4. Implement validation framework
+
+
+
+
   - Create validation system for component validation
   - Add visual feedback for validation errors
   - Integrate validation with dialog submission
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
-- [ ] 4.1 Create validation system
+
+- [x] 4.1 Create validation system
+
   - Define `ValidationResult` and `ValidationSummary` structures in `YouTubeCacher.h`
   - Write `ValidateDialog()` function to validate all components
   - Write `ShowValidationErrors()` function to display errors near controls
@@ -176,12 +183,16 @@ This implementation plan breaks down the dialog system enhancements into discret
   - Add to `components.c` file
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
+
+
 - [ ] 4.2 Add visual validation feedback
   - Implement red border drawing for invalid controls
   - Implement error message display near invalid controls
   - Use `WM_PAINT` handler for custom border drawing
   - Use static text control with red color for error messages
   - _Requirements: 8.4, 8.5_
+
+
 
 - [ ] 4.3 Integrate validation with dialogs
   - Update dialog OK/Apply button handlers to call validation
