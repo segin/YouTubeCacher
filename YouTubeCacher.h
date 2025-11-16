@@ -411,5 +411,6 @@ typedef struct {
 #include "log.h"
 #include "ytdlp.h"
 #include "ui.h"
+#include "accessibility.h"
 
 #endif // YOUTUBECACHER_H

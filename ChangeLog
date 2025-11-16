@@ -1,6 +1,10 @@
 0.0.2
 
-
+User Interface:
+- Add accessibility support with screen reader integration
+- Implement SetControlAccessibility function for accessible names and descriptions
+- Implement NotifyAccessibilityStateChange function for screen reader notifications
+- Implement IsScreenReaderActive function to detect active screen readers (NVDA, Narrator, JAWS, etc.)
 
 0.0.1
 
