@@ -181,3 +181,8 @@ Logging and Debugging:
 Build System:
 - Update build system with `debug`/`release` flags and `dbghelp` library linking
 - Add strict compilation with `-Wall -Wextra -Werror` flags
+
+Build System:
+- Add accessibility.c, keyboard.c, and components.c to Makefile SOURCES
+- Add dependency tracking for accessibility.o, keyboard.o, and components.o
+- Verify clean builds with all new dialog system enhancement modules
