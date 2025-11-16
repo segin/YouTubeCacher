@@ -1,6 +1,9 @@
 #include "YouTubeCacher.h"
 #include "accessibility.h"
 
+// Forward declarations
+static BOOL CALLBACK EnumChildProc(HWND hwnd, LPARAM lParam);
+
 // Set accessible name and description for a control
 void SetControlAccessibility(HWND hwnd, const wchar_t* name, const wchar_t* description)
 {
@@ -99,4 +102,75 @@ BOOL IsScreenReaderActive(void)
     
     CloseHandle(hSnapshot);
     return FALSE;
+}
+
+// Check if high contrast mode is enabled
+BOOL IsHighContrastMode(void)
+{
+    HIGHCONTRASTW hc;
+    hc.cbSize = sizeof(HIGHCONTRASTW);
+    
+    // Query the system for high contrast settings
+    if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(HIGHCONTRASTW), &hc, 0)) {
+        // Check if the HCF_HIGHCONTRASTON flag is set
+        return (hc.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    }
+    
+    return FALSE;
+}
+
+// Get system color for high contrast mode
+COLORREF GetHighContrastColor(int colorType)
+{
+    // Use GetSysColor to retrieve system colors
+    // These colors automatically respect high contrast mode settings
+    // Common color types:
+    // COLOR_WINDOW - Window background
+    // COLOR_WINDOWTEXT - Window text
+    // COLOR_BTNFACE - Button face
+    // COLOR_BTNTEXT - Button text
+    // COLOR_HIGHLIGHT - Selected item background
+    // COLOR_HIGHLIGHTTEXT - Selected item text
+    // COLOR_GRAYTEXT - Disabled text
+    // COLOR_WINDOWFRAME - Window frame
+    
+    return GetSysColor(colorType);
+}
+
+// Apply high contrast colors to a dialog
+void ApplyHighContrastColors(HWND hDlg)
+{
+    if (!hDlg) {
+        return;
+    }
+    
+    // Check if high contrast mode is enabled
+    if (!IsHighContrastMode()) {
+        return;
+    }
+    
+    // Native Windows controls automatically handle high contrast mode
+    // by using system colors. However, we can force a redraw to ensure
+    // all controls update their appearance immediately.
+    
+    // Invalidate the entire dialog to force a repaint
+    InvalidateRect(hDlg, NULL, TRUE);
+    
+    // Enumerate all child controls and invalidate them as well
+    EnumChildWindows(hDlg, EnumChildProc, 0);
+    
+    // Update the window to apply changes immediately
+    UpdateWindow(hDlg);
+}
+
+// Callback function for EnumChildWindows to invalidate child controls
+static BOOL CALLBACK EnumChildProc(HWND hwnd, LPARAM lParam)
+{
+    (void)lParam; // Unused parameter
+    
+    // Invalidate each child control to force redraw
+    InvalidateRect(hwnd, NULL, TRUE);
+    UpdateWindow(hwnd);
+    
+    return TRUE; // Continue enumeration
 }

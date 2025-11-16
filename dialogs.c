@@ -331,6 +331,51 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                 ShowWindow(GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN), SW_HIDE);
             }
             
+            // Set accessible names for screen readers
+            HWND hIconCtrl = GetDlgItem(hDlg, IDC_UNIFIED_ICON);
+            HWND hMessageCtrl = GetDlgItem(hDlg, IDC_UNIFIED_MESSAGE);
+            HWND hDetailsBtnCtrl = GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN);
+            HWND hCopyBtnCtrl = GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN);
+            HWND hOkBtnCtrl = GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN);
+            HWND hTabCtrl = GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL);
+            
+            // Set accessible name for icon based on dialog type
+            const wchar_t* iconDescription = NULL;
+            switch (config->dialogType) {
+                case UNIFIED_DIALOG_ERROR:
+                    iconDescription = L"Error icon";
+                    break;
+                case UNIFIED_DIALOG_WARNING:
+                    iconDescription = L"Warning icon";
+                    break;
+                case UNIFIED_DIALOG_SUCCESS:
+                    iconDescription = L"Success icon";
+                    break;
+                case UNIFIED_DIALOG_INFO:
+                default:
+                    iconDescription = L"Information icon";
+                    break;
+            }
+            SetControlAccessibility(hIconCtrl, iconDescription, NULL);
+            
+            // Set accessible name for message text
+            SetControlAccessibility(hMessageCtrl, L"Message", NULL);
+            
+            // Set accessible names for buttons (text is already set by button creation)
+            SetControlAccessibility(hDetailsBtnCtrl, L"Details", L"Show or hide additional details");
+            SetControlAccessibility(hCopyBtnCtrl, L"Copy", L"Copy message to clipboard");
+            SetControlAccessibility(hOkBtnCtrl, L"OK", L"Close dialog");
+            
+            // Set accessible name for tab control
+            if (hTabCtrl && IsWindowVisible(hTabCtrl)) {
+                SetControlAccessibility(hTabCtrl, L"Details tabs", L"Additional information organized in tabs");
+            }
+            
+            // Notify screen readers that dialog is ready
+            if (IsScreenReaderActive()) {
+                NotifyAccessibilityStateChange(hDlg, EVENT_OBJECT_SHOW);
+            }
+            
             // Start in collapsed state
             ResizeUnifiedDialog(hDlg, FALSE);
             
@@ -368,6 +413,12 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
             }
             break;
         }
+        
+        case WM_SYSCOLORCHANGE:
+            // System colors changed (including high contrast mode changes)
+            // Apply high contrast colors if needed
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
         
         case WM_CLOSE:
             EndDialog(hDlg, IDCANCEL);
@@ -1211,6 +1262,12 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             break;
         }
         
+        case WM_SYSCOLORCHANGE:
+            // System colors changed (including high contrast mode changes)
+            // Apply high contrast colors if needed
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
+        
         case WM_CLOSE:
             EndDialog(hDlg, IDCANCEL);
             return TRUE;
@@ -1953,6 +2010,12 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             }
             break;
         }
+        
+        case WM_SYSCOLORCHANGE:
+            // System colors changed (including high contrast mode changes)
+            // Apply high contrast colors if needed
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
         
         case WM_CLOSE:
             EndDialog(hDlg, IDCANCEL);

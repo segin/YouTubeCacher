@@ -5,13 +5,18 @@ This implementation plan breaks down the dialog system enhancements into discret
 
 ## Tasks
 
-- [ ] 1. Implement accessibility foundation
+- [x] 1. Implement accessibility foundation
+
+
+
   - Create accessibility support functions for screen reader integration
   - Implement high contrast mode detection and handling
   - Add accessible names to existing unified dialog controls
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.2, 4.3, 4.4_
 
-- [-] 1.1 Create accessibility helper functions
+- [x] 1.1 Create accessibility helper functions
+
+
 
 
 
@@ -21,14 +26,18 @@ This implementation plan breaks down the dialog system enhancements into discret
   - Add functions to new `accessibility.c` file with corresponding `accessibility.h` header
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 1.2 Implement high contrast mode support
+
+- [x] 1.2 Implement high contrast mode support
+
   - Write `IsHighContrastMode()` function using `SystemParametersInfoW`
   - Write `GetHighContrastColor()` function to retrieve system colors
   - Write `ApplyHighContrastColors()` function to update dialog colors
   - Handle `WM_SYSCOLORCHANGE` message in dialog procedures
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 1.3 Add accessible names to unified dialog
+- [x] 1.3 Add accessible names to unified dialog
+
+
   - Update `UnifiedDialogProc` in `dialogs.c` to set accessible names in `WM_INITDIALOG`
   - Set accessible names for icon, message, buttons, and tab controls
   - Add accessible descriptions for controls where purpose isn't obvious

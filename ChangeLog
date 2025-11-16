@@ -5,6 +5,12 @@ User Interface:
 - Implement SetControlAccessibility function for accessible names and descriptions
 - Implement NotifyAccessibilityStateChange function for screen reader notifications
 - Implement IsScreenReaderActive function to detect active screen readers (NVDA, Narrator, JAWS, etc.)
+- Implement high contrast mode support with IsHighContrastMode function
+- Implement GetHighContrastColor function to retrieve system colors for high contrast
+- Implement ApplyHighContrastColors function to update dialog colors dynamically
+- Add WM_SYSCOLORCHANGE handling to all dialog procedures for theme change detection
+- Add accessible names to unified dialog controls (icon, message, buttons, tabs)
+- Add screen reader notifications when dialogs are shown
 
 0.0.1
 

@@ -885,6 +885,12 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                     return TRUE;
             }
             break;
+        
+        case WM_SYSCOLORCHANGE:
+            // System colors changed (including high contrast mode changes)
+            // Apply high contrast colors if needed
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
     }
     return FALSE;
 }
@@ -965,6 +971,12 @@ INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                     return TRUE;
             }
             break;
+        
+        case WM_SYSCOLORCHANGE:
+            // System colors changed (including high contrast mode changes)
+            // Apply high contrast colors if needed
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
             
         case WM_CLOSE:
             if (pProgress) {
@@ -1922,6 +1934,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 return TRUE;
             }
             return FALSE;
+        
+        case WM_SYSCOLORCHANGE:
+            // System colors changed (including high contrast mode changes)
+            // Apply high contrast colors if needed
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
             
         case WM_CLOSE:
             // Restore original text field window procedure
