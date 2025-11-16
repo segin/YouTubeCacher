@@ -422,6 +422,112 @@ typedef struct {
     int count;
 } TabOrderConfig;
 
+// UI Component system structures
+typedef struct UIComponent UIComponent;
+
+// Component function pointer types
+typedef void (*ComponentInitFunc)(UIComponent* component, HWND parent, int x, int y);
+typedef void (*ComponentDestroyFunc)(UIComponent* component);
+typedef BOOL (*ComponentValidateFunc)(UIComponent* component, wchar_t* errorMsg, size_t errorMsgSize);
+typedef void (*ComponentGetValueFunc)(UIComponent* component, void* value);
+typedef void (*ComponentSetValueFunc)(UIComponent* component, const void* value);
+
+// Base component structure
+struct UIComponent {
+    HWND hwndContainer;
+    HWND* childControls;
+    int childCount;
+    
+    ComponentInitFunc init;
+    ComponentDestroyFunc destroy;
+    ComponentValidateFunc validate;
+    ComponentGetValueFunc getValue;
+    ComponentSetValueFunc setValue;
+    
+    void* userData;
+};
+
+// Component registry structure
+typedef struct {
+    UIComponent** components;
+    int count;
+    int capacity;
+} ComponentRegistry;
+
+// File browser component structure
+typedef struct {
+    UIComponent base;
+    HWND hwndLabel;
+    HWND hwndEdit;
+    HWND hwndButton;
+    wchar_t* label;
+    wchar_t* filter;  // e.g., L"Executables\0*.exe\0All Files\0*.*\0"
+    wchar_t* currentPath;
+    int controlId;    // Base control ID for this component
+} FileBrowserComponent;
+
+// Folder browser component structure
+typedef struct {
+    UIComponent base;
+    HWND hwndLabel;
+    HWND hwndEdit;
+    HWND hwndButton;
+    wchar_t* label;
+    wchar_t* currentPath;
+    int controlId;    // Base control ID for this component
+} FolderBrowserComponent;
+
+// Validation types for labeled text input
+typedef enum {
+    VALIDATION_NONE,
+    VALIDATION_REQUIRED,
+    VALIDATION_NUMERIC,
+    VALIDATION_PATH,
+    VALIDATION_URL,
+    VALIDATION_CUSTOM
+} ValidationType;
+
+// Custom validation function type
+typedef BOOL (*CustomValidationFunc)(const wchar_t* value, wchar_t* errorMsg, size_t errorMsgSize);
+
+// Labeled text input component structure
+typedef struct {
+    UIComponent base;
+    HWND hwndLabel;
+    HWND hwndEdit;
+    HWND hwndError;
+    wchar_t* label;
+    ValidationType validationType;
+    CustomValidationFunc customValidator;
+    BOOL isRequired;
+    int controlId;    // Base control ID for this component
+} LabeledTextInput;
+
+// Button layout types
+typedef enum {
+    BUTTON_LAYOUT_OK,
+    BUTTON_LAYOUT_OK_CANCEL,
+    BUTTON_LAYOUT_YES_NO,
+    BUTTON_LAYOUT_YES_NO_CANCEL,
+    BUTTON_LAYOUT_CUSTOM
+} ButtonLayout;
+
+// Button configuration structure
+typedef struct {
+    const wchar_t* text;
+    int controlId;
+    BOOL isDefault;
+} ButtonConfig;
+
+// Button row component structure
+typedef struct {
+    UIComponent base;
+    HWND* buttons;
+    int buttonCount;
+    ButtonLayout layout;
+    int controlId;    // Base control ID for this component
+} ButtonRowComponent;
+
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"
 #include "parser.h"
@@ -430,5 +536,6 @@ typedef struct {
 #include "ui.h"
 #include "accessibility.h"
 #include "keyboard.h"
+#include "components.h"
 
 #endif // YOUTUBECACHER_H

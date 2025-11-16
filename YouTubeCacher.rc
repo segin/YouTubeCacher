@@ -17,6 +17,10 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "E&xit\tCtrl+Q", ID_FILE_EXIT
     END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "Select &All\tCtrl+A", ID_EDIT_SELECTALL
+    END
     POPUP "&Help", HELP
     BEGIN
         MENUITEM "&Install yt-dlp", ID_HELP_INSTALL_YTDLP

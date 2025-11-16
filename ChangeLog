@@ -26,6 +26,23 @@ User Interface:
 - Implement EnsureFocusVisible function to ensure focus indicators are visible
 - Update UnifiedDialogConfig structure to support custom accelerator key text
 - Update unified dialog to use accelerator keys in button text with ampersand notation
+- Add reusable UI component system with base component architecture
+- Implement UIComponent base structure with function pointers for init, destroy, validate, getValue, setValue
+- Implement ComponentRegistry for managing component lifecycle
+- Add FileBrowserComponent with label, edit control, and browse button
+- Implement file browser with GetOpenFileNameW dialog integration
+- Add file path validation to check file existence
+- Add FolderBrowserComponent with label, edit control, and browse button
+- Implement folder browser with SHBrowseForFolderW dialog integration
+- Add folder path validation to check directory existence
+- Add LabeledTextInput component with validation support
+- Implement validation types: none, required, numeric, path, URL, custom
+- Add visual error feedback with red error labels for invalid inputs
+- Add custom validation function support for specialized input validation
+- Add ButtonRowComponent with standard and custom button layouts
+- Implement standard button layouts: OK, OK/Cancel, Yes/No, Yes/No/Cancel
+- Add right-aligned button positioning with proper spacing (6px between buttons)
+- Add Edit menu with Select All option (Ctrl+A accelerator)
 
 0.0.1
 
