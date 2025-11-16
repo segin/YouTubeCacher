@@ -2,62 +2,62 @@
 
 User Interface:
 - Add accessibility support with screen reader integration
-- Implement SetControlAccessibility function for accessible names and descriptions
-- Implement NotifyAccessibilityStateChange function for screen reader notifications
-- Implement IsScreenReaderActive function to detect active screen readers (NVDA, Narrator, JAWS, etc.)
-- Implement high contrast mode support with IsHighContrastMode function
-- Implement GetHighContrastColor function to retrieve system colors for high contrast
-- Implement ApplyHighContrastColors function to update dialog colors dynamically
-- Add WM_SYSCOLORCHANGE handling to all dialog procedures for theme change detection
+- Implement `SetControlAccessibility` function for accessible names and descriptions
+- Implement `NotifyAccessibilityStateChange` function for screen reader notifications
+- Implement `IsScreenReaderActive` function to detect active screen readers (NVDA, Narrator, JAWS, etc.)
+- Implement high contrast mode support with `IsHighContrastMode` function
+- Implement `GetHighContrastColor` function to retrieve system colors for high contrast
+- Implement `ApplyHighContrastColors` function to update dialog colors dynamically
+- Add `WM_SYSCOLORCHANGE` handling to all dialog procedures for theme change detection
 - Add accessible names to unified dialog controls (icon, message, buttons, tabs)
 - Add screen reader notifications when dialogs are shown
 - Add keyboard navigation system with tab order management
-- Implement SetDialogTabOrder function to configure tab order for dialog controls
-- Implement CalculateTabOrder function for automatic logical tab ordering (top-to-bottom, left-to-right)
-- Implement FreeTabOrderConfig cleanup function for tab order configurations
+- Implement `SetDialogTabOrder` function to configure tab order for dialog controls
+- Implement `CalculateTabOrder` function for automatic logical tab ordering (top-to-bottom, left-to-right)
+- Implement `FreeTabOrderConfig` cleanup function for tab order configurations
 - Add accelerator key system with conflict detection
-- Implement ValidateAcceleratorKeys function to check for accelerator key conflicts
-- Implement GetAcceleratorChar function to extract accelerator from button labels
-- Implement HasAcceleratorConflict function to detect duplicate accelerators
+- Implement `ValidateAcceleratorKeys` function to check for accelerator key conflicts
+- Implement `GetAcceleratorChar` function to extract accelerator from button labels
+- Implement `HasAcceleratorConflict` function to detect duplicate accelerators
 - Add default accelerator keys to unified dialog buttons (Alt+D for Details, Alt+C for Copy, Alt+O for OK)
 - Add focus management system for proper keyboard navigation
-- Implement SetInitialDialogFocus function to set focus to logical first control
-- Implement GetNextFocusableControl function for custom focus navigation
-- Implement EnsureFocusVisible function to ensure focus indicators are visible
-- Update UnifiedDialogConfig structure to support custom accelerator key text
+- Implement `SetInitialDialogFocus` function to set focus to logical first control
+- Implement `GetNextFocusableControl` function for custom focus navigation
+- Implement `EnsureFocusVisible` function to ensure focus indicators are visible
+- Update `UnifiedDialogConfig` structure to support custom accelerator key text
 - Update unified dialog to use accelerator keys in button text with ampersand notation
 - Add reusable UI component system with base component architecture
-- Implement UIComponent base structure with function pointers for init, destroy, validate, getValue, setValue
-- Implement ComponentRegistry for managing component lifecycle
-- Add FileBrowserComponent with label, edit control, and browse button
-- Implement file browser with GetOpenFileNameW dialog integration
+- Implement `UIComponent` base structure with function pointers for init, destroy, validate, getValue, setValue
+- Implement `ComponentRegistry` for managing component lifecycle
+- Add `FileBrowserComponent` with label, edit control, and browse button
+- Implement file browser with `GetOpenFileNameW` dialog integration
 - Add file path validation to check file existence
-- Add FolderBrowserComponent with label, edit control, and browse button
-- Implement folder browser with SHBrowseForFolderW dialog integration
+- Add `FolderBrowserComponent` with label, edit control, and browse button
+- Implement folder browser with `SHBrowseForFolderW` dialog integration
 - Add folder path validation to check directory existence
-- Add LabeledTextInput component with validation support
+- Add `LabeledTextInput` component with validation support
 - Implement validation types: none, required, numeric, path, URL, custom
 - Add visual error feedback with red error labels for invalid inputs
 - Add custom validation function support for specialized input validation
-- Add ButtonRowComponent with standard and custom button layouts
+- Add `ButtonRowComponent` with standard and custom button layouts
 - Implement standard button layouts: OK, OK/Cancel, Yes/No, Yes/No/Cancel
 - Add right-aligned button positioning with proper spacing (6px between buttons)
 - Add Edit menu with Select All option (Ctrl+A accelerator)
 - Add validation framework for component validation
-- Implement ComponentValidationResult and ComponentValidationSummary structures
-- Implement ValidateComponent function for single component validation
-- Implement ValidateDialog function to validate all components in a dialog
-- Implement ShowValidationErrors function to display errors near controls
-- Implement FreeValidationSummary cleanup function
+- Implement `ComponentValidationResult` and `ComponentValidationSummary` structures
+- Implement `ValidateComponent` function for single component validation
+- Implement `ValidateDialog` function to validate all components in a dialog
+- Implement `ShowValidationErrors` function to display errors near controls
+- Implement `FreeValidationSummary` cleanup function
 - Add visual validation feedback with red borders for invalid controls
-- Implement DrawValidationBorder function to draw red borders around invalid controls
-- Implement SetControlErrorMessage function to display error messages
-- Implement SetEditValidationState function with window subclassing for border drawing
-- Implement HandleErrorLabelColor function for red text color in error labels
+- Implement `DrawValidationBorder` function to draw red borders around invalid controls
+- Implement `SetControlErrorMessage` function to display error messages
+- Implement `SetEditValidationState` function with window subclassing for border drawing
+- Implement `HandleErrorLabelColor` function for red text color in error labels
 - Add dialog validation integration functions
-- Implement ValidateDialogBeforeClose function to prevent dialog close on validation failure
-- Implement ClearDialogValidationErrors function to clear all validation errors
-- Implement HandleDialogValidation function for OK/Apply button validation
+- Implement `ValidateDialogBeforeClose` function to prevent dialog close on validation failure
+- Implement `ClearDialogValidationErrors` function to clear all validation errors
+- Implement `HandleDialogValidation` function for OK/Apply button validation
 - Add automatic focus management to first invalid control on validation failure
 - Add validation error summary message box for multiple validation errors
 
@@ -66,21 +66,21 @@ User Interface:
 Memory Management:
 - Add comprehensive memory management system with leak detection
 - Add memory pools for frequent allocations
-- Add RAII resource management patterns (AutoResource, AutoString, AutoArray)
-- Add error-safe allocation patterns with AllocationSet and BulkCleanup
+- Add RAII resource management patterns (`AutoResource`, `AutoString`, `AutoArray`)
+- Add error-safe allocation patterns with `AllocationSet` and `BulkCleanup`
 - Add memory error handling with double-free and use-after-free detection
 - Add buffer overrun detection with guard patterns in debug builds
 - Add thread-safe allocation tracking with critical sections
 - Add memory leak detection with hash table optimization
 - Migrate all existing allocations to safe memory wrappers
 - Implement robust memory management with validated allocation tracking
-- Fix critical SafeFree bug with allocation integrity validation
+- Fix critical `SafeFree` bug with allocation integrity validation
 - Replace complex hash table with reliable linear search for allocation tracking
 - Fix double-free detection to respect leak detection state
-- Fix Base64DecodeWide memory corruption issues
+- Fix `Base64DecodeWide` memory corruption issues
 - Fix cached metadata allocation problems
-- Fix SAFE_REALLOC buffer overrun detection
-- Fix memory manager circular dependency in CreateMemoryPool
+- Fix `SAFE_REALLOC` buffer overrun detection
+- Fix memory manager circular dependency in `CreateMemoryPool`
 - Fix allocation removal logic to prevent hash table corruption
 
 User Interface:
@@ -107,33 +107,33 @@ Download System:
 - Add download cancellation with automatic cleanup
 - Enable real-time progress updates during downloads
 - Fix download hang by processing carriage return line terminators
-- Fix yt-dlp progress tracking with proper template field names
-- Remove --print-json flag that was blocking progress updates
+- Fix `yt-dlp` progress tracking with proper template field names
+- Remove `--print-json` flag that was blocking progress updates
 - Fix download progress display and timeout issues
 - Add detailed status messages during download (webpage, player API, format selection)
-- Improve progress reporting with granular yt-dlp operation status updates
+- Improve progress reporting with granular `yt-dlp` operation status updates
 - Preserve duration processing functionality
 
 Error Handling:
 - Add enhanced error reporting with detailed error codes and diagnostics
-- Implement error handling system with UnifiedDialog integration
+- Implement error handling system with `UnifiedDialog` integration
 - Add error context system with detailed error tracking
 - Add error handling macros for memory allocation, parameter validation, and system calls
-- Update yt-dlp subprocess error handling with standardized error macros
-- Update UI error handling integration with new ErrorContext system
-- Update file operation error handling in cache.c with detailed context
+- Update `yt-dlp` subprocess error handling with standardized error macros
+- Update UI error handling integration with new `ErrorContext` system
+- Update file operation error handling in `cache.c` with detailed context
 - Add comprehensive error logging and validation messages
 - Improve error message extraction for user-friendly display
-- Improve yt-dlp error message extraction for cleaner user display
+- Improve `yt-dlp` error message extraction for cleaner user display
 
 Thread Safety and Concurrency:
-- Add thread-safe logging system with ThreadSafeDebugOutput functions
+- Add thread-safe logging system with `ThreadSafeDebugOutput` functions
 - Implement thread-safe global state wrappers and access functions
-- Add ThreadContext structure with lifecycle tracking
-- Enhance ThreadContext with timeout, start time, and thread name fields
-- Implement CreateManagedThread with proper initialization and naming
-- Add WaitForThreadCompletion with timeout support
-- Implement ForceTerminateThread for unresponsive threads
+- Add `ThreadContext` structure with lifecycle tracking
+- Enhance `ThreadContext` with timeout, start time, and thread name fields
+- Implement `CreateManagedThread` with proper initialization and naming
+- Add `WaitForThreadCompletion` with timeout support
+- Implement `ForceTerminateThread` for unresponsive threads
 
 Performance:
 - Implement high-performance cache loading with optimized file processing
@@ -141,32 +141,32 @@ Performance:
 - Remove excessive newlines from log file
 
 Cache Management:
-- Fix cache_index.txt not being saved on program exit
+- Fix `cache_index.txt` not being saved on program exit
 - Add comprehensive file deletion logging
 
 Crash Fixes:
 - Fix startup and exit crashes related to memory management
 - Remove duplicate cleanup calls causing exit crashes
 - Fix double-close crash on process thread handle
-- Fix crash in CancelThreadSafeSubprocess critical section
+- Fix crash in `CancelThreadSafeSubprocess` critical section
 - Remove critical section usage during cleanup to prevent corruption
-- Prevent double-cleanup of ThreadSafeSubprocessContext
+- Prevent double-cleanup of `ThreadSafeSubprocessContext`
 - Skip cancellation in cleanup if process already completed
 - Fix shutdown crash caused by improper window cleanup order
 - Fix multiple handle double-close crashes during download completion
-- Add defensive handle validation using DuplicateHandle before closing handles
-- Fix cancellationEvent double-close on initialization failure
+- Add defensive handle validation using `DuplicateHandle` before closing handles
+- Fix `cancellationEvent` double-close on initialization failure
 - Fix critical section deletion crashes from corrupted contexts
-- Add memory corruption detection in CleanupThreadSafeSubprocessContext
-- Fix invalid handle crashes in ClearActiveDownload
-- Add ExitProcess workaround for third-party hook interference during shutdown
+- Add memory corruption detection in `CleanupThreadSafeSubprocessContext`
+- Fix invalid handle crashes in `ClearActiveDownload`
+- Add `ExitProcess` workaround for third-party hook interference during shutdown
 - Explicitly destroy child windows before final cleanup to prevent hook crashes
 
 Logging and Debugging:
-- Add detailed command line logging for yt-dlp execution
+- Add detailed command line logging for `yt-dlp` execution
 - Fix truncated logging by using dynamic buffer allocation
 - Add proper Windows resource handling and cleanup
 
 Build System:
-- Update build system with debug/release flags and dbghelp library linking
-- Add strict compilation with -Wall -Wextra -Werror flags
+- Update build system with `debug`/`release` flags and `dbghelp` library linking
+- Add strict compilation with `-Wall -Wextra -Werror` flags
