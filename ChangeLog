@@ -1,5 +1,20 @@
 0.0.2
 
+HiDPI Support:
+- Add centralized DPI management system with DPIContext and DPIManager structures
+- Implement CreateDPIManager and DestroyDPIManager for lifecycle management
+- Implement RegisterWindowForDPI and UnregisterWindowForDPI for window tracking
+- Implement GetWindowDPI with fallback to GetDpiForWindow API (Windows 10 1607+)
+- Implement GetMonitorDPI with fallback to GetDpiForMonitor API (Windows 8.1+)
+- Implement GetDPIForPoint for screen location DPI detection
+- Implement GetWindowScaleFactor to calculate DPI scale factor
+- Add coordinate conversion functions: LogicalToPhysical and PhysicalToLogical
+- Add rectangle conversion functions: LogicalRectToPhysical and PhysicalRectToLogical
+- Implement ScaleValueForDPI and ScaleValueForDPIFloat for value scaling
+- Replace GetDpiForWindowSafe calls with GetWindowDPI in dialogs.c
+- Add global g_dpiManager variable for centralized DPI management
+- Add dpi.c and dpi.h module to build system
+
 User Interface:
 - Add accessibility support with screen reader integration
 - Implement `SetControlAccessibility` function for accessible names and descriptions
