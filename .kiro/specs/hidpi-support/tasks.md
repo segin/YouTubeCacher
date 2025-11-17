@@ -5,13 +5,18 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 ## Tasks
 
-- [ ] 1. Update application manifest for per-monitor DPI awareness
+- [x] 1. Update application manifest for per-monitor DPI awareness
+
+
+
   - Update `YouTubeCacher.manifest` with per-monitor DPI awareness v2 settings
   - Test manifest embedding via resource file
   - Verify DPI awareness is properly declared
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 1.1 Update manifest file
+- [x] 1.1 Update manifest file
+
+
   - Open `YouTubeCacher.manifest`
   - Add `<dpiAware>true/pm</dpiAware>` for backward compatibility
   - Add `<dpiAwareness>permonitorv2</dpiAwareness>` for Windows 10 1703+
@@ -19,7 +24,10 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Verify XML is well-formed
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 1.2 Verify manifest embedding
+
+- [x] 1.2 Verify manifest embedding
+
+
   - Build the application
   - Use `mt.exe` or resource viewer to verify manifest is embedded
   - Check that DPI awareness settings are present in embedded manifest
