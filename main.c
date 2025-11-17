@@ -229,8 +229,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     // SIMPLIFIED: Removed excessive DLL loading that was slowing startup
     // The manifest and InitCommonControlsEx above should be sufficient for theming
     
-    // Enable DPI awareness (simplified)
-    SetProcessDPIAware();
+    // Enable DPI awareness with per-monitor v2 support and fallbacks
+    InitializeDPIAwareness();
+    
+    // Initialize global DPI manager for per-monitor DPI tracking
+    g_dpiManager = CreateDPIManager();
+    if (!g_dpiManager) {
+        SHOW_ERROR_DIALOG(NULL, YTC_SEVERITY_WARNING, YTC_ERROR_INITIALIZATION, 
+                         L"Failed to initialize DPI management system.\r\n\r\n"
+                         L"The application will continue but may not scale properly on high-DPI displays.");
+    }
     
     // Initialize the global IPC system for efficient cross-thread communication
     if (!InitializeGlobalIPC()) {
@@ -270,6 +278,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     
     // Cleanup the global IPC system
     CleanupGlobalIPC();
+    
+    // Cleanup DPI manager
+    if (g_dpiManager) {
+        DestroyDPIManager(g_dpiManager);
+        g_dpiManager = NULL;
+    }
     
     // Cleanup thread safety system
     CleanupThreadSafety();

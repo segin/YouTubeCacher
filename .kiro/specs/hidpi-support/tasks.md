@@ -40,6 +40,7 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
+
   - Create DPI context structures and management functions
   - Implement enhanced DPI detection with fallbacks
   - Create coordinate conversion functions
@@ -86,19 +87,27 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Write `ScaleValueForDPIFloat()` function for floating-point scaling
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 3. Implement enhanced DPI awareness initialization
+- [x] 3. Implement enhanced DPI awareness initialization
+
+
+
+
   - Replace `SetProcessDPIAware()` with enhanced initialization
   - Support per-monitor DPI awareness v2 with fallbacks
   - Initialize global DPI manager
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 3.1 Create enhanced DPI initialization function
+
+- [x] 3.1 Create enhanced DPI initialization function
+
   - Write `InitializeDPIAwareness()` function in `dpi.c`
   - Try `SetProcessDpiAwarenessContext` with `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`
   - Fall back to `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE` if v2 fails
   - Fall back to `SetProcessDpiAwareness` (Windows 8.1) if context fails
   - Fall back to `SetProcessDPIAware` (Windows Vista/7) as last resort
   - _Requirements: 1.1, 1.2, 1.3_
+
+
 
 - [ ] 3.2 Update main.c initialization
   - Replace `SetProcessDPIAware()` call with `InitializeDPIAwareness()`

@@ -3,6 +3,48 @@
 // Global DPI manager instance
 DPIManager* g_dpiManager = NULL;
 
+// Initialize DPI awareness with fallbacks for different Windows versions
+void InitializeDPIAwareness(void) {
+    // Try Per-Monitor V2 (Windows 10 1703+)
+    typedef BOOL (WINAPI *SetProcessDpiAwarenessContextFunc)(DPI_AWARENESS_CONTEXT);
+    HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+    
+    if (hUser32) {
+        SetProcessDpiAwarenessContextFunc pSetProcessDpiAwarenessContext = 
+            (SetProcessDpiAwarenessContextFunc)(void*)GetProcAddress(hUser32, "SetProcessDpiAwarenessContext");
+        
+        if (pSetProcessDpiAwarenessContext) {
+            // Try Per-Monitor V2 first
+            if (pSetProcessDpiAwarenessContext((DPI_AWARENESS_CONTEXT)-4)) {  // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+                return;
+            }
+            // Fall back to Per-Monitor V1
+            if (pSetProcessDpiAwarenessContext((DPI_AWARENESS_CONTEXT)-3)) {  // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE
+                return;
+            }
+        }
+    }
+    
+    // Try Windows 8.1 API
+    typedef HRESULT (WINAPI *SetProcessDpiAwarenessFunc)(int);
+    HMODULE hShcore = LoadLibraryW(L"shcore.dll");
+    if (hShcore) {
+        SetProcessDpiAwarenessFunc pSetProcessDpiAwareness = 
+            (SetProcessDpiAwarenessFunc)(void*)GetProcAddress(hShcore, "SetProcessDpiAwareness");
+        
+        if (pSetProcessDpiAwareness) {
+            // PROCESS_PER_MONITOR_DPI_AWARE = 2
+            pSetProcessDpiAwareness(2);
+            FreeLibrary(hShcore);
+            return;
+        }
+        FreeLibrary(hShcore);
+    }
+    
+    // Fall back to Vista/7 system DPI awareness
+    SetProcessDPIAware();
+}
+
 // Initialize DPI manager
 DPIManager* CreateDPIManager(void) {
     DPIManager* manager = (DPIManager*)malloc(sizeof(DPIManager));

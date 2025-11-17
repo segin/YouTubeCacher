@@ -5,6 +5,9 @@
 
 // DPI management function prototypes
 
+// Initialize DPI awareness with fallbacks
+void InitializeDPIAwareness(void);
+
 // Initialize DPI manager
 DPIManager* CreateDPIManager(void);
 void DestroyDPIManager(DPIManager* manager);

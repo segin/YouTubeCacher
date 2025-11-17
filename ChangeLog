@@ -14,6 +14,11 @@ HiDPI Support:
 - Replace GetDpiForWindowSafe calls with GetWindowDPI in dialogs.c
 - Add global g_dpiManager variable for centralized DPI management
 - Add dpi.c and dpi.h module to build system
+- Implement InitializeDPIAwareness function with per-monitor DPI awareness v2 support
+- Add fallback chain: Per-Monitor V2 → Per-Monitor V1 → Windows 8.1 API → Vista/7 API
+- Replace SetProcessDPIAware with InitializeDPIAwareness in main.c
+- Initialize global DPI manager on application startup
+- Add DPI manager cleanup on application exit
 
 User Interface:
 - Add accessibility support with screen reader integration
