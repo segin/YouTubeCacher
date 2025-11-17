@@ -9,6 +9,7 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
+
   - Update `YouTubeCacher.manifest` with per-monitor DPI awareness v2 settings
   - Test manifest embedding via resource file
   - Verify DPI awareness is properly declared
@@ -34,28 +35,39 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Test on Windows 10 to verify per-monitor awareness is active
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 2. Implement centralized DPI management system
+- [x] 2. Implement centralized DPI management system
+
+
+
+
   - Create DPI context structures and management functions
   - Implement enhanced DPI detection with fallbacks
   - Create coordinate conversion functions
+
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-- [ ] 2.1 Create DPI management structures
+- [x] 2.1 Create DPI management structures
+
   - Define `DPIContext` structure in `YouTubeCacher.h`
   - Define `DPIManager` structure in `YouTubeCacher.h`
   - Create new `dpi.c` file with corresponding `dpi.h` header
   - Add global `g_dpiManager` variable
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-- [ ] 2.2 Implement DPI manager functions
+
+
+- [x] 2.2 Implement DPI manager functions
+
   - Write `CreateDPIManager()` function to initialize manager
   - Write `DestroyDPIManager()` function for cleanup
   - Write `RegisterWindowForDPI()` function to track windows
   - Write `UnregisterWindowForDPI()` function to untrack windows
   - Write `GetDPIContext()` function to retrieve context for window
+
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-- [ ] 2.3 Implement enhanced DPI detection
+- [x] 2.3 Implement enhanced DPI detection
+
   - Write `GetWindowDPI()` function using `GetDpiForWindow` with fallback
   - Write `GetMonitorDPI()` function using `GetDpiForMonitor` with fallback
   - Write `GetDPIForPoint()` function to get DPI for screen location
@@ -63,7 +75,9 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Replace existing `GetDpiForWindowSafe()` calls with new functions
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
 
-- [ ] 2.4 Implement coordinate conversion functions
+
+- [-] 2.4 Implement coordinate conversion functions
+
   - Write `LogicalToPhysical()` function to convert single values
   - Write `PhysicalToLogical()` function to convert single values
   - Write `LogicalRectToPhysical()` function to convert rectangles

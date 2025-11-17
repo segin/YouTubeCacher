@@ -6,31 +6,6 @@
 #endif
 
 // HiDPI helper functions
-static int GetDpiForWindowSafe(HWND hwnd) {
-    // Try to use GetDpiForWindow (Windows 10 1607+)
-    typedef UINT (WINAPI *GetDpiForWindowFunc)(HWND);
-    static GetDpiForWindowFunc pGetDpiForWindow = NULL;
-    static BOOL checked = FALSE;
-    
-    if (!checked) {
-        HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
-        if (hUser32) {
-            pGetDpiForWindow = (GetDpiForWindowFunc)(void*)GetProcAddress(hUser32, "GetDpiForWindow");
-        }
-        checked = TRUE;
-    }
-    
-    if (pGetDpiForWindow) {
-        return pGetDpiForWindow(hwnd);
-    }
-    
-    // Fallback to system DPI
-    HDC hdc = GetDC(NULL);
-    int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
-    ReleaseDC(NULL, hdc);
-    return dpi;
-}
-
 static int ScaleForDpi(int value, int dpi) {
     return MulDiv(value, dpi, 96); // 96 is the standard DPI
 }
@@ -42,7 +17,7 @@ static void CalculateOptimalDialogSize(HWND hDlg, const wchar_t* message, int* w
     if (!message || !width || !height) return;
     
     // Get DPI for proper scaling
-    int dpi = GetDpiForWindowSafe(hDlg);
+    int dpi = GetWindowDPI(hDlg);
     
     // Base measurements at 96 DPI
     const int BASE_ICON_SIZE = 32;           // Standard system icon size
@@ -131,7 +106,7 @@ static void PositionDialogControls(HWND hDlg, EnhancedErrorDialog* errorDialog) 
     if (!hDlg || !errorDialog || !errorDialog->message) return;
     
     // Get DPI for proper scaling
-    int dpi = GetDpiForWindowSafe(hDlg);
+    int dpi = GetWindowDPI(hDlg);
     
     // Base measurements at 96 DPI
     const int BASE_ICON_SIZE = 32;
@@ -554,7 +529,7 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
 // Helper function to resize unified dialog
 void ResizeUnifiedDialog(HWND hDlg, BOOL expanded) {
     // Get DPI for this window
-    int dpi = GetDpiForWindowSafe(hDlg);
+    int dpi = GetWindowDPI(hDlg);
     
     // ============================================================================
     // Microsoft Windows UI Guidelines - Modern Dialog Standards
@@ -843,7 +818,7 @@ BOOL CopyUnifiedDialogToClipboard(const UnifiedDialogConfig* config) {
 // Resize error dialog for expanded/collapsed state
 void ResizeErrorDialog(HWND hDlg, BOOL expanded) {
     // Get DPI for this window
-    int dpi = GetDpiForWindowSafe(hDlg);
+    int dpi = GetWindowDPI(hDlg);
     
     // Get all control handles at the start
     HWND hIcon = GetDlgItem(hDlg, IDC_UNIFIED_ICON);
@@ -1316,7 +1291,7 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             // Update message control for word wrapping
             HWND hMessage = GetDlgItem(hDlg, IDC_UNIFIED_MESSAGE);
             if (hMessage) {
-                int dpi = GetDpiForWindowSafe(hDlg);
+                int dpi = GetWindowDPI(hDlg);
                 int iconSpace = ScaleForDpi(50, dpi);
                 int margin = ScaleForDpi(10, dpi);
                 int messageWidth = optimalWidth - iconSpace - margin;
@@ -2055,7 +2030,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             // Using Microsoft UI Guidelines (Windows 98/2000/XP era) + GNOME font sizing
             
             // Get DPI for scaling calculations
-            int dpi = GetDpiForWindowSafe(hDlg);
+            int dpi = GetWindowDPI(hDlg);
             
             // Microsoft UI Guidelines - convert DLU to pixels at current DPI
             // 1 DLU horizontal = (dialog_base_unit_x / 4) pixels

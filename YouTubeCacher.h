@@ -541,6 +541,27 @@ typedef struct {
     BOOL allValid;
 } ComponentValidationSummary;
 
+// DPI management structures
+typedef struct {
+    HWND hwnd;
+    int currentDpi;
+    int baseDpi;  // Always 96
+    double scaleFactor;
+    RECT logicalRect;  // Window rect in logical coordinates
+} DPIContext;
+
+// Global DPI manager
+typedef struct {
+    DPIContext* mainWindow;
+    DPIContext** dialogs;
+    int dialogCount;
+    int dialogCapacity;
+    CRITICAL_SECTION lock;  // Thread safety
+} DPIManager;
+
+// Global DPI manager instance
+extern DPIManager* g_dpiManager;
+
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"
 #include "parser.h"
@@ -550,5 +571,6 @@ typedef struct {
 #include "accessibility.h"
 #include "keyboard.h"
 #include "components.h"
+#include "dpi.h"
 
 #endif // YOUTUBECACHER_H

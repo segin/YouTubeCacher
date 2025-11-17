@@ -1,7 +1,7 @@
 # Makefile for native Windows C program
 
 # Source files
-SOURCES = main.c uri.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c ui.c dialogs.c memory.c error.c threadsafe.c subproc.c accessibility.c keyboard.c components.c
+SOURCES = main.c uri.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c ui.c dialogs.c memory.c error.c threadsafe.c subproc.c accessibility.c keyboard.c components.c dpi.c
 RC_SOURCE = YouTubeCacher.rc
 
 # Object directories
@@ -155,6 +155,7 @@ $(OBJ32_DIR)/subproc.o $(OBJ64_DIR)/subproc.o: subproc.c YouTubeCacher.h threadi
 $(OBJ32_DIR)/accessibility.o $(OBJ64_DIR)/accessibility.o: accessibility.c accessibility.h YouTubeCacher.h
 $(OBJ32_DIR)/keyboard.o $(OBJ64_DIR)/keyboard.o: keyboard.c keyboard.h YouTubeCacher.h
 $(OBJ32_DIR)/components.o $(OBJ64_DIR)/components.o: components.c components.h YouTubeCacher.h
+$(OBJ32_DIR)/dpi.o $(OBJ64_DIR)/dpi.o: dpi.c dpi.h YouTubeCacher.h
 
 # Resource file dependencies
 $(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o: YouTubeCacher.rc resource.h
