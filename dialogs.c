@@ -512,6 +512,38 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
             break;
         }
         
+        case WM_DPICHANGED: {
+            // Get new DPI from wParam
+            int newDpi = HIWORD(wParam);
+            
+            // Get suggested window rect from lParam
+            RECT* suggestedRect = (RECT*)lParam;
+            
+            // Update DPI context
+            DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+            if (context) {
+                int oldDpi = context->currentDpi;
+                context->currentDpi = newDpi;
+                context->scaleFactor = (double)newDpi / 96.0;
+                
+                // Rescale all UI elements
+                RescaleWindowForDPI(hDlg, oldDpi, newDpi);
+                
+                // Resize dialog to maintain proper layout
+                ResizeUnifiedDialog(hDlg, isExpanded);
+                
+                // Apply suggested window position and size
+                SetWindowPos(hDlg, NULL,
+                            suggestedRect->left,
+                            suggestedRect->top,
+                            suggestedRect->right - suggestedRect->left,
+                            suggestedRect->bottom - suggestedRect->top,
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            
+            return 0;
+        }
+        
         case WM_SYSCOLORCHANGE:
             // System colors changed (including high contrast mode changes)
             // Apply high contrast colors if needed
@@ -1517,6 +1549,40 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
             break;
         }
         
+        case WM_DPICHANGED: {
+            // Get new DPI from wParam
+            int newDpi = HIWORD(wParam);
+            
+            // Get suggested window rect from lParam
+            RECT* suggestedRect = (RECT*)lParam;
+            
+            // Update DPI context
+            DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+            if (context) {
+                int oldDpi = context->currentDpi;
+                context->currentDpi = newDpi;
+                context->scaleFactor = (double)newDpi / 96.0;
+                
+                // Rescale all UI elements
+                RescaleWindowForDPI(hDlg, oldDpi, newDpi);
+                
+                // Resize dialog to maintain proper layout
+                if (errorDialog) {
+                    ResizeErrorDialog(hDlg, errorDialog->isExpanded);
+                }
+                
+                // Apply suggested window position and size
+                SetWindowPos(hDlg, NULL,
+                            suggestedRect->left,
+                            suggestedRect->top,
+                            suggestedRect->right - suggestedRect->left,
+                            suggestedRect->bottom - suggestedRect->top,
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            
+            return 0;
+        }
+        
         case WM_SYSCOLORCHANGE:
             // System colors changed (including high contrast mode changes)
             // Apply high contrast colors if needed
@@ -2302,6 +2368,35 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 RemovePropW(hDlg, L"SmallFont");
             }
             break;
+        }
+        
+        case WM_DPICHANGED: {
+            // Get new DPI from wParam
+            int newDpi = HIWORD(wParam);
+            
+            // Get suggested window rect from lParam
+            RECT* suggestedRect = (RECT*)lParam;
+            
+            // Update DPI context
+            DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+            if (context) {
+                int oldDpi = context->currentDpi;
+                context->currentDpi = newDpi;
+                context->scaleFactor = (double)newDpi / 96.0;
+                
+                // Rescale all UI elements
+                RescaleWindowForDPI(hDlg, oldDpi, newDpi);
+                
+                // Apply suggested window position and size
+                SetWindowPos(hDlg, NULL,
+                            suggestedRect->left,
+                            suggestedRect->top,
+                            suggestedRect->right - suggestedRect->left,
+                            suggestedRect->bottom - suggestedRect->top,
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            
+            return 0;
         }
         
         case WM_SYSCOLORCHANGE:

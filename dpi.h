@@ -41,4 +41,9 @@ int GetMonitorDPI(HMONITOR hMonitor);
 // Get DPI for point on screen
 int GetDPIForPoint(POINT pt);
 
+// Dynamic DPI change handling
+void RescaleWindowForDPI(HWND hwnd, int oldDpi, int newDpi);
+void RescaleFontsForDPI(HWND hwnd, int dpi);
+void ReloadIconsForDPI(HWND hwnd, int dpi);
+
 #endif // DPI_H

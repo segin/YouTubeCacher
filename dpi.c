@@ -355,3 +355,57 @@ int ScaleValueForDPI(int value, int dpi) {
 double ScaleValueForDPIFloat(double value, int dpi) {
     return value * ((double)dpi / 96.0);
 }
+
+// Rescale window for DPI change
+void RescaleWindowForDPI(HWND hwnd, int oldDpi, int newDpi) {
+    if (!hwnd || oldDpi <= 0 || newDpi <= 0 || oldDpi == newDpi) {
+        return;
+    }
+    
+    // Calculate scale ratio
+    double scaleRatio = (double)newDpi / (double)oldDpi;
+    
+    // Rescale all child controls
+    HWND hChild = GetWindow(hwnd, GW_CHILD);
+    while (hChild) {
+        RECT rect;
+        GetWindowRect(hChild, &rect);
+        MapWindowPoints(HWND_DESKTOP, hwnd, (POINT*)&rect, 2);
+        
+        // Scale position and size
+        int newX = (int)(rect.left * scaleRatio);
+        int newY = (int)(rect.top * scaleRatio);
+        int newWidth = (int)((rect.right - rect.left) * scaleRatio);
+        int newHeight = (int)((rect.bottom - rect.top) * scaleRatio);
+        
+        SetWindowPos(hChild, NULL, newX, newY, newWidth, newHeight,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+        
+        hChild = GetWindow(hChild, GW_HWNDNEXT);
+    }
+    
+    // Rescale fonts
+    RescaleFontsForDPI(hwnd, newDpi);
+    
+    // Reload icons at new size
+    ReloadIconsForDPI(hwnd, newDpi);
+    
+    // Force redraw
+    InvalidateRect(hwnd, NULL, TRUE);
+}
+
+// Rescale fonts for DPI (placeholder implementation)
+void RescaleFontsForDPI(HWND hwnd, int dpi) {
+    // TODO: Implement font rescaling in task 5
+    // This is a placeholder for now
+    UNREFERENCED_PARAMETER(hwnd);
+    UNREFERENCED_PARAMETER(dpi);
+}
+
+// Reload icons for DPI (placeholder implementation)
+void ReloadIconsForDPI(HWND hwnd, int dpi) {
+    // TODO: Implement icon reloading in task 6
+    // This is a placeholder for now
+    UNREFERENCED_PARAMETER(hwnd);
+    UNREFERENCED_PARAMETER(dpi);
+}

@@ -92,6 +92,7 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
+
   - Replace `SetProcessDPIAware()` with enhanced initialization
   - Support per-monitor DPI awareness v2 with fallbacks
   - Initialize global DPI manager
@@ -109,20 +110,25 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
-- [ ] 3.2 Update main.c initialization
+- [x] 3.2 Update main.c initialization
   - Replace `SetProcessDPIAware()` call with `InitializeDPIAwareness()`
   - Call `CreateDPIManager()` after DPI awareness initialization
   - Store global DPI manager pointer
   - Add cleanup call to `DestroyDPIManager()` on exit
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 4. Implement dynamic DPI change handling
+- [x] 4. Implement dynamic DPI change handling
+
+
+
   - Add WM_DPICHANGED message handler
   - Implement window rescaling function
   - Update all window procedures to handle DPI changes
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 4.1 Implement WM_DPICHANGED handler
+- [x] 4.1 Implement WM_DPICHANGED handler
+
+
   - Add `WM_DPICHANGED` case to `MainWindowProc` in main window
   - Extract new DPI from `wParam`
   - Extract suggested window rect from `lParam`
@@ -131,7 +137,9 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Apply suggested window position and size
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 4.2 Implement window rescaling function
+
+- [x] 4.2 Implement window rescaling function
+
   - Write `RescaleWindowForDPI()` function in `dpi.c`
   - Calculate scale ratio between old and new DPI
   - Enumerate all child controls
@@ -141,7 +149,9 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Force window redraw
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 4.3 Add WM_DPICHANGED to dialog procedures
+
+- [x] 4.3 Add WM_DPICHANGED to dialog procedures
+
   - Add `WM_DPICHANGED` handler to `UnifiedDialogProc`
   - Add `WM_DPICHANGED` handler to `EnhancedErrorDialogProc`
   - Add `WM_DPICHANGED` handler to `SettingsDialogProc`

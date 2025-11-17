@@ -19,6 +19,14 @@ HiDPI Support:
 - Replace SetProcessDPIAware with InitializeDPIAwareness in main.c
 - Initialize global DPI manager on application startup
 - Add DPI manager cleanup on application exit
+- Implement dynamic DPI change handling with WM_DPICHANGED message support
+- Implement RescaleWindowForDPI function to rescale all child controls on DPI change
+- Add WM_DPICHANGED handler to main window (DialogProc) for per-monitor DPI awareness
+- Add WM_DPICHANGED handler to UnifiedDialogProc for dialog DPI changes
+- Add WM_DPICHANGED handler to EnhancedErrorDialogProc for error dialog DPI changes
+- Add WM_DPICHANGED handler to SettingsDialogProc for settings dialog DPI changes
+- Add WM_DPICHANGED handler to AboutDialogProc for about dialog DPI changes
+- Add placeholder functions RescaleFontsForDPI and ReloadIconsForDPI for future font and icon scaling
 
 User Interface:
 - Add accessibility support with screen reader integration
