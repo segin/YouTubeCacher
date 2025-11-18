@@ -269,7 +269,9 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Test icon quality at different DPI settings
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [-] 7. Implement window position and size persistence
+- [x] 7. Implement window position and size persistence
+
+
 
 
 
@@ -290,13 +292,15 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - _Requirements: 9.1, 9.2, 9.3_
 
 
-- [ ] 7.2 Implement logical coordinate restoration
+- [x] 7.2 Implement logical coordinate restoration
+
   - Write `RestoreWindowPositionLogical()` function in `dpi.c`
   - Load logical coordinates from registry
   - Convert logical coordinates to physical for current DPI
   - Apply screen bounds checking
   - Set window position and size
   - _Requirements: 9.1, 9.2, 9.4, 9.5_
+
 
 
 - [ ] 7.3 Implement screen bounds checking
@@ -307,7 +311,8 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Handle disconnected monitors gracefully
   - _Requirements: 9.5_
 
-- [-] 7.4 Update window position save/restore
+- [x] 7.4 Update window position save/restore
+
 
   - Replace existing `SaveWindowPosition()` calls with `SaveWindowPositionLogical()`
   - Replace existing `RestoreWindowPosition()` calls with `RestoreWindowPositionLogical()`

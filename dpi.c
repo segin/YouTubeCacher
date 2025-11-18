@@ -950,30 +950,40 @@ BOOL SaveWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
     RECT logicalRect;
     PhysicalRectToLogical(&physicalRect, &logicalRect, dpi);
     
-    // Open or create registry key
+    // Open or create registry key under the standard application registry path
     HKEY hKey;
     DWORD disposition;
-    wchar_t regPath[512];
-    swprintf(regPath, 512, L"Software\\YouTubeCacher\\WindowPos\\%s", keyName);
     
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, regPath, 0, NULL, REG_OPTION_NON_VOLATILE,
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, NULL, REG_OPTION_NON_VOLATILE,
                        KEY_WRITE, NULL, &hKey, &disposition) != ERROR_SUCCESS) {
         return FALSE;
     }
     
-    // Save logical coordinates
+    // Save logical coordinates with keyName prefix to support multiple windows
     DWORD left = (DWORD)logicalRect.left;
     DWORD top = (DWORD)logicalRect.top;
     DWORD right = (DWORD)logicalRect.right;
     DWORD bottom = (DWORD)logicalRect.bottom;
     DWORD baseDpi = 96;
     
+    // Create value names with window identifier prefix
+    wchar_t valueName[256];
     BOOL success = TRUE;
-    success &= (RegSetValueExW(hKey, L"Left", 0, REG_DWORD, (BYTE*)&left, sizeof(DWORD)) == ERROR_SUCCESS);
-    success &= (RegSetValueExW(hKey, L"Top", 0, REG_DWORD, (BYTE*)&top, sizeof(DWORD)) == ERROR_SUCCESS);
-    success &= (RegSetValueExW(hKey, L"Right", 0, REG_DWORD, (BYTE*)&right, sizeof(DWORD)) == ERROR_SUCCESS);
-    success &= (RegSetValueExW(hKey, L"Bottom", 0, REG_DWORD, (BYTE*)&bottom, sizeof(DWORD)) == ERROR_SUCCESS);
-    success &= (RegSetValueExW(hKey, L"DPI", 0, REG_DWORD, (BYTE*)&baseDpi, sizeof(DWORD)) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_Left", keyName);
+    success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&left, sizeof(DWORD)) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_Top", keyName);
+    success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&top, sizeof(DWORD)) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_Right", keyName);
+    success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&right, sizeof(DWORD)) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_Bottom", keyName);
+    success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&bottom, sizeof(DWORD)) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_DPI", keyName);
+    success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&baseDpi, sizeof(DWORD)) == ERROR_SUCCESS);
     
     RegCloseKey(hKey);
     return success;
@@ -987,25 +997,34 @@ BOOL RestoreWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
     
     // Open registry key
     HKEY hKey;
-    wchar_t regPath[512];
-    swprintf(regPath, 512, L"Software\\YouTubeCacher\\WindowPos\\%s", keyName);
     
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, regPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
         return FALSE;
     }
     
-    // Load logical coordinates
+    // Load logical coordinates with keyName prefix
     RECT logicalRect;
     DWORD savedDpi = 96;
     DWORD size = sizeof(DWORD);
     DWORD left, top, right, bottom;
+    wchar_t valueName[256];
     
     BOOL success = TRUE;
-    success &= (RegQueryValueExW(hKey, L"Left", NULL, NULL, (BYTE*)&left, &size) == ERROR_SUCCESS);
-    success &= (RegQueryValueExW(hKey, L"Top", NULL, NULL, (BYTE*)&top, &size) == ERROR_SUCCESS);
-    success &= (RegQueryValueExW(hKey, L"Right", NULL, NULL, (BYTE*)&right, &size) == ERROR_SUCCESS);
-    success &= (RegQueryValueExW(hKey, L"Bottom", NULL, NULL, (BYTE*)&bottom, &size) == ERROR_SUCCESS);
-    RegQueryValueExW(hKey, L"DPI", NULL, NULL, (BYTE*)&savedDpi, &size);  // Optional, defaults to 96
+    
+    swprintf(valueName, 256, L"%s_Left", keyName);
+    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&left, &size) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_Top", keyName);
+    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&top, &size) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_Right", keyName);
+    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&right, &size) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_Bottom", keyName);
+    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&bottom, &size) == ERROR_SUCCESS);
+    
+    swprintf(valueName, 256, L"%s_DPI", keyName);
+    RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&savedDpi, &size);  // Optional, defaults to 96
     
     RegCloseKey(hKey);
     

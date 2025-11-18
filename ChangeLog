@@ -54,7 +54,8 @@ HiDPI Support:
 - Add EnsureWindowOnScreen function to validate and adjust window position for current monitor
 - Integrate window position save in WM_DESTROY handler of main window
 - Integrate window position restore in WM_INITDIALOG handler of main window
-- Window position stored in registry at Software\YouTubeCacher\WindowPos\MainWindow
+- Window position stored in registry at Software\Talamar Developments\YouTube Cacher
+- Registry values use window name prefix (e.g., MainWindow_Left, MainWindow_Top)
 - Position saved in logical coordinates (96 DPI) for DPI-independent persistence
 - Position restored with conversion to current DPI for proper scaling
 - Screen bounds checking ensures window remains visible after DPI or monitor changes
