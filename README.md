@@ -4,13 +4,13 @@ A Windows GUI application for downloading YouTube videos with basic caching func
 
 ![Windows](https://img.shields.io/badge/Windows-10%2B-blue?logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-0.0.1-orange)
+![Version](https://img.shields.io/badge/Version-0.0.2-orange)
 
 ## Overview
 
 YouTubeCacher is a simple Windows desktop application that provides a graphical interface for downloading YouTube videos using yt-dlp. It includes basic caching to track downloaded videos and avoid duplicates.
 
-**Note**: This is version 0.0.1 - early development release with core functionality.
+**Note**: This is version 0.0.2 - early development release with core functionality.
 
 ## Current Features
 
