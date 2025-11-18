@@ -160,9 +160,9 @@ BEGIN
     LTEXT           "YouTube Cacher", IDC_ABOUT_TITLE, 20, 55, 340, 18, SS_CENTER
     LTEXT           "0.0.1", IDC_ABOUT_VERSION, 20, 75, 340, 16, SS_CENTER
     LTEXT           "A YouTube downloader frontend to youtube-dl and yt-dlp.", IDC_ABOUT_DESCRIPTION, 30, 100, 320, 16, SS_CENTER
-    CONTROL         "<a href=""https://github.com/segin/YouTubeCacher"">YouTube Cacher on GitHub</a>", IDC_ABOUT_GITHUB_LINK, "SysLink", LWS_TRANSPARENT | LWS_NOPREFIX, 20, 125, 340, 16
+    CONTROL         "<a href=""https://github.com/segin/YouTubeCacher"">YouTube Cacher on GitHub</a>", IDC_ABOUT_GITHUB_LINK, "SysLink", WS_TABSTOP, 20, 125, 340, 16
     LTEXT           "Copyright \251 2025 Kirn Gill II <segin2005@gmail.com>", IDC_ABOUT_COPYRIGHT, 30, 150, 320, 14, SS_CENTER
-    LTEXT           "This program comes with absolutely no warranty.", IDC_ABOUT_WARRANTY, 30, 165, 320, 14, SS_CENTER
-    CONTROL         "See the <a href=""https://mit-license.org/"">MIT License</a> for details.", IDC_ABOUT_LICENSE_LINK, "SysLink", LWS_TRANSPARENT | LWS_NOPREFIX, 30, 180, 320, 14
+    LTEXT           "This program comes with no warranty.", IDC_ABOUT_WARRANTY, 30, 165, 320, 14, SS_CENTER
+    CONTROL         "<a href=""https://mit-license.org/"">See the MIT License for details.</a>", IDC_ABOUT_LICENSE_LINK, "SysLink", WS_TABSTOP, 30, 180, 320, 14
     DEFPUSHBUTTON   "&Close", IDC_ABOUT_CLOSE, 165, 195, 50, 20
 END
