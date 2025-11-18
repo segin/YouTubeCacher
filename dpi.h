@@ -56,4 +56,18 @@ void SetControlFont(HWND hwnd, ScalableFont* font, int dpi);
 BOOL AddFontToManager(FontManager* manager, ScalableFont* font);
 ScalableFont* CreateAndRegisterFont(HWND hwnd, const wchar_t* faceName, int pointSize, int weight);
 
+// Icon management functions
+IconManager* CreateIconManager(void);
+void DestroyIconManager(IconManager* manager);
+HICON LoadIconForDPI(int resourceId, int dpi);
+int GetIconSizeForDPI(int baseSizeLogical, int dpi);
+void SetControlIcon(HWND hwnd, int resourceId, int dpi);
+ScalableIcon* CreateScalableIcon(int resourceId);
+void DestroyScalableIcon(ScalableIcon* icon);
+BOOL AddIconToManager(IconManager* manager, ScalableIcon* icon);
+
+// Helper functions for icon integration with windows
+void SetControlIconWithTracking(HWND hwnd, int resourceId, int dpi);
+BOOL InitializeIconControl(HWND hDialog, int controlId, int resourceId);
+
 #endif // DPI_H

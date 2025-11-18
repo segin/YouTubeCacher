@@ -555,6 +555,25 @@ typedef struct {
     int capacity;
 } FontManager;
 
+// Icon management structures
+typedef struct {
+    int size;
+    HICON hIcon;
+} IconSize;
+
+typedef struct {
+    int resourceId;
+    IconSize* sizes;
+    int sizeCount;
+    int sizeCapacity;
+} ScalableIcon;
+
+typedef struct {
+    ScalableIcon** icons;
+    int count;
+    int capacity;
+} IconManager;
+
 // DPI management structures
 typedef struct {
     HWND hwnd;
@@ -563,6 +582,7 @@ typedef struct {
     double scaleFactor;
     RECT logicalRect;  // Window rect in logical coordinates
     FontManager* fontManager;
+    IconManager* iconManager;
 } DPIContext;
 
 // Global DPI manager

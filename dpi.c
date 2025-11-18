@@ -620,10 +620,257 @@ void RescaleFontsForDPI(HWND hwnd, int dpi) {
     }
 }
 
-// Reload icons for DPI (placeholder implementation)
+// Create icon manager
+IconManager* CreateIconManager(void) {
+    IconManager* manager = (IconManager*)malloc(sizeof(IconManager));
+    if (!manager) {
+        return NULL;
+    }
+    
+    manager->icons = NULL;
+    manager->count = 0;
+    manager->capacity = 0;
+    
+    return manager;
+}
+
+// Destroy icon manager
+void DestroyIconManager(IconManager* manager) {
+    if (!manager) {
+        return;
+    }
+    
+    // Destroy all icons
+    for (int i = 0; i < manager->count; i++) {
+        if (manager->icons[i]) {
+            DestroyScalableIcon(manager->icons[i]);
+        }
+    }
+    
+    // Free icons array
+    if (manager->icons) {
+        free(manager->icons);
+    }
+    
+    free(manager);
+}
+
+// Create scalable icon
+ScalableIcon* CreateScalableIcon(int resourceId) {
+    if (resourceId <= 0) {
+        return NULL;
+    }
+    
+    ScalableIcon* icon = (ScalableIcon*)malloc(sizeof(ScalableIcon));
+    if (!icon) {
+        return NULL;
+    }
+    
+    icon->resourceId = resourceId;
+    icon->sizes = NULL;
+    icon->sizeCount = 0;
+    icon->sizeCapacity = 0;
+    
+    return icon;
+}
+
+// Destroy scalable icon
+void DestroyScalableIcon(ScalableIcon* icon) {
+    if (!icon) {
+        return;
+    }
+    
+    // Destroy all icon handles
+    for (int i = 0; i < icon->sizeCount; i++) {
+        if (icon->sizes[i].hIcon) {
+            DestroyIcon(icon->sizes[i].hIcon);
+        }
+    }
+    
+    // Free sizes array
+    if (icon->sizes) {
+        free(icon->sizes);
+    }
+    
+    free(icon);
+}
+
+// Add icon to manager
+BOOL AddIconToManager(IconManager* manager, ScalableIcon* icon) {
+    if (!manager || !icon) {
+        return FALSE;
+    }
+    
+    // Expand array if needed
+    if (manager->count >= manager->capacity) {
+        int newCapacity = manager->capacity == 0 ? 4 : manager->capacity * 2;
+        ScalableIcon** newIcons = (ScalableIcon**)realloc(manager->icons, 
+                                                           newCapacity * sizeof(ScalableIcon*));
+        if (!newIcons) {
+            return FALSE;
+        }
+        manager->icons = newIcons;
+        manager->capacity = newCapacity;
+    }
+    
+    manager->icons[manager->count++] = icon;
+    return TRUE;
+}
+
+// Get icon size for DPI
+int GetIconSizeForDPI(int baseSizeLogical, int dpi) {
+    if (baseSizeLogical <= 0 || dpi <= 0) {
+        return 16;  // Default icon size
+    }
+    
+    return ScaleValueForDPI(baseSizeLogical, dpi);
+}
+
+// Load icon at appropriate size for DPI
+HICON LoadIconForDPI(int resourceId, int dpi) {
+    if (resourceId <= 0 || dpi <= 0) {
+        return NULL;
+    }
+    
+    // Calculate desired icon size (base size is 16x16 at 96 DPI)
+    int desiredSize = GetIconSizeForDPI(16, dpi);
+    
+    // Available sizes in resource (standard Windows icon sizes)
+    int availableSizes[] = {16, 20, 24, 32, 48, 64};
+    int sizeCount = sizeof(availableSizes) / sizeof(availableSizes[0]);
+    
+    // Find closest size (prefer larger to avoid upscaling)
+    int bestSize = availableSizes[0];
+    for (int i = 0; i < sizeCount; i++) {
+        if (availableSizes[i] >= desiredSize) {
+            bestSize = availableSizes[i];
+            break;
+        }
+        bestSize = availableSizes[i];
+    }
+    
+    // Load icon at best size
+    HICON hIcon = (HICON)LoadImageW(GetModuleHandleW(NULL),
+                                     MAKEINTRESOURCEW(resourceId),
+                                     IMAGE_ICON,
+                                     bestSize, bestSize,
+                                     LR_DEFAULTCOLOR);
+    
+    // If loading failed, try default size
+    if (!hIcon) {
+        hIcon = (HICON)LoadImageW(GetModuleHandleW(NULL),
+                                   MAKEINTRESOURCEW(resourceId),
+                                   IMAGE_ICON,
+                                   0, 0,  // Use default size
+                                   LR_DEFAULTCOLOR);
+    }
+    
+    return hIcon;
+}
+
+// Set icon on control with DPI awareness
+void SetControlIcon(HWND hwnd, int resourceId, int dpi) {
+    if (!hwnd || resourceId <= 0 || dpi <= 0) {
+        return;
+    }
+    
+    // Load icon at appropriate size
+    HICON hIcon = LoadIconForDPI(resourceId, dpi);
+    if (!hIcon) {
+        return;
+    }
+    
+    // Get the old icon to destroy it later
+    HICON hOldIcon = (HICON)SendMessageW(hwnd, STM_GETICON, 0, 0);
+    
+    // Set the new icon
+    SendMessageW(hwnd, STM_SETICON, (WPARAM)hIcon, 0);
+    
+    // Destroy the old icon if it exists
+    if (hOldIcon) {
+        DestroyIcon(hOldIcon);
+    }
+}
+
+// Reload icons for DPI change
 void ReloadIconsForDPI(HWND hwnd, int dpi) {
-    // TODO: Implement icon reloading in task 6
-    // This is a placeholder for now
-    UNREFERENCED_PARAMETER(hwnd);
-    UNREFERENCED_PARAMETER(dpi);
+    if (!hwnd || dpi <= 0) {
+        return;
+    }
+    
+    // Enumerate all child controls
+    HWND hChild = GetWindow(hwnd, GW_CHILD);
+    while (hChild) {
+        // Get window class name to identify static controls
+        wchar_t className[256];
+        GetClassNameW(hChild, className, 256);
+        
+        // Check if this is a static control (which can display icons)
+        if (_wcsicmp(className, L"Static") == 0) {
+            // Get the control style
+            LONG_PTR style = GetWindowLongPtrW(hChild, GWL_STYLE);
+            
+            // Check if it has SS_ICON style
+            if ((style & SS_ICON) == SS_ICON) {
+                // Get the current icon
+                HICON hCurrentIcon = (HICON)SendMessageW(hChild, STM_GETICON, 0, 0);
+                
+                if (hCurrentIcon) {
+                    // We need to determine the resource ID of the icon
+                    // Since we can't easily get the resource ID from the icon handle,
+                    // we'll need to store this information in the window's user data
+                    // or use a different approach
+                    
+                    // For now, we'll just note that icons need to be reloaded
+                    // The actual resource ID should be stored when the icon is first set
+                    // This will be handled in task 6.5 when integrating with windows
+                    
+                    // Get resource ID from window data (if stored)
+                    int resourceId = (int)GetWindowLongPtrW(hChild, GWLP_USERDATA);
+                    if (resourceId > 0) {
+                        // Reload icon at new DPI
+                        SetControlIcon(hChild, resourceId, dpi);
+                    }
+                }
+            }
+        }
+        
+        hChild = GetWindow(hChild, GW_HWNDNEXT);
+    }
+}
+
+// Helper function to set icon on control and store resource ID for DPI changes
+// This should be used instead of directly calling STM_SETICON
+void SetControlIconWithTracking(HWND hwnd, int resourceId, int dpi) {
+    if (!hwnd || resourceId <= 0 || dpi <= 0) {
+        return;
+    }
+    
+    // Store the resource ID in the control's user data for later DPI changes
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)resourceId);
+    
+    // Set the icon at the appropriate DPI
+    SetControlIcon(hwnd, resourceId, dpi);
+}
+
+// Helper function to initialize icon on a static control with DPI awareness
+// This is a convenience function for dialog initialization
+BOOL InitializeIconControl(HWND hDialog, int controlId, int resourceId) {
+    if (!hDialog || controlId <= 0 || resourceId <= 0) {
+        return FALSE;
+    }
+    
+    // Get the control handle
+    HWND hControl = GetDlgItem(hDialog, controlId);
+    if (!hControl) {
+        return FALSE;
+    }
+    
+    // Get current DPI for the dialog
+    int dpi = GetWindowDPI(hDialog);
+    
+    // Set the icon with tracking
+    SetControlIconWithTracking(hControl, resourceId, dpi);
+    
+    return TRUE;
 }

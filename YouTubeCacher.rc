@@ -8,6 +8,14 @@
 // Also try alternative resource ID as backup
 2 RT_MANIFEST "YouTubeCacher.manifest"
 
+// Icon Resources
+// Note: Currently using system icons (IDI_QUESTION, etc.) which are DPI-aware by default
+// Custom icon resources at multiple sizes (16x16, 20x20, 24x24, 32x32, 48x48, 64x64)
+// can be added here when needed. The icon scaling infrastructure in dpi.c is ready
+// to handle custom icons at different DPI settings.
+// Example format:
+// IDI_APP_ICON ICON "icons\\app_icon.ico"
+
 // Menu resource
 IDR_MAIN_MENU MENU
 BEGIN

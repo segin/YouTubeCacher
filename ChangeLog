@@ -44,6 +44,20 @@ HiDPI Support:
 - Apply fonts to all main window controls (text fields, labels, buttons, list view)
 - Apply fonts to all dialog controls (buttons, labels, tab controls, text areas)
 - Font rescaling automatically triggered by WM_DPICHANGED handlers via RescaleWindowForDPI
+- Implement icon scaling system with ScalableIcon and IconManager structures
+- Implement CreateIconManager and DestroyIconManager for icon lifecycle management
+- Implement CreateScalableIcon to track icon resources at multiple sizes
+- Implement DestroyScalableIcon for icon cleanup with proper handle destruction
+- Implement AddIconToManager to register icons with IconManager
+- Implement GetIconSizeForDPI to calculate appropriate icon size for DPI
+- Implement LoadIconForDPI to load icon at appropriate size with fallback logic
+- Implement SetControlIcon to apply icons to controls via STM_SETICON message
+- Implement ReloadIconsForDPI to update all icons in window on DPI change
+- Implement SetControlIconWithTracking to store resource ID for DPI change tracking
+- Implement InitializeIconControl helper for dialog icon initialization
+- Add icon resource documentation to YouTubeCacher.rc for future custom icons
+- Icon scaling infrastructure ready for custom icons at 16x16, 20x20, 24x24, 32x32, 48x48, 64x64 sizes
+- System icons (IDI_QUESTION) remain DPI-aware by default via Windows
 
 User Interface:
 - Add accessibility support with screen reader integration

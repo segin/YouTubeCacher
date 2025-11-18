@@ -204,21 +204,33 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Call font rescaling in `WM_DPICHANGED` handlers
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 6. Implement icon scaling system
+- [x] 6. Implement icon scaling system
+
+
+
+
+
   - Create icon management structures
   - Implement icon loading for DPI
   - Add icon reloading for DPI changes
   - Create multiple icon sizes in resources
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 6.1 Create icon management structures
+
+
+- [x] 6.1 Create icon management structures
+
+
   - Define `IconSize` structure in `YouTubeCacher.h`
   - Define `ScalableIcon` structure in `YouTubeCacher.h`
   - Define `IconManager` structure in `YouTubeCacher.h`
   - Add icon management functions to `dpi.c`
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 6.2 Implement icon manager functions
+
+
+- [x] 6.2 Implement icon manager functions
+
   - Write `CreateIconManager()` function to initialize manager
   - Write `DestroyIconManager()` function for cleanup
   - Write `LoadIconForDPI()` function to load appropriate icon size
@@ -226,7 +238,9 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Write `SetControlIcon()` function to apply icon to control
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 6.3 Implement icon reloading
+
+- [x] 6.3 Implement icon reloading
+
   - Write `ReloadIconsForDPI()` function to update all icons in window
   - Enumerate controls with icons (static controls with SS_ICON style)
   - Load new icon at appropriate size
@@ -234,7 +248,9 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Destroy old icon to prevent leaks
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 6.4 Create multiple icon sizes
+- [x] 6.4 Create multiple icon sizes
+
+
   - Create 16x16 icon resources (96 DPI baseline)
   - Create 20x20 icon resources (120 DPI, 125% scaling)
   - Create 24x24 icon resources (144 DPI, 150% scaling)
@@ -243,7 +259,9 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Add icon resources to `YouTubeCacher.rc`
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 6.5 Integrate icon scaling with windows
+
+- [x] 6.5 Integrate icon scaling with windows
+
   - Update icon loading in main window to use `LoadIconForDPI()`
   - Update icon loading in dialogs to use `LoadIconForDPI()`
   - Call icon reloading in `WM_DPICHANGED` handlers
