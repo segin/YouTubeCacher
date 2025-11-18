@@ -294,8 +294,11 @@ FileBrowserComponent* CreateFileBrowserEx(HWND parent, int editX, int editY,
         component->base.childControls[1] = component->hwndButton;
     }
     
-    // Set font for controls
-    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    // Set font for controls - use dialog font to match other controls
+    HFONT hFont = (HFONT)SendMessage(parent, WM_GETFONT, 0, 0);
+    if (!hFont) {
+        hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    }
     SendMessage(component->hwndEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
     SendMessage(component->hwndButton, WM_SETFONT, (WPARAM)hFont, TRUE);
     
@@ -565,8 +568,11 @@ FolderBrowserComponent* CreateFolderBrowserEx(HWND parent, int editX, int editY,
         component->base.childControls[1] = component->hwndButton;
     }
     
-    // Set font for controls
-    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    // Set font for controls - use dialog font to match other controls
+    HFONT hFont = (HFONT)SendMessage(parent, WM_GETFONT, 0, 0);
+    if (!hFont) {
+        hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    }
     SendMessage(component->hwndEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
     SendMessage(component->hwndButton, WM_SETFONT, (WPARAM)hFont, TRUE);
     
