@@ -372,7 +372,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             }
         }
         
-        // Add entry to cache
+        // Add entry to cache (file info will be populated by background thread)
         entry->next = manager->entries;
         manager->entries = entry;
         manager->totalEntries++;
@@ -1501,6 +1501,78 @@ void UpdateCacheListStatus(HWND hDlg, CacheManager* manager) {
     // Update UI labels
     SetDlgItemTextW(hDlg, IDC_LABEL2, statusText);
     SetDlgItemTextW(hDlg, IDC_LABEL3, itemsText);
+}
+
+// Structure for passing data to the file size worker thread
+typedef struct {
+    CacheManager* manager;
+    HWND hMainWindow;
+} FileSizeWorkerData;
+
+// Worker thread function to populate file sizes for cache entries
+static DWORD WINAPI UpdateFileSizesWorker(LPVOID param) {
+    FileSizeWorkerData* data = (FileSizeWorkerData*)param;
+    if (!data || !data->manager || !data->hMainWindow) {
+        SAFE_FREE(data);
+        return 1;
+    }
+    
+    CacheManager* manager = data->manager;
+    HWND hMainWindow = data->hMainWindow;
+    
+    EnterCriticalSection(&manager->lock);
+    CacheEntry* current = manager->entries;
+    LeaveCriticalSection(&manager->lock);
+    
+    // Iterate through entries and update file sizes
+    while (current) {
+        // Only update if fileSize is 0 (not yet populated)
+        if (current->fileSize == 0 && current->mainVideoFile) {
+            DWORD fileSize = 0;
+            FILETIME modTime = {0};
+            
+            // Get file info (this is the blocking I/O operation)
+            if (GetVideoFileInfo(current->mainVideoFile, &fileSize, &modTime)) {
+                // Update the entry
+                EnterCriticalSection(&manager->lock);
+                current->fileSize = fileSize;
+                current->downloadTime = modTime;
+                LeaveCriticalSection(&manager->lock);
+                
+                // Notify the main window to update the display
+                PostMessage(hMainWindow, WM_CACHE_SIZE_UPDATE, 0, 0);
+            }
+        }
+        
+        // Move to next entry (need to lock to safely traverse)
+        EnterCriticalSection(&manager->lock);
+        current = current->next;
+        LeaveCriticalSection(&manager->lock);
+    }
+    
+    // Final update to ensure display is current
+    PostMessage(hMainWindow, WM_CACHE_SIZE_UPDATE, 0, 0);
+    
+    SAFE_FREE(data);
+    return 0;
+}
+
+// Start a background thread to update file sizes for cache entries
+void StartFileSizeUpdateThread(CacheManager* manager, HWND hMainWindow) {
+    if (!manager || !hMainWindow) return;
+    
+    FileSizeWorkerData* data = (FileSizeWorkerData*)SAFE_MALLOC(sizeof(FileSizeWorkerData));
+    if (!data) return;
+    
+    data->manager = manager;
+    data->hMainWindow = hMainWindow;
+    
+    HANDLE hThread = CreateThread(NULL, 0, UpdateFileSizesWorker, data, 0, NULL);
+    if (hThread) {
+        CloseHandle(hThread); // We don't need to wait for it
+    } else {
+        SAFE_FREE(data);
+    }
 }
 
 // Get the video ID of the currently selected item (single selection)

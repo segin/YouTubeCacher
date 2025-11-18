@@ -1347,6 +1347,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 // Refresh the UI with cached videos
                 RefreshCacheList(hListView, GetCacheManager());
                 UpdateCacheListStatus(hDlg, GetCacheManager());
+                
+                // Start background thread to populate file sizes
+                StartFileSizeUpdateThread(GetCacheManager(), hDlg);
             } else {
                 // Initialize dialog controls with defaults if cache fails
                 SetDlgItemTextW(hDlg, IDC_LABEL2, L"Status: Cache initialization failed");
@@ -1520,6 +1523,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 return TRUE;
             }
             break;
+        }
+
+        case WM_CACHE_SIZE_UPDATE: {
+            // Background thread has updated file sizes - refresh the status display
+            UpdateCacheListStatus(hDlg, GetCacheManager());
+            return TRUE;
         }
 
         case WM_INITMENUPOPUP: {
