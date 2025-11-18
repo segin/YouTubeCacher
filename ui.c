@@ -771,6 +771,25 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             // Apply modern Windows theming to dialog and controls
             ApplyModernThemeToDialog(hDlg);
             
+            // Register dialog with DPI manager for font scaling
+            if (g_dpiManager) {
+                RegisterWindowForDPI(g_dpiManager, hDlg);
+                
+                // Create default scalable font for dialog controls
+                ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
+                if (defaultFont) {
+                    DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+                    if (context) {
+                        // Apply font to all static text controls
+                        SetControlFont(GetDlgItem(hDlg, IDC_ENABLE_DEBUG), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_ENABLE_LOGFILE), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_ENABLE_AUTOPASTE), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDOK), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDCANCEL), defaultFont, context->currentDpi);
+                    }
+                }
+            }
+            
             // Create component registry
             components = (SettingsDialogComponents*)SAFE_MALLOC(sizeof(SettingsDialogComponents));
             if (!components) {
@@ -1228,6 +1247,31 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
         case WM_INITDIALOG: {
             // Apply modern Windows theming to dialog and controls
             ApplyModernThemeToDialog(hDlg);
+            
+            // Register dialog with DPI manager for font scaling
+            if (g_dpiManager) {
+                RegisterWindowForDPI(g_dpiManager, hDlg);
+                
+                // Create default scalable font for dialog controls
+                // Using Segoe UI 9pt as the default Windows dialog font
+                ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
+                if (defaultFont) {
+                    // Apply font to main dialog controls
+                    DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+                    if (context) {
+                        SetControlFont(GetDlgItem(hDlg, IDC_TEXT_FIELD), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_LABEL1), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_LABEL2), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_LABEL3), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_BUTTON1), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_BUTTON2), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_BUTTON3), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_DOWNLOAD_BTN), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_GETINFO_BTN), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_LIST), defaultFont, context->currentDpi);
+                    }
+                }
+            }
             
             // Initialize brushes for text field colors (created on-demand in ApplicationState)
             SetCurrentBrush(GetBrush(BRUSH_WHITE));

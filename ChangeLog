@@ -26,7 +26,24 @@ HiDPI Support:
 - Add WM_DPICHANGED handler to EnhancedErrorDialogProc for error dialog DPI changes
 - Add WM_DPICHANGED handler to SettingsDialogProc for settings dialog DPI changes
 - Add WM_DPICHANGED handler to AboutDialogProc for about dialog DPI changes
-- Add placeholder functions RescaleFontsForDPI and ReloadIconsForDPI for future font and icon scaling
+- Implement font scaling system with ScalableFont and FontManager structures
+- Implement CreateFontManager and DestroyFontManager for font lifecycle management
+- Implement CreateScalableFont to create fonts at specific DPI with LOGFONT structure
+- Implement DestroyScalableFont for font cleanup
+- Implement GetFontForDPI to get or create font at specific DPI
+- Implement SetControlFont to apply scalable fonts to controls via WM_SETFONT
+- Implement AddFontToManager to register fonts with FontManager
+- Implement CreateAndRegisterFont helper to create and register fonts in one call
+- Implement RescaleFontsForDPI to update all fonts in window on DPI change
+- Integrate font scaling with main window in WM_INITDIALOG (DialogProc)
+- Integrate font scaling with Settings dialog in WM_INITDIALOG (SettingsDialogProc)
+- Integrate font scaling with Unified dialog in WM_INITDIALOG (UnifiedDialogProc)
+- Integrate font scaling with About dialog in WM_INITDIALOG (AboutDialogProc)
+- Create default Segoe UI 9pt font for all dialog controls
+- Create title font (12pt bold) and small font (7pt) for About dialog
+- Apply fonts to all main window controls (text fields, labels, buttons, list view)
+- Apply fonts to all dialog controls (buttons, labels, tab controls, text areas)
+- Font rescaling automatically triggered by WM_DPICHANGED handlers via RescaleWindowForDPI
 
 User Interface:
 - Add accessibility support with screen reader integration

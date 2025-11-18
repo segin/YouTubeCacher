@@ -72,6 +72,9 @@ void DestroyDPIManager(DPIManager* manager) {
     
     // Free main window context
     if (manager->mainWindow) {
+        if (manager->mainWindow->fontManager) {
+            DestroyFontManager(manager->mainWindow->fontManager);
+        }
         free(manager->mainWindow);
         manager->mainWindow = NULL;
     }
@@ -80,6 +83,9 @@ void DestroyDPIManager(DPIManager* manager) {
     if (manager->dialogs) {
         for (int i = 0; i < manager->dialogCount; i++) {
             if (manager->dialogs[i]) {
+                if (manager->dialogs[i]->fontManager) {
+                    DestroyFontManager(manager->dialogs[i]->fontManager);
+                }
                 free(manager->dialogs[i]);
             }
         }
@@ -112,6 +118,7 @@ DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
     context->currentDpi = GetWindowDPI(hwnd);
     context->baseDpi = 96;
     context->scaleFactor = (double)context->currentDpi / 96.0;
+    context->fontManager = CreateFontManager();
     
     // Get window rect in logical coordinates
     RECT physicalRect;
@@ -171,6 +178,9 @@ void UnregisterWindowForDPI(DPIManager* manager, HWND hwnd) {
     
     // Check if it's the main window
     if (manager->mainWindow && manager->mainWindow->hwnd == hwnd) {
+        if (manager->mainWindow->fontManager) {
+            DestroyFontManager(manager->mainWindow->fontManager);
+        }
         free(manager->mainWindow);
         manager->mainWindow = NULL;
         LeaveCriticalSection(&manager->lock);
@@ -180,6 +190,9 @@ void UnregisterWindowForDPI(DPIManager* manager, HWND hwnd) {
     // Search in dialogs array
     for (int i = 0; i < manager->dialogCount; i++) {
         if (manager->dialogs[i] && manager->dialogs[i]->hwnd == hwnd) {
+            if (manager->dialogs[i]->fontManager) {
+                DestroyFontManager(manager->dialogs[i]->fontManager);
+            }
             free(manager->dialogs[i]);
             
             // Shift remaining elements
@@ -394,12 +407,217 @@ void RescaleWindowForDPI(HWND hwnd, int oldDpi, int newDpi) {
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
-// Rescale fonts for DPI (placeholder implementation)
+// Create font manager
+FontManager* CreateFontManager(void) {
+    FontManager* manager = (FontManager*)malloc(sizeof(FontManager));
+    if (!manager) {
+        return NULL;
+    }
+    
+    manager->fonts = NULL;
+    manager->count = 0;
+    manager->capacity = 0;
+    
+    return manager;
+}
+
+// Destroy font manager
+void DestroyFontManager(FontManager* manager) {
+    if (!manager) {
+        return;
+    }
+    
+    // Destroy all fonts
+    for (int i = 0; i < manager->count; i++) {
+        if (manager->fonts[i]) {
+            DestroyScalableFont(manager->fonts[i]);
+        }
+    }
+    
+    // Free fonts array
+    if (manager->fonts) {
+        free(manager->fonts);
+    }
+    
+    free(manager);
+}
+
+// Create scalable font
+ScalableFont* CreateScalableFont(const wchar_t* faceName, int pointSize, int weight, int dpi) {
+    if (!faceName || pointSize <= 0 || dpi <= 0) {
+        return NULL;
+    }
+    
+    ScalableFont* font = (ScalableFont*)malloc(sizeof(ScalableFont));
+    if (!font) {
+        return NULL;
+    }
+    
+    // Initialize LOGFONT structure
+    ZeroMemory(&font->logFont, sizeof(LOGFONTW));
+    font->logFont.lfHeight = -MulDiv(pointSize, dpi, 72);
+    font->logFont.lfWeight = weight;
+    font->logFont.lfCharSet = DEFAULT_CHARSET;
+    font->logFont.lfOutPrecision = OUT_DEFAULT_PRECIS;
+    font->logFont.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+    font->logFont.lfQuality = CLEARTYPE_QUALITY;
+    font->logFont.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+    wcsncpy(font->logFont.lfFaceName, faceName, LF_FACESIZE - 1);
+    font->logFont.lfFaceName[LF_FACESIZE - 1] = L'\0';
+    
+    // Create the font
+    font->hFont = CreateFontIndirectW(&font->logFont);
+    if (!font->hFont) {
+        free(font);
+        return NULL;
+    }
+    
+    font->pointSize = pointSize;
+    font->dpi = dpi;
+    
+    return font;
+}
+
+// Destroy scalable font
+void DestroyScalableFont(ScalableFont* font) {
+    if (!font) {
+        return;
+    }
+    
+    if (font->hFont) {
+        DeleteObject(font->hFont);
+    }
+    
+    free(font);
+}
+
+// Get font for DPI (creates new font if DPI changed)
+HFONT GetFontForDPI(ScalableFont* font, int dpi) {
+    if (!font || dpi <= 0) {
+        return NULL;
+    }
+    
+    // If DPI matches, return existing font
+    if (font->dpi == dpi) {
+        return font->hFont;
+    }
+    
+    // Create new font for new DPI
+    LOGFONTW lf = font->logFont;
+    lf.lfHeight = -MulDiv(font->pointSize, dpi, 72);
+    
+    HFONT hNewFont = CreateFontIndirectW(&lf);
+    if (hNewFont) {
+        // Delete old font and replace
+        if (font->hFont) {
+            DeleteObject(font->hFont);
+        }
+        font->hFont = hNewFont;
+        font->dpi = dpi;
+    }
+    
+    return font->hFont;
+}
+
+// Set control font
+void SetControlFont(HWND hwnd, ScalableFont* font, int dpi) {
+    if (!hwnd || !font) {
+        return;
+    }
+    
+    HFONT hFont = GetFontForDPI(font, dpi);
+    if (hFont) {
+        SendMessageW(hwnd, WM_SETFONT, (WPARAM)hFont, TRUE);
+    }
+}
+
+// Add font to manager
+BOOL AddFontToManager(FontManager* manager, ScalableFont* font) {
+    if (!manager || !font) {
+        return FALSE;
+    }
+    
+    // Expand array if needed
+    if (manager->count >= manager->capacity) {
+        int newCapacity = manager->capacity == 0 ? 4 : manager->capacity * 2;
+        ScalableFont** newFonts = (ScalableFont**)realloc(manager->fonts, 
+                                                           newCapacity * sizeof(ScalableFont*));
+        if (!newFonts) {
+            return FALSE;
+        }
+        manager->fonts = newFonts;
+        manager->capacity = newCapacity;
+    }
+    
+    manager->fonts[manager->count++] = font;
+    return TRUE;
+}
+
+// Create and register font with window's font manager
+ScalableFont* CreateAndRegisterFont(HWND hwnd, const wchar_t* faceName, int pointSize, int weight) {
+    if (!hwnd || !faceName || !g_dpiManager) {
+        return NULL;
+    }
+    
+    // Get DPI context for window
+    DPIContext* context = GetDPIContext(g_dpiManager, hwnd);
+    if (!context || !context->fontManager) {
+        return NULL;
+    }
+    
+    // Create font at current DPI
+    ScalableFont* font = CreateScalableFont(faceName, pointSize, weight, context->currentDpi);
+    if (!font) {
+        return NULL;
+    }
+    
+    // Add to font manager
+    if (!AddFontToManager(context->fontManager, font)) {
+        DestroyScalableFont(font);
+        return NULL;
+    }
+    
+    return font;
+}
+
+// Rescale fonts for DPI
 void RescaleFontsForDPI(HWND hwnd, int dpi) {
-    // TODO: Implement font rescaling in task 5
-    // This is a placeholder for now
-    UNREFERENCED_PARAMETER(hwnd);
-    UNREFERENCED_PARAMETER(dpi);
+    if (!hwnd || dpi <= 0) {
+        return;
+    }
+    
+    // Get DPI context for this window
+    DPIContext* context = GetDPIContext(g_dpiManager, hwnd);
+    if (!context || !context->fontManager) {
+        return;
+    }
+    
+    // Update all fonts in the font manager for the new DPI
+    for (int i = 0; i < context->fontManager->count; i++) {
+        ScalableFont* font = context->fontManager->fonts[i];
+        if (font) {
+            GetFontForDPI(font, dpi);
+        }
+    }
+    
+    // Enumerate all child controls and update their fonts
+    HWND hChild = GetWindow(hwnd, GW_CHILD);
+    while (hChild) {
+        // Get the current font of the control
+        HFONT hCurrentFont = (HFONT)SendMessageW(hChild, WM_GETFONT, 0, 0);
+        
+        // Find matching scalable font in font manager
+        for (int i = 0; i < context->fontManager->count; i++) {
+            ScalableFont* font = context->fontManager->fonts[i];
+            if (font && font->hFont == hCurrentFont) {
+                // Update this control with the rescaled font
+                SetControlFont(hChild, font, dpi);
+                break;
+            }
+        }
+        
+        hChild = GetWindow(hChild, GW_HWNDNEXT);
+    }
 }
 
 // Reload icons for DPI (placeholder implementation)

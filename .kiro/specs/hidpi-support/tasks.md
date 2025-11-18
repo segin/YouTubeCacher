@@ -121,6 +121,7 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
+
   - Add WM_DPICHANGED message handler
   - Implement window rescaling function
   - Update all window procedures to handle DPI changes
@@ -159,19 +160,26 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Ensure all dialogs rescale properly on DPI change
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 5. Implement font scaling system
+- [-] 5. Implement font scaling system
+
+
+
   - Create font management structures
   - Implement scalable font creation
   - Add font rescaling for DPI changes
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 5.1 Create font management structures
+
+- [x] 5.1 Create font management structures
+
   - Define `ScalableFont` structure in `YouTubeCacher.h`
   - Define `FontManager` structure in `YouTubeCacher.h`
   - Add font management functions to `dpi.c`
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 5.2 Implement font manager functions
+
+- [x] 5.2 Implement font manager functions
+
   - Write `CreateFontManager()` function to initialize manager
   - Write `DestroyFontManager()` function for cleanup
   - Write `CreateScalableFont()` function to create font at base DPI
@@ -179,14 +187,17 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Write `GetFontForDPI()` function to get/create font for specific DPI
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 5.3 Implement font rescaling
+
+- [x] 5.3 Implement font rescaling
+
   - Write `RescaleFontsForDPI()` function to update all fonts in window
   - Write `SetControlFont()` function to apply font to control
   - Enumerate all controls and update fonts
   - Use `WM_SETFONT` message to apply fonts
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 5.4 Integrate font scaling with windows
+
+- [x] 5.4 Integrate font scaling with windows
   - Create scalable fonts for main window controls
   - Create scalable fonts for dialog controls
   - Update font creation in `WM_CREATE` and `WM_INITDIALOG`

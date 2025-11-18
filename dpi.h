@@ -46,4 +46,14 @@ void RescaleWindowForDPI(HWND hwnd, int oldDpi, int newDpi);
 void RescaleFontsForDPI(HWND hwnd, int dpi);
 void ReloadIconsForDPI(HWND hwnd, int dpi);
 
+// Font management functions
+FontManager* CreateFontManager(void);
+void DestroyFontManager(FontManager* manager);
+ScalableFont* CreateScalableFont(const wchar_t* faceName, int pointSize, int weight, int dpi);
+void DestroyScalableFont(ScalableFont* font);
+HFONT GetFontForDPI(ScalableFont* font, int dpi);
+void SetControlFont(HWND hwnd, ScalableFont* font, int dpi);
+BOOL AddFontToManager(FontManager* manager, ScalableFont* font);
+ScalableFont* CreateAndRegisterFont(HWND hwnd, const wchar_t* faceName, int pointSize, int weight);
+
 #endif // DPI_H

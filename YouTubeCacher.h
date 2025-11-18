@@ -541,6 +541,20 @@ typedef struct {
     BOOL allValid;
 } ComponentValidationSummary;
 
+// Font management structures
+typedef struct {
+    HFONT hFont;
+    int pointSize;  // Logical point size
+    int dpi;        // DPI this font was created for
+    LOGFONTW logFont;
+} ScalableFont;
+
+typedef struct {
+    ScalableFont** fonts;
+    int count;
+    int capacity;
+} FontManager;
+
 // DPI management structures
 typedef struct {
     HWND hwnd;
@@ -548,6 +562,7 @@ typedef struct {
     int baseDpi;  // Always 96
     double scaleFactor;
     RECT logicalRect;  // Window rect in logical coordinates
+    FontManager* fontManager;
 } DPIContext;
 
 // Global DPI manager

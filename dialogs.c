@@ -234,6 +234,28 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                 return TRUE;
             }
             
+            // Register dialog with DPI manager for font scaling
+            if (g_dpiManager) {
+                RegisterWindowForDPI(g_dpiManager, hDlg);
+                
+                // Create default scalable font for dialog controls
+                ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
+                if (defaultFont) {
+                    DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+                    if (context) {
+                        // Apply font to all dialog controls
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_MESSAGE), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_COPY_BTN), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_OK_BTN), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL), defaultFont, context->currentDpi);
+                    }
+                }
+            }
+            
             // Set dialog title and message
             SetWindowTextW(hDlg, config->title ? config->title : L"Information");
             SetDlgItemTextW(hDlg, IDC_UNIFIED_MESSAGE, config->message ? config->message : L"No message");
@@ -1197,6 +1219,22 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 return TRUE;
             }
             
+            // Register dialog with DPI manager for font scaling
+            if (g_dpiManager) {
+                RegisterWindowForDPI(g_dpiManager, hDlg);
+                
+                // Create default scalable font for dialog controls
+                // Note: EnhancedErrorDialog is legacy - UnifiedDialog is preferred
+                ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
+                if (defaultFont) {
+                    // Apply font to IDOK button (main control that exists)
+                    DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+                    if (context) {
+                        SetControlFont(GetDlgItem(hDlg, IDOK), defaultFont, context->currentDpi);
+                    }
+                }
+            }
+            
             // Store dialog data for access by other functions
             SetWindowLongPtrW(hDlg, GWLP_USERDATA, (LONG_PTR)errorDialog);
             
@@ -2083,6 +2121,11 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
     
     switch (message) {
         case WM_INITDIALOG: {
+            // Register dialog with DPI manager for font scaling
+            if (g_dpiManager) {
+                RegisterWindowForDPI(g_dpiManager, hDlg);
+            }
+            
             // Set the application icon
             HICON hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(1));
             if (hIcon) {
@@ -2117,22 +2160,43 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             HDC hdc = GetDC(hDlg);
             if (!hdc) return TRUE;
             
-            // === FONT CREATION (GNOME-style sizing) ===
-            HFONT hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+            // === FONT CREATION (GNOME-style sizing using scalable fonts) ===
+            ScalableFont* titleFont = NULL;
+            ScalableFont* smallFont = NULL;
+            HFONT hBaseFont = NULL;
             HFONT hTitleFont = NULL, hSmallFont = NULL;
-            LOGFONTW baseLf;
             
-            if (hBaseFont && GetObjectW(hBaseFont, sizeof(baseLf), &baseLf)) {
-                // Title font: 133% size (4/3 ratio), bold - GNOME style
-                LOGFONTW titleLf = baseLf;
-                titleLf.lfHeight = (titleLf.lfHeight * 4) / 3;
-                titleLf.lfWeight = FW_BOLD;
-                hTitleFont = CreateFontIndirectW(&titleLf);
+            if (g_dpiManager) {
+                // Create scalable fonts for About dialog
+                CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);  // Default font
+                titleFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 12, FW_BOLD);  // 133% of 9pt
+                smallFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 7, FW_NORMAL);  // 75% of 9pt
                 
-                // Small font: 75% size (3/4 ratio) - GNOME style  
-                LOGFONTW smallLf = baseLf;
-                smallLf.lfHeight = (smallLf.lfHeight * 3) / 4;
-                hSmallFont = CreateFontIndirectW(&smallLf);
+                if (titleFont) {
+                    hTitleFont = GetFontForDPI(titleFont, dpi);
+                }
+                if (smallFont) {
+                    hSmallFont = GetFontForDPI(smallFont, dpi);
+                }
+                // Get base font from dialog
+                hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+            } else {
+                // Fallback to old method if DPI manager not available
+                hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+                LOGFONTW baseLf;
+                
+                if (hBaseFont && GetObjectW(hBaseFont, sizeof(baseLf), &baseLf)) {
+                    // Title font: 133% size (4/3 ratio), bold - GNOME style
+                    LOGFONTW titleLf = baseLf;
+                    titleLf.lfHeight = (titleLf.lfHeight * 4) / 3;
+                    titleLf.lfWeight = FW_BOLD;
+                    hTitleFont = CreateFontIndirectW(&titleLf);
+                    
+                    // Small font: 75% size (3/4 ratio) - GNOME style  
+                    LOGFONTW smallLf = baseLf;
+                    smallLf.lfHeight = (smallLf.lfHeight * 3) / 4;
+                    hSmallFont = CreateFontIndirectW(&smallLf);
+                }
             }
             
             // === TEXT MEASUREMENT PHASE ===
