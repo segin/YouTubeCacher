@@ -761,6 +761,12 @@ typedef struct {
     FolderBrowserComponent* downloadFolderBrowser;
     FileBrowserComponent* playerBrowser;
     ComponentRegistry* registry;
+    // DPI-aware dimensions from resource controls
+    int editWidth;
+    int editHeight;
+    int buttonWidth;
+    int buttonHeight;
+    int buttonOffsetX;
 } SettingsDialogComponents;
 
 INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -808,19 +814,39 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             // Store components pointer for later access
             SetWindowLongPtrW(hDlg, GWLP_USERDATA, (LONG_PTR)components);
             
-            // Get positions of existing resource-based controls to place components at same location
-            RECT ytdlpRect, folderRect, playerRect;
-            GetWindowRect(GetDlgItem(hDlg, IDC_YTDLP_PATH), &ytdlpRect);
-            GetWindowRect(GetDlgItem(hDlg, IDC_FOLDER_PATH), &folderRect);
-            GetWindowRect(GetDlgItem(hDlg, IDC_PLAYER_PATH), &playerRect);
+            // Get positions and sizes of existing resource-based controls
+            // These are already properly sized by Windows based on dialog units and DPI
+            RECT ytdlpEditRect, ytdlpBtnRect;
+            RECT folderEditRect, folderBtnRect;
+            RECT playerEditRect, playerBtnRect;
+            
+            GetWindowRect(GetDlgItem(hDlg, IDC_YTDLP_PATH), &ytdlpEditRect);
+            GetWindowRect(GetDlgItem(hDlg, IDC_YTDLP_BROWSE), &ytdlpBtnRect);
+            GetWindowRect(GetDlgItem(hDlg, IDC_FOLDER_PATH), &folderEditRect);
+            GetWindowRect(GetDlgItem(hDlg, IDC_FOLDER_BROWSE), &folderBtnRect);
+            GetWindowRect(GetDlgItem(hDlg, IDC_PLAYER_PATH), &playerEditRect);
+            GetWindowRect(GetDlgItem(hDlg, IDC_PLAYER_BROWSE), &playerBtnRect);
             
             // Convert to client coordinates
-            POINT ytdlpPt = {ytdlpRect.left, ytdlpRect.top};
-            POINT folderPt = {folderRect.left, folderRect.top};
-            POINT playerPt = {playerRect.left, playerRect.top};
+            POINT ytdlpPt = {ytdlpEditRect.left, ytdlpEditRect.top};
+            POINT ytdlpBtnPt = {ytdlpBtnRect.left, ytdlpBtnRect.top};
+            POINT folderPt = {folderEditRect.left, folderEditRect.top};
+            POINT folderBtnPt = {folderBtnRect.left, folderBtnRect.top};
+            POINT playerPt = {playerEditRect.left, playerEditRect.top};
+            POINT playerBtnPt = {playerBtnRect.left, playerBtnRect.top};
+            
             ScreenToClient(hDlg, &ytdlpPt);
+            ScreenToClient(hDlg, &ytdlpBtnPt);
             ScreenToClient(hDlg, &folderPt);
+            ScreenToClient(hDlg, &folderBtnPt);
             ScreenToClient(hDlg, &playerPt);
+            ScreenToClient(hDlg, &playerBtnPt);
+            
+            // Calculate actual pixel dimensions from resource controls
+            int editWidth = ytdlpEditRect.right - ytdlpEditRect.left;
+            int editHeight = ytdlpEditRect.bottom - ytdlpEditRect.top;
+            int buttonWidth = ytdlpBtnRect.right - ytdlpBtnRect.left;
+            int buttonHeight = ytdlpBtnRect.bottom - ytdlpBtnRect.top;
             
             // Hide existing resource-based controls (we'll use components instead)
             ShowWindow(GetDlgItem(hDlg, IDC_YTDLP_PATH), SW_HIDE);
@@ -830,13 +856,18 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             ShowWindow(GetDlgItem(hDlg, IDC_PLAYER_PATH), SW_HIDE);
             ShowWindow(GetDlgItem(hDlg, IDC_PLAYER_BROWSE), SW_HIDE);
             
-            // Create reusable components at the positions of the hidden controls
-            // No label adjustment needed since we're using resource labels
-            int componentWidth = 270;  // Width to match resource edit controls (250 + 20 for button)
+            // Store dimensions in components structure for component creation
+            components->editWidth = editWidth;
+            components->editHeight = editHeight;
+            components->buttonWidth = buttonWidth;
+            components->buttonHeight = buttonHeight;
+            components->buttonOffsetX = ytdlpBtnPt.x - ytdlpPt.x;  // Spacing between edit and button
             
             // yt-dlp path browser component
-            components->ytdlpBrowser = CreateFileBrowser(
-                hDlg, ytdlpPt.x, ytdlpPt.y, componentWidth,
+            components->ytdlpBrowser = CreateFileBrowserEx(
+                hDlg, ytdlpPt.x, ytdlpPt.y, 
+                editWidth, editHeight,
+                ytdlpBtnPt.x, buttonWidth, buttonHeight,
                 L"yt-dlp Executable Path:",
                 L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0",
                 IDC_YTDLP_PATH
@@ -846,8 +877,10 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             }
             
             // Download folder browser component
-            components->downloadFolderBrowser = CreateFolderBrowser(
-                hDlg, folderPt.x, folderPt.y, componentWidth,
+            components->downloadFolderBrowser = CreateFolderBrowserEx(
+                hDlg, folderPt.x, folderPt.y,
+                editWidth, editHeight,
+                folderBtnPt.x, buttonWidth, buttonHeight,
                 L"Download Folder:",
                 IDC_FOLDER_PATH
             );
@@ -856,8 +889,10 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             }
             
             // Media player path browser component
-            components->playerBrowser = CreateFileBrowser(
-                hDlg, playerPt.x, playerPt.y, componentWidth,
+            components->playerBrowser = CreateFileBrowserEx(
+                hDlg, playerPt.x, playerPt.y,
+                editWidth, editHeight,
+                playerBtnPt.x, buttonWidth, buttonHeight,
                 L"Media Player Path:",
                 L"Executable Files\0*.exe\0All Files\0*.*\0",
                 IDC_PLAYER_PATH

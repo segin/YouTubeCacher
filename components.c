@@ -223,6 +223,85 @@ FileBrowserComponent* CreateFileBrowser(HWND parent, int x, int y, int width,
     return component;
 }
 
+// Create a file browser component with explicit dimensions (DPI-aware)
+FileBrowserComponent* CreateFileBrowserEx(HWND parent, int editX, int editY,
+                                          int editWidth, int editHeight,
+                                          int buttonX, int buttonWidth, int buttonHeight,
+                                          const wchar_t* label, const wchar_t* filter, int controlId) {
+    if (!parent || !label) {
+        return NULL;
+    }
+    
+    FileBrowserComponent* component = (FileBrowserComponent*)SAFE_MALLOC(sizeof(FileBrowserComponent));
+    if (!component) {
+        return NULL;
+    }
+    
+    ZeroMemory(component, sizeof(FileBrowserComponent));
+    component->controlId = controlId;
+    
+    // Allocate and copy label
+    size_t labelLen = wcslen(label) + 1;
+    component->label = (wchar_t*)SAFE_MALLOC(labelLen * sizeof(wchar_t));
+    if (!component->label) {
+        SAFE_FREE(component);
+        return NULL;
+    }
+    wcscpy(component->label, label);
+    
+    // Allocate and copy filter if provided
+    if (filter) {
+        size_t filterLen = 0;
+        const wchar_t* p = filter;
+        while (*p || *(p + 1)) {
+            filterLen++;
+            p++;
+        }
+        filterLen += 2;
+        
+        component->filter = (wchar_t*)SAFE_MALLOC(filterLen * sizeof(wchar_t));
+        if (component->filter) {
+            memcpy(component->filter, filter, filterLen * sizeof(wchar_t));
+        }
+    }
+    
+    // Don't create label - use existing resource label
+    component->hwndLabel = NULL;
+    
+    // Create edit control with exact dimensions from resource
+    component->hwndEdit = CreateWindowW(
+        L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+        editX, editY, editWidth, editHeight,
+        parent, (HMENU)(INT_PTR)(controlId + 1),
+        GetModuleHandle(NULL), NULL
+    );
+    
+    // Create browse button with exact dimensions from resource
+    component->hwndButton = CreateWindowW(
+        L"BUTTON", L"...",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        buttonX, editY, buttonWidth, buttonHeight,
+        parent, (HMENU)(INT_PTR)(controlId + 2),
+        GetModuleHandle(NULL), NULL
+    );
+    
+    // Set up child controls array
+    component->base.childCount = 2;
+    component->base.childControls = (HWND*)SAFE_MALLOC(sizeof(HWND) * 2);
+    if (component->base.childControls) {
+        component->base.childControls[0] = component->hwndEdit;
+        component->base.childControls[1] = component->hwndButton;
+    }
+    
+    // Set font for controls
+    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    SendMessage(component->hwndEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
+    SendMessage(component->hwndButton, WM_SETFONT, (WPARAM)hFont, TRUE);
+    
+    return component;
+}
+
 // Destroy a file browser component
 void DestroyFileBrowser(FileBrowserComponent* component) {
     if (!component) {
@@ -416,6 +495,69 @@ FolderBrowserComponent* CreateFolderBrowser(HWND parent, int x, int y, int width
     );
     
     // Set up child controls array (only 2 now - no label)
+    component->base.childCount = 2;
+    component->base.childControls = (HWND*)SAFE_MALLOC(sizeof(HWND) * 2);
+    if (component->base.childControls) {
+        component->base.childControls[0] = component->hwndEdit;
+        component->base.childControls[1] = component->hwndButton;
+    }
+    
+    // Set font for controls
+    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    SendMessage(component->hwndEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
+    SendMessage(component->hwndButton, WM_SETFONT, (WPARAM)hFont, TRUE);
+    
+    return component;
+}
+
+// Create a folder browser component with explicit dimensions (DPI-aware)
+FolderBrowserComponent* CreateFolderBrowserEx(HWND parent, int editX, int editY,
+                                               int editWidth, int editHeight,
+                                               int buttonX, int buttonWidth, int buttonHeight,
+                                               const wchar_t* label, int controlId) {
+    if (!parent || !label) {
+        return NULL;
+    }
+    
+    FolderBrowserComponent* component = (FolderBrowserComponent*)SAFE_MALLOC(sizeof(FolderBrowserComponent));
+    if (!component) {
+        return NULL;
+    }
+    
+    ZeroMemory(component, sizeof(FolderBrowserComponent));
+    component->controlId = controlId;
+    
+    // Allocate and copy label
+    size_t labelLen = wcslen(label) + 1;
+    component->label = (wchar_t*)SAFE_MALLOC(labelLen * sizeof(wchar_t));
+    if (!component->label) {
+        SAFE_FREE(component);
+        return NULL;
+    }
+    wcscpy(component->label, label);
+    
+    // Don't create label - use existing resource label
+    component->hwndLabel = NULL;
+    
+    // Create edit control with exact dimensions from resource
+    component->hwndEdit = CreateWindowW(
+        L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+        editX, editY, editWidth, editHeight,
+        parent, (HMENU)(INT_PTR)(controlId + 1),
+        GetModuleHandle(NULL), NULL
+    );
+    
+    // Create browse button with exact dimensions from resource
+    component->hwndButton = CreateWindowW(
+        L"BUTTON", L"...",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        buttonX, editY, buttonWidth, buttonHeight,
+        parent, (HMENU)(INT_PTR)(controlId + 2),
+        GetModuleHandle(NULL), NULL
+    );
+    
+    // Set up child controls array
     component->base.childCount = 2;
     component->base.childControls = (HWND*)SAFE_MALLOC(sizeof(HWND) * 2);
     if (component->base.childControls) {

@@ -12,6 +12,10 @@ void DestroyComponentRegistry(ComponentRegistry* registry);
 // File browser component functions
 FileBrowserComponent* CreateFileBrowser(HWND parent, int x, int y, int width, 
                                         const wchar_t* label, const wchar_t* filter, int controlId);
+FileBrowserComponent* CreateFileBrowserEx(HWND parent, int editX, int editY, 
+                                          int editWidth, int editHeight,
+                                          int buttonX, int buttonWidth, int buttonHeight,
+                                          const wchar_t* label, const wchar_t* filter, int controlId);
 void DestroyFileBrowser(FileBrowserComponent* component);
 BOOL ValidateFileBrowser(FileBrowserComponent* component, wchar_t* errorMsg, size_t errorMsgSize);
 const wchar_t* GetFileBrowserPath(FileBrowserComponent* component);
@@ -21,6 +25,10 @@ BOOL HandleFileBrowserCommand(FileBrowserComponent* component, WPARAM wParam, LP
 // Folder browser component functions
 FolderBrowserComponent* CreateFolderBrowser(HWND parent, int x, int y, int width,
                                             const wchar_t* label, int controlId);
+FolderBrowserComponent* CreateFolderBrowserEx(HWND parent, int editX, int editY,
+                                               int editWidth, int editHeight,
+                                               int buttonX, int buttonWidth, int buttonHeight,
+                                               const wchar_t* label, int controlId);
 void DestroyFolderBrowser(FolderBrowserComponent* component);
 BOOL ValidateFolderBrowser(FolderBrowserComponent* component, wchar_t* errorMsg, size_t errorMsgSize);
 const wchar_t* GetFolderBrowserPath(FolderBrowserComponent* component);
