@@ -1522,12 +1522,99 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             break;
         }
 
+        case WM_INITMENUPOPUP: {
+            if (LOWORD(lParam) == 1) {  // Edit menu (index 1)
+                HMENU hMenu = (HMENU)wParam;
+                HWND hFocus = GetFocus();
+                HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                
+                // Check if focus is on an edit control (URL field or Settings dialog fields)
+                wchar_t className[256];
+                BOOL isEditControl = FALSE;
+                if (hFocus && GetClassNameW(hFocus, className, 256)) {
+                    isEditControl = (wcscmp(className, L"Edit") == 0);
+                }
+                
+                // Enable/disable based on focus
+                if (hFocus == hListView) {
+                    // ListView has focus - only Select All enabled
+                    EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_ENABLED);
+                } else if (isEditControl) {
+                    // Edit control has focus - enable edit operations
+                    BOOL canUndo = (BOOL)SendMessage(hFocus, EM_CANUNDO, 0, 0);
+                    DWORD sel = (DWORD)SendMessage(hFocus, EM_GETSEL, 0, 0);
+                    BOOL hasSelection = (LOWORD(sel) != HIWORD(sel));
+                    BOOL canPaste = IsClipboardFormatAvailable(CF_UNICODETEXT) || IsClipboardFormatAvailable(CF_TEXT);
+                    
+                    EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | (canUndo ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | (canPaste ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_ENABLED);
+                } else {
+                    // No relevant control has focus - disable all
+                    EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_GRAYED);
+                }
+            }
+            return TRUE;
+        }
+
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
+                case ID_EDIT_UNDO: {
+                    HWND hFocus = GetFocus();
+                    SendMessage(hFocus, WM_UNDO, 0, 0);
+                    return TRUE;
+                }
+                
+                case ID_EDIT_COPY: {
+                    HWND hFocus = GetFocus();
+                    SendMessage(hFocus, WM_COPY, 0, 0);
+                    return TRUE;
+                }
+                
+                case ID_EDIT_CUT: {
+                    HWND hFocus = GetFocus();
+                    SendMessage(hFocus, WM_CUT, 0, 0);
+                    return TRUE;
+                }
+                
+                case ID_EDIT_PASTE: {
+                    HWND hFocus = GetFocus();
+                    SendMessage(hFocus, WM_PASTE, 0, 0);
+                    return TRUE;
+                }
+                
                 case ID_EDIT_SELECTALL: {
                     HWND hFocus = GetFocus();
-                    if (hFocus == GetDlgItem(hDlg, IDC_TEXT_FIELD)) {
+                    HWND hTextField = GetDlgItem(hDlg, IDC_TEXT_FIELD);
+                    HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                    
+                    if (hFocus == hTextField) {
+                        // Select all text in URL field
                         SendMessage(hFocus, EM_SETSEL, 0, -1);
+                    } else if (hFocus == hListView) {
+                        // Select all items in ListView
+                        int itemCount = ListView_GetItemCount(hListView);
+                        for (int i = 0; i < itemCount; i++) {
+                            ListView_SetItemState(hListView, i, LVIS_SELECTED, LVIS_SELECTED);
+                        }
+                    } else {
+                        // Check if it's any other edit control
+                        wchar_t className[256];
+                        if (hFocus && GetClassNameW(hFocus, className, 256)) {
+                            if (wcscmp(className, L"Edit") == 0) {
+                                SendMessage(hFocus, EM_SETSEL, 0, -1);
+                            }
+                        }
                     }
                     return TRUE;
                 }

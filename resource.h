@@ -25,10 +25,14 @@
 // Menu Command IDs
 #define ID_FILE_SETTINGS  2000
 #define ID_FILE_EXIT      2001
-#define ID_EDIT_SELECTALL 2002
-#define ID_HELP_INSTALL_YTDLP 2003
-#define ID_HELP_VIEW_LOG  2004
-#define ID_HELP_ABOUT     2005
+#define ID_EDIT_UNDO      2002
+#define ID_EDIT_COPY      2003
+#define ID_EDIT_CUT       2004
+#define ID_EDIT_PASTE     2005
+#define ID_EDIT_SELECTALL 2006
+#define ID_HELP_INSTALL_YTDLP 2010
+#define ID_HELP_VIEW_LOG  2011
+#define ID_HELP_ABOUT     2012
 
 // Settings Dialog
 #define IDD_SETTINGS      103
