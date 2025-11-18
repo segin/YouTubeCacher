@@ -1347,20 +1347,23 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             WNDPROC originalProc = (WNDPROC)SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)TextFieldSubclassProc);
             SetOriginalTextFieldProc(originalProc);
             
-            // Calculate and set optimal default window size based on DPI
-            HDC hdc = GetDC(hDlg);
-            int dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
-            int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
-            ReleaseDC(hDlg, hdc);
-            
-            double scaleX = (double)dpiX / 96.0;
-            double scaleY = (double)dpiY / 96.0;
-            
-            int defaultWidth, defaultHeight;
-            CalculateDefaultWindowSize(&defaultWidth, &defaultHeight, scaleX, scaleY);
-            
-            // Set the calculated default window size
-            SetWindowPos(hDlg, NULL, 0, 0, defaultWidth, defaultHeight, SWP_NOMOVE | SWP_NOZORDER);
+            // Try to restore saved window position and size
+            if (!RestoreWindowPositionLogical(hDlg, L"MainWindow")) {
+                // If no saved position, calculate and set optimal default window size based on DPI
+                HDC hdc = GetDC(hDlg);
+                int dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+                int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+                ReleaseDC(hDlg, hdc);
+                
+                double scaleX = (double)dpiX / 96.0;
+                double scaleY = (double)dpiY / 96.0;
+                
+                int defaultWidth, defaultHeight;
+                CalculateDefaultWindowSize(&defaultWidth, &defaultHeight, scaleX, scaleY);
+                
+                // Set the calculated default window size
+                SetWindowPos(hDlg, NULL, 0, 0, defaultWidth, defaultHeight, SWP_NOMOVE | SWP_NOZORDER);
+            }
             
             return FALSE; // Return FALSE since we set focus manually
         }
@@ -2546,6 +2549,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
         }
             
         case WM_DESTROY: {
+            // Save window position and size before cleanup
+            SaveWindowPositionLogical(hDlg, L"MainWindow");
+            
             // Write session end marker for clean shutdown
             WriteSessionEndToLogfile(L"Clean program shutdown");
             

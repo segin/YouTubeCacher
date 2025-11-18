@@ -48,6 +48,16 @@ HiDPI Support:
 - Implement CreateIconManager and DestroyIconManager for icon lifecycle management
 - Implement CreateScalableIcon to track icon resources at multiple sizes
 - Implement DestroyScalableIcon for icon cleanup with proper handle destruction
+- Implement window position and size persistence with logical coordinate storage
+- Add SaveWindowPositionLogical function to save window position in DPI-independent coordinates
+- Add RestoreWindowPositionLogical function to restore window position with DPI conversion
+- Add EnsureWindowOnScreen function to validate and adjust window position for current monitor
+- Integrate window position save in WM_DESTROY handler of main window
+- Integrate window position restore in WM_INITDIALOG handler of main window
+- Window position stored in registry at Software\YouTubeCacher\WindowPos\MainWindow
+- Position saved in logical coordinates (96 DPI) for DPI-independent persistence
+- Position restored with conversion to current DPI for proper scaling
+- Screen bounds checking ensures window remains visible after DPI or monitor changes
 - Implement AddIconToManager to register icons with IconManager
 - Implement GetIconSizeForDPI to calculate appropriate icon size for DPI
 - Implement LoadIconForDPI to load icon at appropriate size with fallback logic

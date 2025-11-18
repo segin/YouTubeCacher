@@ -874,3 +874,167 @@ BOOL InitializeIconControl(HWND hDialog, int controlId, int resourceId) {
     
     return TRUE;
 }
+
+// Ensure window is visible on screen
+void EnsureWindowOnScreen(RECT* rect) {
+    if (!rect) {
+        return;
+    }
+    
+    // Get monitor work area for window position
+    HMONITOR hMonitor = MonitorFromRect(rect, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi;
+    mi.cbSize = sizeof(mi);
+    
+    if (!GetMonitorInfoW(hMonitor, &mi)) {
+        // If we can't get monitor info, use primary monitor
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &mi.rcWork, 0);
+    }
+    
+    int width = rect->right - rect->left;
+    int height = rect->bottom - rect->top;
+    
+    // Adjust if off screen horizontally
+    if (rect->left < mi.rcWork.left) {
+        rect->left = mi.rcWork.left;
+        rect->right = rect->left + width;
+    }
+    if (rect->right > mi.rcWork.right) {
+        rect->right = mi.rcWork.right;
+        rect->left = rect->right - width;
+    }
+    
+    // Adjust if off screen vertically
+    if (rect->top < mi.rcWork.top) {
+        rect->top = mi.rcWork.top;
+        rect->bottom = rect->top + height;
+    }
+    if (rect->bottom > mi.rcWork.bottom) {
+        rect->bottom = mi.rcWork.bottom;
+        rect->top = rect->bottom - height;
+    }
+    
+    // If still off screen (window too large), position at top-left
+    if (rect->left < mi.rcWork.left) {
+        rect->left = mi.rcWork.left;
+    }
+    if (rect->top < mi.rcWork.top) {
+        rect->top = mi.rcWork.top;
+    }
+    
+    // Ensure minimum visible area (at least 100x100 pixels)
+    if (rect->right - rect->left < 100) {
+        rect->right = rect->left + 100;
+    }
+    if (rect->bottom - rect->top < 100) {
+        rect->bottom = rect->top + 100;
+    }
+}
+
+// Save window position in logical coordinates
+BOOL SaveWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
+    if (!hwnd || !keyName) {
+        return FALSE;
+    }
+    
+    // Get window rect in physical coordinates
+    RECT physicalRect;
+    if (!GetWindowRect(hwnd, &physicalRect)) {
+        return FALSE;
+    }
+    
+    // Get current DPI
+    int dpi = GetWindowDPI(hwnd);
+    
+    // Convert to logical coordinates (96 DPI)
+    RECT logicalRect;
+    PhysicalRectToLogical(&physicalRect, &logicalRect, dpi);
+    
+    // Open or create registry key
+    HKEY hKey;
+    DWORD disposition;
+    wchar_t regPath[512];
+    swprintf(regPath, 512, L"Software\\YouTubeCacher\\WindowPos\\%s", keyName);
+    
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, regPath, 0, NULL, REG_OPTION_NON_VOLATILE,
+                       KEY_WRITE, NULL, &hKey, &disposition) != ERROR_SUCCESS) {
+        return FALSE;
+    }
+    
+    // Save logical coordinates
+    DWORD left = (DWORD)logicalRect.left;
+    DWORD top = (DWORD)logicalRect.top;
+    DWORD right = (DWORD)logicalRect.right;
+    DWORD bottom = (DWORD)logicalRect.bottom;
+    DWORD baseDpi = 96;
+    
+    BOOL success = TRUE;
+    success &= (RegSetValueExW(hKey, L"Left", 0, REG_DWORD, (BYTE*)&left, sizeof(DWORD)) == ERROR_SUCCESS);
+    success &= (RegSetValueExW(hKey, L"Top", 0, REG_DWORD, (BYTE*)&top, sizeof(DWORD)) == ERROR_SUCCESS);
+    success &= (RegSetValueExW(hKey, L"Right", 0, REG_DWORD, (BYTE*)&right, sizeof(DWORD)) == ERROR_SUCCESS);
+    success &= (RegSetValueExW(hKey, L"Bottom", 0, REG_DWORD, (BYTE*)&bottom, sizeof(DWORD)) == ERROR_SUCCESS);
+    success &= (RegSetValueExW(hKey, L"DPI", 0, REG_DWORD, (BYTE*)&baseDpi, sizeof(DWORD)) == ERROR_SUCCESS);
+    
+    RegCloseKey(hKey);
+    return success;
+}
+
+// Restore window position from logical coordinates
+BOOL RestoreWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
+    if (!hwnd || !keyName) {
+        return FALSE;
+    }
+    
+    // Open registry key
+    HKEY hKey;
+    wchar_t regPath[512];
+    swprintf(regPath, 512, L"Software\\YouTubeCacher\\WindowPos\\%s", keyName);
+    
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, regPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+        return FALSE;
+    }
+    
+    // Load logical coordinates
+    RECT logicalRect;
+    DWORD savedDpi = 96;
+    DWORD size = sizeof(DWORD);
+    DWORD left, top, right, bottom;
+    
+    BOOL success = TRUE;
+    success &= (RegQueryValueExW(hKey, L"Left", NULL, NULL, (BYTE*)&left, &size) == ERROR_SUCCESS);
+    success &= (RegQueryValueExW(hKey, L"Top", NULL, NULL, (BYTE*)&top, &size) == ERROR_SUCCESS);
+    success &= (RegQueryValueExW(hKey, L"Right", NULL, NULL, (BYTE*)&right, &size) == ERROR_SUCCESS);
+    success &= (RegQueryValueExW(hKey, L"Bottom", NULL, NULL, (BYTE*)&bottom, &size) == ERROR_SUCCESS);
+    RegQueryValueExW(hKey, L"DPI", NULL, NULL, (BYTE*)&savedDpi, &size);  // Optional, defaults to 96
+    
+    RegCloseKey(hKey);
+    
+    if (!success) {
+        return FALSE;
+    }
+    
+    logicalRect.left = (LONG)left;
+    logicalRect.top = (LONG)top;
+    logicalRect.right = (LONG)right;
+    logicalRect.bottom = (LONG)bottom;
+    
+    // Get current DPI for window's monitor
+    int currentDpi = GetWindowDPI(hwnd);
+    
+    // Convert to physical coordinates for current DPI
+    RECT physicalRect;
+    LogicalRectToPhysical(&logicalRect, &physicalRect, currentDpi);
+    
+    // Ensure window is on screen
+    EnsureWindowOnScreen(&physicalRect);
+    
+    // Apply position and size
+    SetWindowPos(hwnd, NULL,
+                physicalRect.left,
+                physicalRect.top,
+                physicalRect.right - physicalRect.left,
+                physicalRect.bottom - physicalRect.top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+    
+    return TRUE;
+}

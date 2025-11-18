@@ -70,4 +70,9 @@ BOOL AddIconToManager(IconManager* manager, ScalableIcon* icon);
 void SetControlIconWithTracking(HWND hwnd, int resourceId, int dpi);
 BOOL InitializeIconControl(HWND hDialog, int controlId, int resourceId);
 
+// Window position persistence functions
+BOOL SaveWindowPositionLogical(HWND hwnd, const wchar_t* keyName);
+BOOL RestoreWindowPositionLogical(HWND hwnd, const wchar_t* keyName);
+void EnsureWindowOnScreen(RECT* rect);
+
 #endif // DPI_H
