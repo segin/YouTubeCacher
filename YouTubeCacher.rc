@@ -110,8 +110,8 @@ BEGIN
     CONTROL         "Enable logfile", IDC_ENABLE_LOGFILE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 7, 142, 80, 10
     CONTROL         "Enable autopaste", IDC_ENABLE_AUTOPASTE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 7, 157, 80, 10
     
-    DEFPUSHBUTTON   "OK", IDOK, 190, 165, 32, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 227, 165, 32, 14
+    DEFPUSHBUTTON   "OK", IDOK, 167, 164, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 223, 164, 50, 14
 END
 
 // Progress Dialog - Optimized with proper Win32 metrics
