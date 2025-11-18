@@ -831,14 +831,12 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             ShowWindow(GetDlgItem(hDlg, IDC_PLAYER_BROWSE), SW_HIDE);
             
             // Create reusable components at the positions of the hidden controls
-            // Adjust Y position to account for label above edit control
-            int labelHeight = 14;
-            int labelSpacing = 3;
-            int componentWidth = 350;
+            // No label adjustment needed since we're using resource labels
+            int componentWidth = 270;  // Width to match resource edit controls (250 + 20 for button)
             
             // yt-dlp path browser component
             components->ytdlpBrowser = CreateFileBrowser(
-                hDlg, ytdlpPt.x, ytdlpPt.y - labelHeight - labelSpacing, componentWidth,
+                hDlg, ytdlpPt.x, ytdlpPt.y, componentWidth,
                 L"yt-dlp Executable Path:",
                 L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0",
                 IDC_YTDLP_PATH
@@ -849,7 +847,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             
             // Download folder browser component
             components->downloadFolderBrowser = CreateFolderBrowser(
-                hDlg, folderPt.x, folderPt.y - labelHeight - labelSpacing, componentWidth,
+                hDlg, folderPt.x, folderPt.y, componentWidth,
                 L"Download Folder:",
                 IDC_FOLDER_PATH
             );
@@ -859,7 +857,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             
             // Media player path browser component
             components->playerBrowser = CreateFileBrowser(
-                hDlg, playerPt.x, playerPt.y - labelHeight - labelSpacing, componentWidth,
+                hDlg, playerPt.x, playerPt.y, componentWidth,
                 L"Media Player Path:",
                 L"Executable Files\0*.exe\0All Files\0*.*\0",
                 IDC_PLAYER_PATH

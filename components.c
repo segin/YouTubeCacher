@@ -181,40 +181,33 @@ FileBrowserComponent* CreateFileBrowser(HWND parent, int x, int y, int width,
         }
     }
     
-    // Create label control
-    component->hwndLabel = CreateWindowW(
-        L"STATIC", label,
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        x, y, width, 20,
-        parent, (HMENU)(INT_PTR)controlId,
-        GetModuleHandle(NULL), NULL
-    );
+    // Don't create label control - use existing resource label
+    component->hwndLabel = NULL;
     
-    // Create edit control (read-only)
+    // Create edit control (editable, not read-only)
     component->hwndEdit = CreateWindowW(
         L"EDIT", L"",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY,
-        x, y + 22, width - 85, 24,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+        x, y, width - 20, 24,
         parent, (HMENU)(INT_PTR)(controlId + 1),
         GetModuleHandle(NULL), NULL
     );
     
-    // Create browse button
+    // Create browse button with just "..."
     component->hwndButton = CreateWindowW(
-        L"BUTTON", L"Browse...",
+        L"BUTTON", L"...",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        x + width - 80, y + 22, 75, 24,
+        x + width - 16, y, 16, 24,
         parent, (HMENU)(INT_PTR)(controlId + 2),
         GetModuleHandle(NULL), NULL
     );
     
-    // Set up child controls array
-    component->base.childCount = 3;
-    component->base.childControls = (HWND*)SAFE_MALLOC(sizeof(HWND) * 3);
+    // Set up child controls array (only 2 now - no label)
+    component->base.childCount = 2;
+    component->base.childControls = (HWND*)SAFE_MALLOC(sizeof(HWND) * 2);
     if (component->base.childControls) {
-        component->base.childControls[0] = component->hwndLabel;
-        component->base.childControls[1] = component->hwndEdit;
-        component->base.childControls[2] = component->hwndButton;
+        component->base.childControls[0] = component->hwndEdit;
+        component->base.childControls[1] = component->hwndButton;
     }
     
     // Set font for all controls
@@ -393,45 +386,37 @@ FolderBrowserComponent* CreateFolderBrowser(HWND parent, int x, int y, int width
     }
     wcscpy(component->label, label);
     
-    // Create label control
-    component->hwndLabel = CreateWindowW(
-        L"STATIC", label,
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        x, y, width, 20,
-        parent, (HMENU)(INT_PTR)controlId,
-        GetModuleHandle(NULL), NULL
-    );
+    // Don't create label control - use existing resource label
+    component->hwndLabel = NULL;
     
-    // Create edit control (read-only)
+    // Create edit control (editable, not read-only)
     component->hwndEdit = CreateWindowW(
         L"EDIT", L"",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY,
-        x, y + 22, width - 85, 24,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+        x, y, width - 20, 24,
         parent, (HMENU)(INT_PTR)(controlId + 1),
         GetModuleHandle(NULL), NULL
     );
     
-    // Create browse button
+    // Create browse button with just "..."
     component->hwndButton = CreateWindowW(
-        L"BUTTON", L"Browse...",
+        L"BUTTON", L"...",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        x + width - 80, y + 22, 75, 24,
+        x + width - 16, y, 16, 24,
         parent, (HMENU)(INT_PTR)(controlId + 2),
         GetModuleHandle(NULL), NULL
     );
     
-    // Set up child controls array
-    component->base.childCount = 3;
-    component->base.childControls = (HWND*)SAFE_MALLOC(sizeof(HWND) * 3);
+    // Set up child controls array (only 2 now - no label)
+    component->base.childCount = 2;
+    component->base.childControls = (HWND*)SAFE_MALLOC(sizeof(HWND) * 2);
     if (component->base.childControls) {
-        component->base.childControls[0] = component->hwndLabel;
-        component->base.childControls[1] = component->hwndEdit;
-        component->base.childControls[2] = component->hwndButton;
+        component->base.childControls[0] = component->hwndEdit;
+        component->base.childControls[1] = component->hwndButton;
     }
     
-    // Set font for all controls
+    // Set font for controls
     HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-    SendMessage(component->hwndLabel, WM_SETFONT, (WPARAM)hFont, TRUE);
     SendMessage(component->hwndEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
     SendMessage(component->hwndButton, WM_SETFONT, (WPARAM)hFont, TRUE);
     

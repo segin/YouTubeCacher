@@ -2,6 +2,7 @@
 
 User Interface:
 - Fix About dialog text being replaced by accessibility labels - SetControlAccessibility now stores labels as window properties instead of overwriting visible text
+- Fix Settings dialog component issues: remove duplicate labels, make path fields editable, change browse buttons to "..." instead of "Browse..."
 
 HiDPI Support:
 - Add centralized DPI management system with DPIContext and DPIManager structures
