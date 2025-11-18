@@ -143,6 +143,8 @@ BOOL HandleFileBrowserCommand(FileBrowserComponent* component, WPARAM wParam, LP
 // Create a file browser component
 FileBrowserComponent* CreateFileBrowser(HWND parent, int x, int y, int width, 
                                         const wchar_t* label, const wchar_t* filter, int controlId) {
+    (void)width;  // Unused - using fixed resource metrics
+    
     if (!parent || !label) {
         return NULL;
     }
@@ -185,19 +187,21 @@ FileBrowserComponent* CreateFileBrowser(HWND parent, int x, int y, int width,
     component->hwndLabel = NULL;
     
     // Create edit control (editable, not read-only)
+    // Match resource metrics: 250 width, 14 height
     component->hwndEdit = CreateWindowW(
         L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
-        x, y, width - 20, 24,
+        x, y, 250, 14,
         parent, (HMENU)(INT_PTR)(controlId + 1),
         GetModuleHandle(NULL), NULL
     );
     
     // Create browse button with just "..."
+    // Match resource metrics: 16 width, 14 height, positioned at x+253 (250 + 3px spacing)
     component->hwndButton = CreateWindowW(
         L"BUTTON", L"...",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        x + width - 16, y, 16, 24,
+        x + 253, y, 16, 14,
         parent, (HMENU)(INT_PTR)(controlId + 2),
         GetModuleHandle(NULL), NULL
     );
@@ -365,6 +369,8 @@ BOOL HandleFolderBrowserCommand(FolderBrowserComponent* component, WPARAM wParam
 // Create a folder browser component
 FolderBrowserComponent* CreateFolderBrowser(HWND parent, int x, int y, int width,
                                             const wchar_t* label, int controlId) {
+    (void)width;  // Unused - using fixed resource metrics
+    
     if (!parent || !label) {
         return NULL;
     }
@@ -390,19 +396,21 @@ FolderBrowserComponent* CreateFolderBrowser(HWND parent, int x, int y, int width
     component->hwndLabel = NULL;
     
     // Create edit control (editable, not read-only)
+    // Match resource metrics: 250 width, 14 height
     component->hwndEdit = CreateWindowW(
         L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
-        x, y, width - 20, 24,
+        x, y, 250, 14,
         parent, (HMENU)(INT_PTR)(controlId + 1),
         GetModuleHandle(NULL), NULL
     );
     
     // Create browse button with just "..."
+    // Match resource metrics: 16 width, 14 height, positioned at x+253 (250 + 3px spacing)
     component->hwndButton = CreateWindowW(
         L"BUTTON", L"...",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        x + width - 16, y, 16, 24,
+        x + 253, y, 16, 14,
         parent, (HMENU)(INT_PTR)(controlId + 2),
         GetModuleHandle(NULL), NULL
     );
