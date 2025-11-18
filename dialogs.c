@@ -2204,17 +2204,18 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             
             struct {
                 const wchar_t* text;
+                const wchar_t* displayText;  // For measurement (plain text for SysLink)
                 HFONT font;
                 SIZE size;
                 int controlId;
             } textElements[] = {
-                {L"YouTube Cacher", hTitleFont, {0}, IDC_ABOUT_TITLE},
-                {APP_VERSION, hBaseFont, {0}, IDC_ABOUT_VERSION}, 
-                {L"A YouTube downloader frontend to youtube-dl and yt-dlp.", hBaseFont, {0}, IDC_ABOUT_DESCRIPTION},
-                {L"YouTube Cacher on GitHub", hBaseFont, {0}, IDC_ABOUT_GITHUB_LINK},
-                {L"Copyright © 2025 Kirn Gill II <segin2005@gmail.com>", hSmallFont, {0}, IDC_ABOUT_COPYRIGHT},
-                {L"This program comes with absolutely no warranty.", hSmallFont, {0}, IDC_ABOUT_WARRANTY},
-                {L"See the MIT License for details.", hSmallFont, {0}, IDC_ABOUT_LICENSE_LINK}
+                {L"YouTube Cacher", L"YouTube Cacher", hTitleFont, {0}, IDC_ABOUT_TITLE},
+                {APP_VERSION, APP_VERSION, hBaseFont, {0}, IDC_ABOUT_VERSION}, 
+                {L"A YouTube downloader frontend to youtube-dl and yt-dlp.", L"A YouTube downloader frontend to youtube-dl and yt-dlp.", hBaseFont, {0}, IDC_ABOUT_DESCRIPTION},
+                {L"<a href=\"https://github.com/segin/YouTubeCacher\">YouTube Cacher on GitHub</a>", L"YouTube Cacher on GitHub", hBaseFont, {0}, IDC_ABOUT_GITHUB_LINK},
+                {L"Copyright © 2025 Kirn Gill II <segin2005@gmail.com>", L"Copyright © 2025 Kirn Gill II <segin2005@gmail.com>", hSmallFont, {0}, IDC_ABOUT_COPYRIGHT},
+                {L"This program comes with no warranty.", L"This program comes with no warranty.", hSmallFont, {0}, IDC_ABOUT_WARRANTY},
+                {L"<a href=\"https://mit-license.org/\">See the MIT License for details.</a>", L"See the MIT License for details.", hSmallFont, {0}, IDC_ABOUT_LICENSE_LINK}
             };
             
             int maxTextWidth = 0;
@@ -2224,7 +2225,8 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                     hOldFont = (HFONT)SelectObject(hdc, textElements[i].font);
                 }
                 
-                GetTextExtentPoint32W(hdc, textElements[i].text, (int)wcslen(textElements[i].text), &textElements[i].size);
+                // Use displayText for measurement (plain text without HTML markup)
+                GetTextExtentPoint32W(hdc, textElements[i].displayText, (int)wcslen(textElements[i].displayText), &textElements[i].size);
                 
                 if (textElements[i].size.cx > maxTextWidth) {
                     maxTextWidth = textElements[i].size.cx;
@@ -2335,6 +2337,9 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                         case 5: textY = warrantyY; break;   // Warranty
                         case 6: textY = licenseY; break;    // License link
                     }
+                    
+                    // Set the text content for the control
+                    SetWindowTextW(hControl, textElements[i].text);
                     
                     SetWindowPos(hControl, NULL, textX, textY, 
                                 textElements[i].size.cx, textElements[i].size.cy, SWP_NOZORDER);
