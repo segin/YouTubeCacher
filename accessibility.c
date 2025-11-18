@@ -11,19 +11,15 @@ void SetControlAccessibility(HWND hwnd, const wchar_t* name, const wchar_t* desc
         return;
     }
     
-    // Set accessible name using window text if provided
+    // Store accessible name as window property
+    // DO NOT use SetWindowTextW here - that would overwrite the visible text!
+    // Screen readers can access this property for accessibility information
     if (name) {
-        SetWindowTextW(hwnd, name);
+        SetPropW(hwnd, L"AccessibleName", (HANDLE)name);
     }
     
-    // For accessible descriptions, we would typically use IAccessible COM interface
-    // However, for basic accessibility support, setting the window text is sufficient
-    // for most screen readers to announce the control properly
-    
-    // If description is provided and different from name, we could store it
-    // in window properties for advanced accessibility features
+    // Store accessible description as window property for advanced accessibility features
     if (description && description[0] != L'\0') {
-        // Store description as window property for potential future use
         SetPropW(hwnd, L"AccessibleDescription", (HANDLE)description);
     }
 }
