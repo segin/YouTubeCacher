@@ -359,20 +359,30 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Test moving main window between monitors with different DPI
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 9. Update dialogs for HiDPI support
+- [x] 9. Update dialogs for HiDPI support
+
+
+
+
   - Ensure all dialogs use DPI-aware scaling
   - Update existing `ScaleForDpi` calls to use new system
   - Test all dialogs at multiple DPI settings
+
+
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
 - [ ] 9.1 Update unified dialog DPI handling
   - Verify unified dialog uses new DPI functions
   - Ensure `WM_DPICHANGED` handler is present
+
+
   - Test unified dialog at multiple DPI settings
   - Test moving dialog between monitors
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 9.2 Update Settings dialog DPI handling
+- [x] 9.2 Update Settings dialog DPI handling
+
+
   - Register Settings dialog with DPI manager
   - Add `WM_DPICHANGED` handler
   - Ensure all controls scale properly
