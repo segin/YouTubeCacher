@@ -2471,8 +2471,16 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             if (success && metadata && metadata->success) {
                 UpdateMainProgressBar(hDlg, 90, L"Updating interface...");
                 
+                // Format duration before displaying
+                wchar_t formattedDuration[64] = {0};
+                if (metadata->duration && wcslen(metadata->duration) > 0) {
+                    wcsncpy(formattedDuration, metadata->duration, 63);
+                    formattedDuration[63] = L'\0';
+                    FormatDuration(formattedDuration, 64);
+                }
+                
                 // Update the UI with the retrieved information
-                UpdateVideoInfoUI(hDlg, metadata->title, metadata->duration);
+                UpdateVideoInfoUI(hDlg, metadata->title, formattedDuration);
                 
                 UpdateMainProgressBar(hDlg, 100, L"Video information retrieved successfully");
             } else {

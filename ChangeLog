@@ -5,6 +5,7 @@ User Interface:
 - Fix Settings dialog component issues: remove duplicate labels, make path fields editable, change browse buttons to "..." instead of "Browse..."
 - Implement DPI-aware component creation using actual resource control dimensions for proper scaling
 - Fix Settings dialog OK/Cancel buttons to meet Windows XP+ UI standards: 50 DLU width (was 32), proper 7 DLU margins, 6 DLU spacing
+- Fix Get Info duration display to apply FormatDuration sanitizer for proper MM:SS or HH:MM:SS format
 
 HiDPI Support:
 - Add centralized DPI management system with DPIContext and DPIManager structures

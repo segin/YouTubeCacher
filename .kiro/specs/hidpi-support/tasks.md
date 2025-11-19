@@ -351,6 +351,7 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 - [x] 8.4 Test main window DPI handling
 
+
   - Test main window at 96 DPI (100%)
   - Test main window at 120 DPI (125%)
   - Test main window at 144 DPI (150%)
