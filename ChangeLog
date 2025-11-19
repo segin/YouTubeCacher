@@ -48,6 +48,10 @@ HiDPI Support:
 - Create default Segoe UI 9pt font for all dialog controls
 - Create title font (12pt bold) and small font (7pt) for About dialog
 - Apply fonts to all main window controls (text fields, labels, buttons, list view)
+- Register main window with DPI manager for per-monitor DPI tracking
+- Add explicit ResizeControls call after window initialization for proper initial scaling
+- Implement main window DPI change handling via WM_DPICHANGED message
+- Scale all main window controls dynamically based on current DPI
 - Apply fonts to all dialog controls (buttons, labels, tab controls, text areas)
 - Font rescaling automatically triggered by WM_DPICHANGED handlers via RescaleWindowForDPI
 - Implement icon scaling system with ScalableIcon and IconManager structures

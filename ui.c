@@ -1401,6 +1401,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 SetWindowPos(hDlg, NULL, 0, 0, defaultWidth, defaultHeight, SWP_NOMOVE | SWP_NOZORDER);
             }
             
+            // Scale all controls for initial DPI after window is sized
+            ResizeControls(hDlg);
+            
             return FALSE; // Return FALSE since we set focus manually
         }
             

@@ -320,19 +320,21 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Test position persistence across monitor changes
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
 
-- [ ] 8. Update main window for HiDPI support
+- [x] 8. Update main window for HiDPI support
   - Register main window with DPI manager
   - Scale all main window controls
   - Handle DPI changes in main window
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 8.1 Register main window for DPI management
+
+
+- [x] 8.1 Register main window for DPI management
   - Call `RegisterWindowForDPI()` in main window creation
   - Get initial DPI for main window
   - Store DPI context in window data
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
-- [ ] 8.2 Implement main window control scaling
+- [x] 8.2 Implement main window control scaling
   - Write `ScaleMainWindowControls()` function
   - Define base dimensions at 96 DPI for all controls
   - Scale dimensions using `ScaleValueForDPI()`
@@ -340,14 +342,15 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Call from `WM_CREATE` and `WM_SIZE` handlers
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 8.3 Update main window initialization
+- [x] 8.3 Update main window initialization
   - Call `ScaleMainWindowControls()` after control creation
   - Create scalable fonts for main window
   - Load icons at appropriate DPI
   - Test main window at different DPI settings
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
-- [ ] 8.4 Test main window DPI handling
+- [x] 8.4 Test main window DPI handling
+
   - Test main window at 96 DPI (100%)
   - Test main window at 120 DPI (125%)
   - Test main window at 144 DPI (150%)
