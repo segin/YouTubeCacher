@@ -136,13 +136,13 @@ run64: debug64
 
 # Dependency tracking for incremental compilation
 # Each source file depends on its corresponding header and YouTubeCacher.h
-$(OBJ32_DIR)/main.o $(OBJ64_DIR)/main.o: main.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h uri.h parser.h log.h cache.h base64.h memory.h resource.h
+$(OBJ32_DIR)/main.o $(OBJ64_DIR)/main.o: main.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h uri.h parser.h log.h cache.h base64.h memory.h resource.h dpi.h
 $(OBJ32_DIR)/appstate.o $(OBJ64_DIR)/appstate.o: appstate.c appstate.h cache.h memory.h
 $(OBJ32_DIR)/settings.o $(OBJ64_DIR)/settings.o: settings.c settings.h appstate.h memory.h
 $(OBJ32_DIR)/threading.o $(OBJ64_DIR)/threading.o: threading.c threading.h appstate.h memory.h
 $(OBJ32_DIR)/ytdlp.o $(OBJ64_DIR)/ytdlp.o: ytdlp.c ytdlp.h appstate.h settings.h threading.h memory.h
-$(OBJ32_DIR)/ui.o $(OBJ64_DIR)/ui.o: ui.c ui.h appstate.h settings.h threading.h memory.h resource.h
-$(OBJ32_DIR)/dialogs.o $(OBJ64_DIR)/dialogs.o: dialogs.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h memory.h resource.h
+$(OBJ32_DIR)/ui.o $(OBJ64_DIR)/ui.o: ui.c YouTubeCacher.h ui.h appstate.h settings.h threading.h memory.h resource.h dpi.h
+$(OBJ32_DIR)/dialogs.o $(OBJ64_DIR)/dialogs.o: dialogs.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h memory.h resource.h dpi.h
 $(OBJ32_DIR)/uri.o $(OBJ64_DIR)/uri.o: uri.c uri.h memory.h
 $(OBJ32_DIR)/cache.o $(OBJ64_DIR)/cache.o: cache.c cache.h memory.h
 $(OBJ32_DIR)/base64.o $(OBJ64_DIR)/base64.o: base64.c base64.h memory.h

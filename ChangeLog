@@ -48,6 +48,13 @@ HiDPI Support:
 - Implement RescaleFontsForDPI to update all fonts in window on DPI change
 - Integrate font scaling with main window in WM_INITDIALOG (DialogProc)
 - Integrate font scaling with Settings dialog in WM_INITDIALOG (SettingsDialogProc)
+
+Build System:
+- Add dpi.c to SOURCES variable in Makefile for HiDPI support module
+- Add dependency tracking for dpi.o with dpi.c, dpi.h, and YouTubeCacher.h
+- Update main.o dependencies to include dpi.h for DPI initialization functions
+- Update ui.o dependencies to include YouTubeCacher.h and dpi.h for DPI management
+- Update dialogs.o dependencies to include dpi.h for dialog DPI handling
 - Integrate font scaling with Unified dialog in WM_INITDIALOG (UnifiedDialogProc)
 - Integrate font scaling with About dialog in WM_INITDIALOG (AboutDialogProc)
 - Create default Segoe UI 9pt font for all dialog controls

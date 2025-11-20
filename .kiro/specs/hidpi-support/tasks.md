@@ -400,23 +400,32 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
+
   - Register About dialog with DPI manager
   - Add `WM_DPICHANGED` handler
   - Ensure all controls scale properly
   - Test About dialog at multiple DPI settings
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 10. Update Makefile and build system
+- [x] 10. Update Makefile and build system
+
+
+
+
   - Add new source files to Makefile
   - Update dependency tracking
   - Ensure clean builds
   - _Requirements: All requirements_
 
-- [ ] 10.1 Add dpi.c to Makefile
+
+- [x] 10.1 Add dpi.c to Makefile
+
   - Add `dpi.c` to SOURCES variable
   - Update object file lists for 32-bit and 64-bit
   - Add dependency tracking for `dpi.o`
   - _Requirements: All requirements_
+
+
 
 - [ ] 10.2 Update dependency tracking
   - Add dependencies for `dpi.o` (dpi.c, dpi.h, YouTubeCacher.h)
