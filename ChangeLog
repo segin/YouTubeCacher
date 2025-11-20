@@ -6,8 +6,11 @@ User Interface:
 - Add comprehensive right-click context menu to cache ListView with Delete, Copy operations, and Select All
 - Add Delete key (Del) accelerator for deleting selected cache entries
 - Add Ctrl+C accelerator for copying YouTube URL from selected cache entry
-- Implement dynamic Edit menu modification when ListView has focus
-- Add "Delete", "Copy Title", "Copy Path", and "Copy YouTube URL" to Edit menu for keyboard accessibility
+- Implement fixed Edit menu structure with ListView-specific items
+- Edit menu now shows: Undo, Cut, Copy, Paste, Select All, Delete, Copy Title, Copy Path
+- Copy menu item changes to "Copy YouTube URL" when ListView has focus
+- Disable Undo, Cut, Paste when ListView has focus
+- Disable Delete, Copy Title, Copy Path when ListView does not have focus
 - Enable/disable menu items based on ListView selection state
 - Implement ID_LISTVIEW_COPY_TITLE handler to copy video title to clipboard
 - Implement ID_LISTVIEW_COPY_PATH handler to copy file path to clipboard
@@ -15,6 +18,7 @@ User Interface:
 - Implement ID_LISTVIEW_DELETE handler to trigger delete operation via Delete button
 - Fix ListView sorting to use ListView_SortItems for proper lParam handling
 - Refactor Select All functionality to use new SelectAllListViewItems helper function
+- Fix Edit menu to rebuild consistently on each popup to prevent item accumulation
 
 Cache Management:
 - Add GetYouTubeUrlFromVideoId helper function to reconstruct YouTube URLs from video IDs

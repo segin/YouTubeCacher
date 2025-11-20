@@ -1541,70 +1541,80 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 HWND hFocus = GetFocus();
                 HWND hListView = GetDlgItem(hDlg, IDC_LIST);
                 
-                // Check if focus is on an edit control (URL field or Settings dialog fields)
+                // Check if focus is on an edit control
                 wchar_t className[256];
                 BOOL isEditControl = FALSE;
                 if (hFocus && GetClassNameW(hFocus, className, 256)) {
                     isEditControl = (wcscmp(className, L"Edit") == 0);
                 }
                 
-                // Remove any existing ListView items first
-                while (RemoveMenu(hMenu, ID_LISTVIEW_DELETE, MF_BYCOMMAND)) {}
-                while (RemoveMenu(hMenu, ID_LISTVIEW_COPY_TITLE, MF_BYCOMMAND)) {}
-                while (RemoveMenu(hMenu, ID_LISTVIEW_COPY_PATH, MF_BYCOMMAND)) {}
-                while (RemoveMenu(hMenu, ID_LISTVIEW_COPY_URL, MF_BYCOMMAND)) {}
-                while (RemoveMenu(hMenu, ID_LISTVIEW_SELECTALL, MF_BYCOMMAND)) {}
+                // Rebuild menu to ensure consistent structure
+                while (GetMenuItemCount(hMenu) > 0) {
+                    RemoveMenu(hMenu, 0, MF_BYPOSITION);
+                }
+                
+                // Build fixed menu structure
+                AppendMenuW(hMenu, MF_STRING, ID_EDIT_UNDO, L"&Undo\tCtrl+Z");
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hMenu, MF_STRING, ID_EDIT_CUT, L"Cu&t\tCtrl+X");
+                AppendMenuW(hMenu, MF_STRING, ID_EDIT_COPY, L"&Copy\tCtrl+C");
+                AppendMenuW(hMenu, MF_STRING, ID_EDIT_PASTE, L"&Paste\tCtrl+V");
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hMenu, MF_STRING, ID_EDIT_SELECTALL, L"Select &All\tCtrl+A");
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hMenu, MF_STRING, ID_LISTVIEW_DELETE, L"&Delete\tDel");
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hMenu, MF_STRING, ID_LISTVIEW_COPY_TITLE, L"Copy &Title");
+                AppendMenuW(hMenu, MF_STRING, ID_LISTVIEW_COPY_PATH, L"Copy &Path");
                 
                 // Enable/disable based on focus
                 if (hFocus == hListView) {
-                    // ListView has focus - add ListView-specific items
-                    EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | MF_GRAYED);
-                    EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | MF_GRAYED);
-                    EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | MF_GRAYED);
-                    
-                    // Check if any items are selected
+                    // ListView has focus
                     int selectedCount = ListView_GetSelectedCount(hListView);
                     BOOL hasSelection = (selectedCount > 0);
                     
-                    // Replace Copy with Copy YouTube URL
-                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_GRAYED);
-                    
-                    // Add ListView items at the end
-                    int itemCount = GetMenuItemCount(hMenu);
-                    InsertMenuW(hMenu, itemCount, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-                    InsertMenuW(hMenu, itemCount + 1, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
-                               ID_LISTVIEW_DELETE, L"&Delete\tDel");
-                    InsertMenuW(hMenu, itemCount + 2, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-                    InsertMenuW(hMenu, itemCount + 3, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
-                               ID_LISTVIEW_COPY_TITLE, L"Copy &Title");
-                    InsertMenuW(hMenu, itemCount + 4, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
-                               ID_LISTVIEW_COPY_PATH, L"Copy &Path");
-                    InsertMenuW(hMenu, itemCount + 5, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
-                               ID_LISTVIEW_COPY_URL, L"Copy YouTube &URL\tCtrl+C");
-                    InsertMenuW(hMenu, itemCount + 6, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-                    InsertMenuW(hMenu, itemCount + 7, MF_BYPOSITION | MF_ENABLED, 
-                               ID_LISTVIEW_SELECTALL, L"Select &All\tCtrl+A");
-                    
-                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_GRAYED);
-                } else if (isEditControl) {
-                    // Edit control has focus - enable edit operations
-                    BOOL canUndo = (BOOL)SendMessage(hFocus, EM_CANUNDO, 0, 0);
-                    DWORD sel = (DWORD)SendMessage(hFocus, EM_GETSEL, 0, 0);
-                    BOOL hasSelection = (LOWORD(sel) != HIWORD(sel));
-                    BOOL canPaste = IsClipboardFormatAvailable(CF_UNICODETEXT) || IsClipboardFormatAvailable(CF_TEXT);
-                    
-                    EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | (canUndo ? MF_ENABLED : MF_GRAYED));
-                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
-                    EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
-                    EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | (canPaste ? MF_ENABLED : MF_GRAYED));
-                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_ENABLED);
-                } else {
-                    // No relevant control has focus - disable all
+                    // Disable standard edit operations
                     EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | MF_GRAYED);
-                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_GRAYED);
                     EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | MF_GRAYED);
                     EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | MF_GRAYED);
-                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_GRAYED);
+                    
+                    // Change Copy to Copy YouTube URL
+                    ModifyMenuW(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_STRING, ID_LISTVIEW_COPY_URL, L"Copy YouTube &URL\tCtrl+C");
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_URL, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                    
+                    // Enable Select All
+                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_ENABLED);
+                    
+                    // Enable ListView items based on selection
+                    EnableMenuItem(hMenu, ID_LISTVIEW_DELETE, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_TITLE, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_PATH, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                } else {
+                    // Not ListView - disable ListView items
+                    EnableMenuItem(hMenu, ID_LISTVIEW_DELETE, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_TITLE, MF_BYCOMMAND | MF_GRAYED);
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_PATH, MF_BYCOMMAND | MF_GRAYED);
+                    
+                    if (isEditControl) {
+                        // Edit control has focus - enable edit operations
+                        BOOL canUndo = (BOOL)SendMessage(hFocus, EM_CANUNDO, 0, 0);
+                        DWORD sel = (DWORD)SendMessage(hFocus, EM_GETSEL, 0, 0);
+                        BOOL hasSelection = (LOWORD(sel) != HIWORD(sel));
+                        BOOL canPaste = IsClipboardFormatAvailable(CF_UNICODETEXT) || IsClipboardFormatAvailable(CF_TEXT);
+                        
+                        EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | (canUndo ? MF_ENABLED : MF_GRAYED));
+                        EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                        EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                        EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | (canPaste ? MF_ENABLED : MF_GRAYED));
+                        EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_ENABLED);
+                    } else {
+                        // No relevant control has focus - disable all
+                        EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | MF_GRAYED);
+                        EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_GRAYED);
+                        EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | MF_GRAYED);
+                        EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | MF_GRAYED);
+                        EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_GRAYED);
+                    }
                 }
             }
             return TRUE;
