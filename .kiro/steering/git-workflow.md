@@ -16,10 +16,21 @@ After completing any development task, feature implementation, or significant co
 
 ```bash
 # After completing any task:
+make  # Ensure successful compilation and linking
 git add .
 git commit -m "Descriptive message about what was implemented/changed"
 git push
 ```
+
+## Critical Build Requirements
+
+**NEVER commit if the executable cannot be successfully linked.**
+
+- Always run `make` before committing to verify successful compilation and linking
+- If linking fails with "Permission denied" error, the executable is running
+- **WAIT for the user to close the running program before attempting to commit**
+- Do not proceed with git operations until `make` completes successfully
+- A failed link means the build is incomplete and should not be committed
 
 ## Commit Message Guidelines
 
