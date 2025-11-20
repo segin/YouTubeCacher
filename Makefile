@@ -136,6 +136,7 @@ run64: debug64
 
 # Dependency tracking for incremental compilation
 # Each source file depends on its corresponding header and YouTubeCacher.h
+# Note: YouTubeCacher.h includes dpi.h, so files including YouTubeCacher.h implicitly depend on dpi.h
 $(OBJ32_DIR)/main.o $(OBJ64_DIR)/main.o: main.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h uri.h parser.h log.h cache.h base64.h memory.h resource.h dpi.h
 $(OBJ32_DIR)/appstate.o $(OBJ64_DIR)/appstate.o: appstate.c appstate.h cache.h memory.h
 $(OBJ32_DIR)/settings.o $(OBJ64_DIR)/settings.o: settings.c settings.h appstate.h memory.h
@@ -151,11 +152,11 @@ $(OBJ32_DIR)/log.o $(OBJ64_DIR)/log.o: log.c log.h memory.h
 $(OBJ32_DIR)/memory.o $(OBJ64_DIR)/memory.o: memory.c memory.h
 $(OBJ32_DIR)/error.o $(OBJ64_DIR)/error.o: error.c error.h memory.h
 $(OBJ32_DIR)/threadsafe.o $(OBJ64_DIR)/threadsafe.o: threadsafe.c threadsafe.h error.h memory.h appstate.h
-$(OBJ32_DIR)/subproc.o $(OBJ64_DIR)/subproc.o: subproc.c YouTubeCacher.h threading.h ytdlp.h memory.h
-$(OBJ32_DIR)/accessibility.o $(OBJ64_DIR)/accessibility.o: accessibility.c accessibility.h YouTubeCacher.h
-$(OBJ32_DIR)/keyboard.o $(OBJ64_DIR)/keyboard.o: keyboard.c keyboard.h YouTubeCacher.h
-$(OBJ32_DIR)/components.o $(OBJ64_DIR)/components.o: components.c components.h YouTubeCacher.h
-$(OBJ32_DIR)/dpi.o $(OBJ64_DIR)/dpi.o: dpi.c dpi.h YouTubeCacher.h
+$(OBJ32_DIR)/subproc.o $(OBJ64_DIR)/subproc.o: subproc.c YouTubeCacher.h threading.h ytdlp.h memory.h dpi.h
+$(OBJ32_DIR)/accessibility.o $(OBJ64_DIR)/accessibility.o: accessibility.c accessibility.h YouTubeCacher.h dpi.h
+$(OBJ32_DIR)/keyboard.o $(OBJ64_DIR)/keyboard.o: keyboard.c keyboard.h YouTubeCacher.h dpi.h
+$(OBJ32_DIR)/components.o $(OBJ64_DIR)/components.o: components.c components.h YouTubeCacher.h dpi.h
+$(OBJ32_DIR)/dpi.o $(OBJ64_DIR)/dpi.o: dpi.c dpi.h YouTubeCacher.h memory.h
 
 # Resource file dependencies
 $(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o: YouTubeCacher.rc resource.h
