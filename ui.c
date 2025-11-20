@@ -1548,14 +1548,44 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     isEditControl = (wcscmp(className, L"Edit") == 0);
                 }
                 
+                // Remove any existing ListView items first
+                while (RemoveMenu(hMenu, ID_LISTVIEW_DELETE, MF_BYCOMMAND)) {}
+                while (RemoveMenu(hMenu, ID_LISTVIEW_COPY_TITLE, MF_BYCOMMAND)) {}
+                while (RemoveMenu(hMenu, ID_LISTVIEW_COPY_PATH, MF_BYCOMMAND)) {}
+                while (RemoveMenu(hMenu, ID_LISTVIEW_COPY_URL, MF_BYCOMMAND)) {}
+                while (RemoveMenu(hMenu, ID_LISTVIEW_SELECTALL, MF_BYCOMMAND)) {}
+                
                 // Enable/disable based on focus
                 if (hFocus == hListView) {
-                    // ListView has focus - only Select All enabled
+                    // ListView has focus - add ListView-specific items
                     EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | MF_GRAYED);
-                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_GRAYED);
                     EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | MF_GRAYED);
                     EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | MF_GRAYED);
-                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_ENABLED);
+                    
+                    // Check if any items are selected
+                    int selectedCount = ListView_GetSelectedCount(hListView);
+                    BOOL hasSelection = (selectedCount > 0);
+                    
+                    // Replace Copy with Copy YouTube URL
+                    EnableMenuItem(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_GRAYED);
+                    
+                    // Add ListView items at the end
+                    int itemCount = GetMenuItemCount(hMenu);
+                    InsertMenuW(hMenu, itemCount, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+                    InsertMenuW(hMenu, itemCount + 1, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
+                               ID_LISTVIEW_DELETE, L"&Delete\tDel");
+                    InsertMenuW(hMenu, itemCount + 2, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+                    InsertMenuW(hMenu, itemCount + 3, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
+                               ID_LISTVIEW_COPY_TITLE, L"Copy &Title");
+                    InsertMenuW(hMenu, itemCount + 4, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
+                               ID_LISTVIEW_COPY_PATH, L"Copy &Path");
+                    InsertMenuW(hMenu, itemCount + 5, MF_BYPOSITION | (hasSelection ? MF_ENABLED : MF_GRAYED), 
+                               ID_LISTVIEW_COPY_URL, L"Copy YouTube &URL\tCtrl+C");
+                    InsertMenuW(hMenu, itemCount + 6, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+                    InsertMenuW(hMenu, itemCount + 7, MF_BYPOSITION | MF_ENABLED, 
+                               ID_LISTVIEW_SELECTALL, L"Select &All\tCtrl+A");
+                    
+                    EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_GRAYED);
                 } else if (isEditControl) {
                     // Edit control has focus - enable edit operations
                     BOOL canUndo = (BOOL)SendMessage(hFocus, EM_CANUNDO, 0, 0);
@@ -1673,6 +1703,94 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 case ID_LISTVIEW_SELECTALL: {
                     HWND hListView = GetDlgItem(hDlg, IDC_LIST);
                     SelectAllListViewItems(hListView);
+                    return TRUE;
+                }
+                
+                case ID_LISTVIEW_DELETE: {
+                    // Trigger the Delete button (IDC_BUTTON3)
+                    SendMessage(hDlg, WM_COMMAND, MAKEWPARAM(IDC_BUTTON3, BN_CLICKED), 0);
+                    return TRUE;
+                }
+                
+                case ID_LISTVIEW_COPY_TITLE: {
+                    HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                    wchar_t* videoId = GetSelectedVideoId(hListView);
+                    if (videoId) {
+                        CacheEntry* entry = FindCacheEntry(GetCacheManager(), videoId);
+                        if (entry && entry->title) {
+                            // Copy title to clipboard
+                            if (OpenClipboard(hDlg)) {
+                                EmptyClipboard();
+                                size_t len = wcslen(entry->title);
+                                HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
+                                if (hMem) {
+                                    wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
+                                    if (pMem) {
+                                        wcscpy(pMem, entry->title);
+                                        GlobalUnlock(hMem);
+                                        SetClipboardData(CF_UNICODETEXT, hMem);
+                                    }
+                                }
+                                CloseClipboard();
+                            }
+                        }
+                        SAFE_FREE(videoId);
+                    }
+                    return TRUE;
+                }
+                
+                case ID_LISTVIEW_COPY_PATH: {
+                    HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                    wchar_t* videoId = GetSelectedVideoId(hListView);
+                    if (videoId) {
+                        CacheEntry* entry = FindCacheEntry(GetCacheManager(), videoId);
+                        if (entry && entry->mainVideoFile) {
+                            // Copy file path to clipboard
+                            if (OpenClipboard(hDlg)) {
+                                EmptyClipboard();
+                                size_t len = wcslen(entry->mainVideoFile);
+                                HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
+                                if (hMem) {
+                                    wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
+                                    if (pMem) {
+                                        wcscpy(pMem, entry->mainVideoFile);
+                                        GlobalUnlock(hMem);
+                                        SetClipboardData(CF_UNICODETEXT, hMem);
+                                    }
+                                }
+                                CloseClipboard();
+                            }
+                        }
+                        SAFE_FREE(videoId);
+                    }
+                    return TRUE;
+                }
+                
+                case ID_LISTVIEW_COPY_URL: {
+                    HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                    wchar_t* videoId = GetSelectedVideoId(hListView);
+                    if (videoId) {
+                        wchar_t* url = GetYouTubeUrlFromVideoId(videoId);
+                        if (url) {
+                            // Copy YouTube URL to clipboard
+                            if (OpenClipboard(hDlg)) {
+                                EmptyClipboard();
+                                size_t len = wcslen(url);
+                                HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
+                                if (hMem) {
+                                    wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
+                                    if (pMem) {
+                                        wcscpy(pMem, url);
+                                        GlobalUnlock(hMem);
+                                        SetClipboardData(CF_UNICODETEXT, hMem);
+                                    }
+                                }
+                                CloseClipboard();
+                            }
+                            SAFE_FREE(url);
+                        }
+                        SAFE_FREE(videoId);
+                    }
                     return TRUE;
                 }
                     
