@@ -48,6 +48,7 @@ HiDPI Support:
 - Integrate font scaling with About dialog in WM_INITDIALOG (AboutDialogProc)
 - Create default Segoe UI 9pt font for all dialog controls
 - Create title font (12pt bold) and small font (7pt) for About dialog
+- Verify unified dialog DPI handling implementation with GetWindowDPI and WM_DPICHANGED handler
 - Apply fonts to all main window controls (text fields, labels, buttons, list view)
 - Register main window with DPI manager for per-monitor DPI tracking
 - Add explicit ResizeControls call after window initialization for proper initial scaling
