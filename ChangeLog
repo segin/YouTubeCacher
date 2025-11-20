@@ -1,6 +1,27 @@
 0.0.2
 
 User Interface:
+- Add column header sorting to cache ListView: click Title, Duration, or File Size to sort
+- Implement toggle between ascending and descending sort order on repeated column clicks
+- Add right-click context menu to cache ListView with "Select All - Ctrl+A" option
+- Fix ListView sorting to use ListView_SortItems for proper lParam handling
+- Refactor Select All functionality to use new SelectAllListViewItems helper function
+
+Cache Management:
+- Add GetYouTubeUrlFromVideoId helper function to reconstruct YouTube URLs from video IDs
+- Add ParseDurationToSeconds helper function to convert MM:SS or HH:MM:SS format to integer seconds
+- Implement CompareListViewItems callback for ListView column sorting with thread-safe cache access
+- Add SortListViewByColumn function to handle sort state management and ListView sorting
+- Add SelectAllListViewItems function for programmatic selection of all ListView items
+- Add ListViewSortInfo structure to track sort column, direction, and cache manager reference
+
+HiDPI Support:
+- Fix DPI change handling to prevent cumulative scaling errors when moving between monitors
+- Replace RescaleWindowForDPI with ResizeControls in WM_DPICHANGED handler for proper layout recalculation
+- Remove manual control position scaling that caused layout drift on repeated DPI changes
+- Ensure layout is always calculated fresh from window dimensions rather than scaled from previous positions
+
+User Interface:
 - Fix About dialog text being replaced by accessibility labels - SetControlAccessibility now stores labels as window properties instead of overwriting visible text
 - Fix Settings dialog component issues: remove duplicate labels, make path fields editable, change browse buttons to "..." instead of "Browse..."
 - Implement DPI-aware component creation using actual resource control dimensions for proper scaling

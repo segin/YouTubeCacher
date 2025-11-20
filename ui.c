@@ -1143,12 +1143,11 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             // Update DPI context
             DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
             if (context) {
-                int oldDpi = context->currentDpi;
                 context->currentDpi = newDpi;
                 context->scaleFactor = (double)newDpi / 96.0;
                 
-                // Rescale all UI elements
-                RescaleWindowForDPI(hDlg, oldDpi, newDpi);
+                // Rescale fonts for new DPI
+                RescaleFontsForDPI(hDlg, newDpi);
                 
                 // Apply suggested window position and size
                 SetWindowPos(hDlg, NULL,
@@ -1157,6 +1156,9 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                             suggestedRect->right - suggestedRect->left,
                             suggestedRect->bottom - suggestedRect->top,
                             SWP_NOZORDER | SWP_NOACTIVATE);
+                
+                // Trigger layout recalculation using existing ResizeControls logic
+                ResizeControls(hDlg);
             }
             
             return 0;
@@ -1443,12 +1445,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             // Update DPI context
             DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
             if (context) {
-                int oldDpi = context->currentDpi;
                 context->currentDpi = newDpi;
                 context->scaleFactor = (double)newDpi / 96.0;
                 
-                // Rescale all UI elements
-                RescaleWindowForDPI(hDlg, oldDpi, newDpi);
+                // Rescale fonts for new DPI
+                RescaleFontsForDPI(hDlg, newDpi);
                 
                 // Apply suggested window position and size
                 SetWindowPos(hDlg, NULL,
@@ -1579,6 +1580,47 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             return TRUE;
         }
 
+        case WM_NOTIFY: {
+            LPNMHDR pnmh = (LPNMHDR)lParam;
+            
+            // Handle ListView column click for sorting
+            if (pnmh->idFrom == IDC_LIST && pnmh->code == LVN_COLUMNCLICK) {
+                LPNMLISTVIEW pnmv = (LPNMLISTVIEW)lParam;
+                
+                // Get or create sort info (stored as window property)
+                static ListViewSortInfo sortInfo = {0, TRUE, NULL};
+                
+                // Sort the ListView by the clicked column
+                SortListViewByColumn(GetDlgItem(hDlg, IDC_LIST), pnmv->iSubItem, GetCacheManager(), &sortInfo);
+                return TRUE;
+            }
+            break;
+        }
+
+        case WM_CONTEXTMENU: {
+            HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+            
+            // Check if right-click was on the ListView
+            if ((HWND)wParam == hListView) {
+                // Get cursor position
+                POINT pt;
+                pt.x = LOWORD(lParam);
+                pt.y = HIWORD(lParam);
+                
+                // Load and show context menu
+                HMENU hMenu = LoadMenuW(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_LISTVIEW_CONTEXT));
+                if (hMenu) {
+                    HMENU hPopup = GetSubMenu(hMenu, 0);
+                    if (hPopup) {
+                        TrackPopupMenu(hPopup, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hDlg, NULL);
+                    }
+                    DestroyMenu(hMenu);
+                }
+                return TRUE;
+            }
+            break;
+        }
+
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case ID_EDIT_UNDO: {
@@ -1615,10 +1657,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         SendMessage(hFocus, EM_SETSEL, 0, -1);
                     } else if (hFocus == hListView) {
                         // Select all items in ListView
-                        int itemCount = ListView_GetItemCount(hListView);
-                        for (int i = 0; i < itemCount; i++) {
-                            ListView_SetItemState(hListView, i, LVIS_SELECTED, LVIS_SELECTED);
-                        }
+                        SelectAllListViewItems(hListView);
                     } else {
                         // Check if it's any other edit control
                         wchar_t className[256];
@@ -1628,6 +1667,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             }
                         }
                     }
+                    return TRUE;
+                }
+                
+                case ID_LISTVIEW_SELECTALL: {
+                    HWND hListView = GetDlgItem(hDlg, IDC_LIST);
+                    SelectAllListViewItems(hListView);
                     return TRUE;
                 }
                     

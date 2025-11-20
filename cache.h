@@ -73,6 +73,15 @@ BOOL GetVideoFileInfo(const wchar_t* filePath, DWORD* fileSize, FILETIME* modTim
 BOOL FindSubtitleFiles(const wchar_t* videoFilePath, wchar_t*** subtitleFiles, int* count);
 wchar_t* FormatFileSize(DWORD sizeBytes);
 wchar_t* FormatCacheEntryDisplay(const CacheEntry* entry);
+wchar_t* GetYouTubeUrlFromVideoId(const wchar_t* videoId);
+int ParseDurationToSeconds(const wchar_t* duration);
+
+// ListView sorting
+typedef struct {
+    int column;              // Which column (0=Title, 1=Duration, 2=Size)
+    BOOL ascending;          // Sort direction
+    CacheManager* manager;   // For looking up entries
+} ListViewSortInfo;
 
 // UI helper functions for ListView management
 void UpdateCacheListStatus(HWND hDlg, CacheManager* manager);
@@ -83,5 +92,7 @@ void FreeSelectedVideoIds(wchar_t** videoIds, int count);
 void InitializeCacheListView(HWND hListView);
 void ResizeCacheListViewColumns(HWND hListView, int totalWidth);
 void CleanupListViewItemData(HWND hListView);
+void SortListViewByColumn(HWND hListView, int column, CacheManager* manager, ListViewSortInfo* sortInfo);
+void SelectAllListViewItems(HWND hListView);
 
 #endif // CACHE_H

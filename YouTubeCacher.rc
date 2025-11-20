@@ -44,6 +44,15 @@ BEGIN
     END
 END
 
+// ListView context menu
+IDR_LISTVIEW_CONTEXT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Select &All\tCtrl+A", ID_LISTVIEW_SELECTALL
+    END
+END
+
 // Accelerator table
 IDR_MAIN_MENU ACCELERATORS
 BEGIN

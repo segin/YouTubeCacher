@@ -1664,3 +1664,118 @@ void CleanupListViewItemData(HWND hListView) {
         }
     }
 }
+
+// Reconstruct YouTube URL from video ID
+wchar_t* GetYouTubeUrlFromVideoId(const wchar_t* videoId) {
+    if (!videoId) return NULL;
+    
+    size_t urlLen = wcslen(L"https://www.youtube.com/watch?v=") + wcslen(videoId) + 1;
+    wchar_t* url = (wchar_t*)SAFE_MALLOC(urlLen * sizeof(wchar_t));
+    if (!url) return NULL;
+    
+    swprintf(url, urlLen, L"https://www.youtube.com/watch?v=%ls", videoId);
+    return url;
+}
+
+// Parse duration string (MM:SS or HH:MM:SS) to total seconds
+int ParseDurationToSeconds(const wchar_t* duration) {
+    if (!duration) return 0;
+    
+    int hours = 0, minutes = 0, seconds = 0;
+    int parts = swscanf(duration, L"%d:%d:%d", &hours, &minutes, &seconds);
+    
+    if (parts == 3) {
+        // HH:MM:SS format
+        return hours * 3600 + minutes * 60 + seconds;
+    } else if (parts == 2) {
+        // MM:SS format (hours variable contains minutes, minutes variable contains seconds)
+        return hours * 60 + minutes;
+    }
+    
+    return 0;
+}
+
+// Comparison callback for ListView sorting
+int CALLBACK CompareListViewItems(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort) {
+    ListViewSortInfo* sortInfo = (ListViewSortInfo*)lParamSort;
+    
+    // lParam1 and lParam2 are the video ID strings stored in the ListView items
+    wchar_t* videoId1 = (wchar_t*)lParam1;
+    wchar_t* videoId2 = (wchar_t*)lParam2;
+    
+    if (!sortInfo || !sortInfo->manager || !videoId1 || !videoId2) return 0;
+    
+    EnterCriticalSection(&sortInfo->manager->lock);
+    
+    CacheEntry* entry1 = FindCacheEntry(sortInfo->manager, videoId1);
+    CacheEntry* entry2 = FindCacheEntry(sortInfo->manager, videoId2);
+    
+    if (!entry1 || !entry2) {
+        LeaveCriticalSection(&sortInfo->manager->lock);
+        return 0;
+    }
+    
+    int result = 0;
+    
+    switch (sortInfo->column) {
+        case 0: // Title
+            if (entry1->title && entry2->title) {
+                result = _wcsicmp(entry1->title, entry2->title);
+            } else if (entry1->title) {
+                result = 1;
+            } else if (entry2->title) {
+                result = -1;
+            }
+            break;
+            
+        case 1: // Duration
+            {
+                int duration1 = ParseDurationToSeconds(entry1->duration);
+                int duration2 = ParseDurationToSeconds(entry2->duration);
+                result = duration1 - duration2;
+            }
+            break;
+            
+        case 2: // File Size
+            if (entry1->fileSize > entry2->fileSize) {
+                result = 1;
+            } else if (entry1->fileSize < entry2->fileSize) {
+                result = -1;
+            } else {
+                result = 0;
+            }
+            break;
+    }
+    
+    LeaveCriticalSection(&sortInfo->manager->lock);
+    
+    return sortInfo->ascending ? result : -result;
+}
+
+// Sort ListView by column
+void SortListViewByColumn(HWND hListView, int column, CacheManager* manager, ListViewSortInfo* sortInfo) {
+    if (!hListView || !manager || !sortInfo) return;
+    
+    // Toggle sort direction if clicking same column, otherwise default to ascending
+    if (sortInfo->column == column) {
+        sortInfo->ascending = !sortInfo->ascending;
+    } else {
+        sortInfo->column = column;
+        sortInfo->ascending = TRUE;
+    }
+    
+    sortInfo->manager = manager;
+    
+    // Use ListView_SortItems which properly passes lParam values
+    ListView_SortItems(hListView, CompareListViewItems, (LPARAM)sortInfo);
+}
+
+// Select all items in ListView
+void SelectAllListViewItems(HWND hListView) {
+    if (!hListView) return;
+    
+    int itemCount = ListView_GetItemCount(hListView);
+    for (int i = 0; i < itemCount; i++) {
+        ListView_SetItemState(hListView, i, LVIS_SELECTED, LVIS_SELECTED);
+    }
+}

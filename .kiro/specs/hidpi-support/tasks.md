@@ -412,6 +412,7 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
+
   - Add new source files to Makefile
   - Update dependency tracking
   - Ensure clean builds
@@ -427,7 +428,13 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
-- [ ] 10.2 Update dependency tracking
+- [x] 10.2 Update dependency tracking
+
+
+
+
+
+
   - Add dependencies for `dpi.o` (dpi.c, dpi.h, YouTubeCacher.h)
   - Update dependencies for files that include `dpi.h`
   - Update dependencies for main.c (now includes DPI initialization)

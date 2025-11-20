@@ -107,4 +107,8 @@
 #define TAB_ERROR_DIAGNOSTICS  1
 #define TAB_ERROR_SOLUTIONS    2
 
+// ListView context menu
+#define IDR_LISTVIEW_CONTEXT   108
+#define ID_LISTVIEW_SELECTALL  2020
+
 #endif // RESOURCE_H
