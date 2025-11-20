@@ -33,6 +33,10 @@ HiDPI Support:
 - Add WM_DPICHANGED handler to EnhancedErrorDialogProc for error dialog DPI changes
 - Add WM_DPICHANGED handler to SettingsDialogProc for settings dialog DPI changes
 - Add WM_DPICHANGED handler to AboutDialogProc for about dialog DPI changes
+- Implement custom layout recalculation in AboutDialogProc WM_DPICHANGED handler
+- Recalculate all text measurements and control positions at new DPI in About dialog
+- Recreate scalable fonts at new DPI for About dialog title and small text
+- Resize About dialog window to maintain proper proportions at new DPI
 - Implement font scaling system with ScalableFont and FontManager structures
 - Implement CreateFontManager and DestroyFontManager for font lifecycle management
 - Implement CreateScalableFont to create fonts at specific DPI with LOGFONT structure

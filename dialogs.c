@@ -2449,20 +2449,170 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             // Update DPI context
             DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
             if (context) {
-                int oldDpi = context->currentDpi;
                 context->currentDpi = newDpi;
                 context->scaleFactor = (double)newDpi / 96.0;
                 
-                // Rescale all UI elements
-                RescaleWindowForDPI(hDlg, oldDpi, newDpi);
+                // About dialog has custom layout that needs full recalculation
+                // Get device context for text measurements
+                HDC hdc = GetDC(hDlg);
+                if (!hdc) return 0;
                 
-                // Apply suggested window position and size
-                SetWindowPos(hDlg, NULL,
-                            suggestedRect->left,
-                            suggestedRect->top,
-                            suggestedRect->right - suggestedRect->left,
-                            suggestedRect->bottom - suggestedRect->top,
+                // Recalculate all DPI-dependent measurements
+                int dpi = newDpi;
+                int baseUnitX = MulDiv(6, dpi, 96);
+                int baseUnitY = MulDiv(13, dpi, 96);
+                
+                int dialogMargin = MulDiv(7 * baseUnitX, 1, 4);
+                int controlSpacing = MulDiv(4 * baseUnitX, 1, 4);
+                int groupSpacing = MulDiv(7 * baseUnitX, 1, 4);
+                int iconSize = ScaleForDpi(32, dpi);
+                int buttonHeight = MulDiv(14 * baseUnitY, 1, 8);
+                int bottomPadding = ScaleForDpi(8, dpi);
+                
+                // Recreate fonts at new DPI
+                HFONT hTitleFont = NULL, hSmallFont = NULL, hBaseFont = NULL;
+                ScalableFont* titleFont = NULL;
+                ScalableFont* smallFont = NULL;
+                
+                if (g_dpiManager) {
+                    titleFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 12, FW_BOLD);
+                    smallFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 7, FW_NORMAL);
+                    
+                    if (titleFont) hTitleFont = GetFontForDPI(titleFont, dpi);
+                    if (smallFont) hSmallFont = GetFontForDPI(smallFont, dpi);
+                    hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+                }
+                
+                // Remeasure all text elements
+                struct {
+                    const wchar_t* displayText;
+                    HFONT font;
+                    SIZE size;
+                    int controlId;
+                } textElements[] = {
+                    {L"YouTube Cacher", hTitleFont, {0}, IDC_ABOUT_TITLE},
+                    {APP_VERSION, hBaseFont, {0}, IDC_ABOUT_VERSION},
+                    {L"A YouTube downloader frontend to youtube-dl and yt-dlp.", hBaseFont, {0}, IDC_ABOUT_DESCRIPTION},
+                    {L"YouTube Cacher on GitHub", hBaseFont, {0}, IDC_ABOUT_GITHUB_LINK},
+                    {L"Copyright © 2025 Kirn Gill II <segin2005@gmail.com>", hSmallFont, {0}, IDC_ABOUT_COPYRIGHT},
+                    {L"This program comes with no warranty.", hSmallFont, {0}, IDC_ABOUT_WARRANTY},
+                    {L"See the MIT License for details.", hSmallFont, {0}, IDC_ABOUT_LICENSE_LINK}
+                };
+                
+                int maxTextWidth = 0;
+                for (int i = 0; i < 7; i++) {
+                    HFONT hOldFont = NULL;
+                    if (textElements[i].font) {
+                        hOldFont = (HFONT)SelectObject(hdc, textElements[i].font);
+                    }
+                    
+                    GetTextExtentPoint32W(hdc, textElements[i].displayText, (int)wcslen(textElements[i].displayText), &textElements[i].size);
+                    
+                    if (textElements[i].size.cx > maxTextWidth) {
+                        maxTextWidth = textElements[i].size.cx;
+                    }
+                    
+                    if (hOldFont) {
+                        SelectObject(hdc, hOldFont);
+                    }
+                }
+                
+                // Recalculate dialog dimensions
+                int minDialogWidth = ScaleForDpi(320, dpi);
+                int calculatedWidth = (2 * dialogMargin) + maxTextWidth;
+                int dialogWidth = max(minDialogWidth, calculatedWidth);
+                
+                // Recalculate vertical layout
+                int currentY = dialogMargin;
+                
+                int iconX = (dialogWidth - iconSize) / 2;
+                int iconY = currentY;
+                currentY += iconSize + controlSpacing;
+                
+                int titleY = currentY;
+                int titleHeight = textElements[0].size.cy;
+                currentY += titleHeight + controlSpacing;
+                
+                int versionY = currentY;
+                int versionHeight = textElements[1].size.cy;
+                currentY += versionHeight + groupSpacing;
+                
+                int descY = currentY;
+                int descHeight = textElements[2].size.cy;
+                currentY += descHeight + controlSpacing;
+                
+                int githubY = currentY;
+                int githubHeight = textElements[3].size.cy;
+                currentY += githubHeight + groupSpacing;
+                
+                int copyrightY = currentY;
+                int copyrightHeight = textElements[4].size.cy;
+                currentY += copyrightHeight + controlSpacing;
+                
+                int warrantyY = currentY;
+                int warrantyHeight = textElements[5].size.cy;
+                currentY += warrantyHeight + controlSpacing;
+                
+                int licenseY = currentY;
+                int licenseHeight = textElements[6].size.cy;
+                currentY += licenseHeight + groupSpacing;
+                
+                int buttonWidth = ScaleForDpi(75, dpi);
+                int buttonX = (dialogWidth - buttonWidth) / 2;
+                int buttonY = currentY;
+                currentY += buttonHeight + bottomPadding;
+                
+                int dialogHeight = currentY;
+                
+                // Resize dialog
+                RECT windowRect;
+                GetWindowRect(hDlg, &windowRect);
+                RECT clientRect;
+                GetClientRect(hDlg, &clientRect);
+                int frameWidth = (windowRect.right - windowRect.left) - (clientRect.right - clientRect.left);
+                int frameHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
+                
+                SetWindowPos(hDlg, NULL, 
+                            suggestedRect->left, suggestedRect->top,
+                            dialogWidth + frameWidth, dialogHeight + frameHeight,
                             SWP_NOZORDER | SWP_NOACTIVATE);
+                
+                // Reposition all controls
+                SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_ICON), NULL,
+                            iconX, iconY, iconSize, iconSize, SWP_NOZORDER);
+                
+                for (int i = 0; i < 7; i++) {
+                    HWND hControl = GetDlgItem(hDlg, textElements[i].controlId);
+                    if (hControl) {
+                        int textX = (dialogWidth - textElements[i].size.cx) / 2;
+                        int textY;
+                        
+                        switch (i) {
+                            case 0: textY = titleY; break;
+                            case 1: textY = versionY; break;
+                            case 2: textY = descY; break;
+                            case 3: textY = githubY; break;
+                            case 4: textY = copyrightY; break;
+                            case 5: textY = warrantyY; break;
+                            case 6: textY = licenseY; break;
+                        }
+                        
+                        SetWindowPos(hControl, NULL, textX, textY,
+                                    textElements[i].size.cx, textElements[i].size.cy, SWP_NOZORDER);
+                        
+                        if (textElements[i].font) {
+                            SendMessageW(hControl, WM_SETFONT, (WPARAM)textElements[i].font, TRUE);
+                        }
+                    }
+                }
+                
+                SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_CLOSE), NULL,
+                            buttonX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
+                
+                ReleaseDC(hDlg, hdc);
+                
+                // Force redraw
+                InvalidateRect(hDlg, NULL, TRUE);
             }
             
             return 0;

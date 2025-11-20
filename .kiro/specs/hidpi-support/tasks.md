@@ -377,6 +377,7 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
 
 
 
+
   - Verify unified dialog uses new DPI functions
   - Ensure `WM_DPICHANGED` handler is present
 
@@ -394,7 +395,11 @@ This implementation plan breaks down comprehensive HiDPI support into discrete, 
   - Test Settings dialog at multiple DPI settings
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 9.3 Update About dialog DPI handling
+- [x] 9.3 Update About dialog DPI handling
+
+
+
+
   - Register About dialog with DPI manager
   - Add `WM_DPICHANGED` handler
   - Ensure all controls scale properly
