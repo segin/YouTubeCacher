@@ -1572,23 +1572,24 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     // ListView has focus
                     int selectedCount = ListView_GetSelectedCount(hListView);
                     BOOL hasSelection = (selectedCount > 0);
+                    BOOL singleSelection = (selectedCount == 1);
                     
                     // Disable standard edit operations
                     EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_BYCOMMAND | MF_GRAYED);
                     EnableMenuItem(hMenu, ID_EDIT_CUT, MF_BYCOMMAND | MF_GRAYED);
                     EnableMenuItem(hMenu, ID_EDIT_PASTE, MF_BYCOMMAND | MF_GRAYED);
                     
-                    // Change Copy to Copy YouTube URL
+                    // Change Copy to Copy YouTube URL (only enabled for single selection)
                     ModifyMenuW(hMenu, ID_EDIT_COPY, MF_BYCOMMAND | MF_STRING, ID_LISTVIEW_COPY_URL, L"Copy YouTube &URL\tCtrl+C");
-                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_URL, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_URL, MF_BYCOMMAND | (singleSelection ? MF_ENABLED : MF_GRAYED));
                     
                     // Enable Select All
                     EnableMenuItem(hMenu, ID_EDIT_SELECTALL, MF_BYCOMMAND | MF_ENABLED);
                     
-                    // Enable ListView items based on selection
+                    // Enable Delete for any selection, Copy items only for single selection
                     EnableMenuItem(hMenu, ID_LISTVIEW_DELETE, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
-                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_TITLE, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
-                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_PATH, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_TITLE, MF_BYCOMMAND | (singleSelection ? MF_ENABLED : MF_GRAYED));
+                    EnableMenuItem(hMenu, ID_LISTVIEW_COPY_PATH, MF_BYCOMMAND | (singleSelection ? MF_ENABLED : MF_GRAYED));
                 } else {
                     // Not ListView - disable ListView items
                     EnableMenuItem(hMenu, ID_LISTVIEW_DELETE, MF_BYCOMMAND | MF_GRAYED);
@@ -1652,6 +1653,16 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 if (hMenu) {
                     HMENU hPopup = GetSubMenu(hMenu, 0);
                     if (hPopup) {
+                        // Enable/disable items based on selection
+                        int selectedCount = ListView_GetSelectedCount(hListView);
+                        BOOL hasSelection = (selectedCount > 0);
+                        BOOL singleSelection = (selectedCount == 1);
+                        
+                        EnableMenuItem(hPopup, ID_LISTVIEW_DELETE, MF_BYCOMMAND | (hasSelection ? MF_ENABLED : MF_GRAYED));
+                        EnableMenuItem(hPopup, ID_LISTVIEW_COPY_TITLE, MF_BYCOMMAND | (singleSelection ? MF_ENABLED : MF_GRAYED));
+                        EnableMenuItem(hPopup, ID_LISTVIEW_COPY_PATH, MF_BYCOMMAND | (singleSelection ? MF_ENABLED : MF_GRAYED));
+                        EnableMenuItem(hPopup, ID_LISTVIEW_COPY_URL, MF_BYCOMMAND | (singleSelection ? MF_ENABLED : MF_GRAYED));
+                        
                         TrackPopupMenu(hPopup, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hDlg, NULL);
                     }
                     DestroyMenu(hMenu);

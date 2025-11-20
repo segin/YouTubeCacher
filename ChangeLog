@@ -12,6 +12,8 @@ User Interface:
 - Disable Undo, Cut, Paste when ListView has focus
 - Disable Delete, Copy Title, Copy Path when ListView does not have focus
 - Enable/disable menu items based on ListView selection state
+- Disable Copy menu items (Copy Title, Copy Path, Copy YouTube URL) when multiple videos are selected
+- Only Delete and Select All remain enabled for multiple selections in ListView
 - Implement ID_LISTVIEW_COPY_TITLE handler to copy video title to clipboard
 - Implement ID_LISTVIEW_COPY_PATH handler to copy file path to clipboard
 - Implement ID_LISTVIEW_COPY_URL handler to copy reconstructed YouTube URL to clipboard
