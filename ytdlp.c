@@ -439,7 +439,8 @@ wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, con
     // Analyze exit code and output to provide specific guidance
     if (exitCode == ERROR_FILE_NOT_FOUND) {
         wcscpy(userMessage, L"yt-dlp executable not found.\r\n\r\n"
-                           L"Please install yt-dlp using File > Install yt-dlp or configure the correct path in File > Settings.");
+                           L"Please configure the yt-dlp path in File > Settings. "
+                           L"If you don't have yt-dlp installed, you can install it via Help > Install yt-dlp.");
     } else if (exitCode == ERROR_ACCESS_DENIED) {
         wcscpy(userMessage, L"Access denied when running yt-dlp.\r\n\r\n"
                            L"This may be caused by antivirus software or insufficient permissions. "
@@ -684,7 +685,7 @@ DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode,
             swprintf(detailsBuffer, 1024, L"yt-dlp executable not found or not accessible (Error Code: %lu).", errorCode);
             swprintf(diagnosticsBuffer, 1024, L"File access failed\r\nGetLastError(): %lu\r\nOperation: %ls\r\nExpected path: %ls", 
                     errorCode, operation ? operation : L"Unknown", context ? context : L"Not specified");
-            wcscpy(solutionsBuffer, L"• Install yt-dlp using File > Install yt-dlp\r\n• Check yt-dlp path in File > Settings\r\n• Verify yt-dlp is in system PATH");
+            wcscpy(solutionsBuffer, L"• Install yt-dlp via Help > Install yt-dlp if not already installed\r\n• Check yt-dlp path in File > Settings\r\n• Verify yt-dlp is in system PATH");
             break;
             
         case ERROR_TYPE_YTDLP_EXECUTION:
@@ -2462,7 +2463,7 @@ cleanup:
     if (wcslen(config->ytDlpPath) == 0) {
         validationInfo->result = VALIDATION_NOT_FOUND;
         validationInfo->errorDetails = SAFE_WCSDUP(L"yt-dlp path is not configured");
-        validationInfo->suggestions = SAFE_WCSDUP(L"Please configure the yt-dlp path in File > Settings");
+        validationInfo->suggestions = SAFE_WCSDUP(L"Please configure the yt-dlp path in File > Settings. If you don't have yt-dlp installed, you can install it via Help > Install yt-dlp");
         return FALSE;
     }
     
@@ -2470,7 +2471,7 @@ cleanup:
     if (!ValidateYtDlpExecutable(config->ytDlpPath)) {
         validationInfo->result = VALIDATION_NOT_EXECUTABLE;
         validationInfo->errorDetails = SAFE_WCSDUP(L"yt-dlp executable not found or not accessible");
-        validationInfo->suggestions = SAFE_WCSDUP(L"Please check the yt-dlp path in File > Settings and ensure the file exists and is executable");
+        validationInfo->suggestions = SAFE_WCSDUP(L"Please check the yt-dlp path in File > Settings and ensure the file exists and is executable. If you don't have yt-dlp installed, you can install it via Help > Install yt-dlp");
         return FALSE;
     }
     

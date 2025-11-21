@@ -1,6 +1,7 @@
 0.0.2
 
 User Interface:
+- Update yt-dlp configuration error messages to mention Help > Install yt-dlp menu option
 - Add URL validation to Get Info and Download buttons to prevent invalid input
 - Show error dialog with supported URL formats when invalid URL is entered
 - Prevent yt-dlp from being invoked with nonsense input

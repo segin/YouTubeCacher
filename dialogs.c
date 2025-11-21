@@ -1702,7 +1702,7 @@ INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo) {
     wchar_t message[512];
     switch (validationInfo->result) {
         case VALIDATION_NOT_FOUND:
-            wcscpy(message, L"yt-dlp executable not found at the specified path.");
+            wcscpy(message, L"yt-dlp executable not found at the specified path.\r\n\r\nIf you don't have yt-dlp installed, you can install it via Help > Install yt-dlp.");
             break;
         case VALIDATION_NOT_EXECUTABLE:
             wcscpy(message, L"The specified file is not a valid executable.");
