@@ -2,6 +2,7 @@
 
 User Interface:
 - Update yt-dlp configuration error messages to mention Help > Install yt-dlp menu option
+- Use monospaced Consolas font for Technical Details tab in unified dialogs for better readability of system information
 - Add URL validation to Get Info and Download buttons to prevent invalid input
 - Show error dialog with supported URL formats when invalid URL is entered
 - Prevent yt-dlp from being invoked with nonsense input

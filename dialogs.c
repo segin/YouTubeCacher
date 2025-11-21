@@ -240,12 +240,20 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                 
                 // Create default scalable font for dialog controls
                 ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
+                // Create monospaced font for Technical Details tab
+                ScalableFont* monoFont = CreateAndRegisterFont(hDlg, L"Consolas", 9, FW_NORMAL);
+                
                 if (defaultFont) {
                     DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
                     if (context) {
                         // Apply font to all dialog controls
                         SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_MESSAGE), defaultFont, context->currentDpi);
-                        SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), defaultFont, context->currentDpi);
+                        // Use monospaced font for Technical Details tab (tab1)
+                        if (monoFont) {
+                            SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), monoFont, context->currentDpi);
+                        } else {
+                            SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB1_TEXT), defaultFont, context->currentDpi);
+                        }
                         SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB2_TEXT), defaultFont, context->currentDpi);
                         SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_TAB3_TEXT), defaultFont, context->currentDpi);
                         SetControlFont(GetDlgItem(hDlg, IDC_UNIFIED_DETAILS_BTN), defaultFont, context->currentDpi);
