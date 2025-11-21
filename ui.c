@@ -1945,6 +1945,30 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
+                    // Validate URL is a YouTube URL
+                    if (!IsYouTubeURL(url)) {
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Invalid YouTube URL";
+                        config.message = L"The URL you entered is not a valid YouTube URL.";
+                        config.details = L"YouTubeCacher only supports YouTube URLs. Please enter a valid YouTube video URL.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"Valid YouTube URL formats:\r\n\r\n"
+                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
+                                            L"• https://youtu.be/VIDEO_ID\r\n"
+                                            L"• https://www.youtube.com/shorts/VIDEO_ID\r\n\r\n"
+                                            L"Examples:\r\n"
+                                            L"• https://www.youtube.com/watch?v=dQw4w9WgXcQ\r\n"
+                                            L"• https://youtu.be/dQw4w9WgXcQ\r\n\r\n"
+                                            L"The URL must contain 'youtube.com' or 'youtu.be' in the domain.";
+                        config.tab2_name = L"Supported Formats";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
+                        break;
+                    }
+                    
                     // Check if we already have cached metadata for this URL
                     if (IsCachedMetadataValid(GetCachedVideoMetadata(), url)) {
                         // Use cached metadata to pre-populate UI fields
@@ -2045,6 +2069,30 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                             L"• Fast operation - no video data is downloaded\r\n\r\n"
                                             L"This helps you make informed decisions about which videos to download.";
                         config.tab3_name = L"Benefits";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
+                        break;
+                    }
+                    
+                    // Validate URL is a YouTube URL
+                    if (!IsYouTubeURL(url)) {
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Invalid YouTube URL";
+                        config.message = L"The URL you entered is not a valid YouTube URL.";
+                        config.details = L"YouTubeCacher only supports YouTube URLs. Please enter a valid YouTube video URL.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"Valid YouTube URL formats:\r\n\r\n"
+                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
+                                            L"• https://youtu.be/VIDEO_ID\r\n"
+                                            L"• https://www.youtube.com/shorts/VIDEO_ID\r\n\r\n"
+                                            L"Examples:\r\n"
+                                            L"• https://www.youtube.com/watch?v=dQw4w9WgXcQ\r\n"
+                                            L"• https://youtu.be/dQw4w9WgXcQ\r\n\r\n"
+                                            L"The URL must contain 'youtube.com' or 'youtu.be' in the domain.";
+                        config.tab2_name = L"Supported Formats";
                         config.showDetailsButton = TRUE;
                         config.showCopyButton = FALSE;
                         
