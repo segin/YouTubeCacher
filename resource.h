@@ -31,7 +31,7 @@
 #define ID_EDIT_PASTE     2005
 #define ID_EDIT_SELECTALL 2006
 #define ID_HELP_INSTALL_YTDLP 2010
-#define ID_HELP_VIEW_LOG  2011
+#define ID_HELP_VIEW_YTDLP_LOG  2011
 #define ID_HELP_ABOUT     2012
 
 // Settings Dialog
@@ -100,6 +100,14 @@
 #define IDC_ABOUT_WARRANTY     1064
 #define IDC_ABOUT_LICENSE_LINK 1065
 #define IDC_ABOUT_CLOSE        1066
+
+// Log Viewer Dialog
+#define IDD_LOG_VIEWER         108
+#define IDC_LOG_TAB_CONTROL    1071
+#define IDC_LOG_ALL_TEXT       1072
+#define IDC_LOG_LAST_TEXT      1073
+#define IDC_LOG_COPY_BTN       1074
+#define IDC_LOG_OK_BTN         1075
 
 
 // Error dialog tab IDs

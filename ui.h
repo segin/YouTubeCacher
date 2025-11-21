@@ -54,6 +54,7 @@ INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details);
 INT_PTR ShowUIError(HWND parent, const wchar_t* operation);
 
 void ShowAboutDialog(HWND parent);
+void ShowLogViewerDialog(HWND parent);
 
 // Error logging functions
 BOOL InitializeErrorLogging(void);

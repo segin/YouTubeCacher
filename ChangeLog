@@ -1,5 +1,22 @@
 0.0.2
 
+Multi-Instance Protection:
+- Add single-instance mutex to prevent multiple copies of YouTube Cacher from running simultaneously
+- Display informative message box when user attempts to launch a second instance
+- Prevent cache conflicts and data corruption from concurrent access
+
+Logging and Diagnostics:
+- Add yt-dlp session log viewer dialog accessible via Help > View yt-dlp Log menu
+- Implement "All Logs" tab showing concatenated output from all yt-dlp invocations during current session
+- Implement "Last Run" tab showing output from most recent yt-dlp invocation only
+- Session logs are stored in-memory only and separate from disk-based logging
+- Add StartNewYtDlpInvocation function to clear "Last Run" log before each yt-dlp execution
+- Add AppendToYtDlpSessionLog function to capture yt-dlp output in real-time
+- Integrate session log tracking into thread-safe subprocess output reader
+- Add Copy button to log viewer dialog for copying current tab's log to clipboard
+- Use monospaced Consolas font for log display for better readability
+- Log viewer dialog is resizable with proper control repositioning
+
 Memory Management:
 - Fix double-free vulnerabilities in FreeYtDlpRequest, FreeDetailedErrorInfo, FreeOperationResult, FreeYtDlpResult, FreeErrorAnalysis, and FreeSubprocessContext by NULLing pointers after freeing
 - Prevent double-free crashes when cleanup functions are called multiple times on the same structure

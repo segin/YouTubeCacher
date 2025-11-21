@@ -940,6 +940,9 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
                     if (!AppendToThreadSafeSubprocessOutput(context, lineWithEnding, wcslen(lineWithEnding))) {
                         ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Failed to append output");
                     }
+                    
+                    // Also append to session log (in-memory only, separate from disk logging)
+                    AppendToYtDlpSessionLog(lineWithEnding);
 
                     // Call progress callback if available
                     if (context->progressCallback) {

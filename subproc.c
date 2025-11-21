@@ -63,6 +63,9 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     }
 
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Starting thread-safe execution");
+    
+    // Start new yt-dlp invocation in session log (clears "last run" log)
+    StartNewYtDlpInvocation();
 
     // Create thread-safe context
     ThreadSafeSubprocessContext* context = CreateThreadSafeSubprocessFromYtDlp(config, request);

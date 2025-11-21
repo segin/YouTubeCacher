@@ -184,6 +184,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(nCmdShow);
     
+    // Multi-instance protection: Create a named mutex to prevent multiple instances
+    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"Global\\YouTubeCacher_SingleInstance_Mutex");
+    if (hMutex == NULL || GetLastError() == ERROR_ALREADY_EXISTS) {
+        // Another instance is already running
+        MessageBoxW(NULL, 
+                   L"YouTube Cacher is already running.\r\n\r\n"
+                   L"Only one instance of YouTube Cacher can run at a time to prevent cache conflicts.",
+                   L"YouTube Cacher - Already Running",
+                   MB_OK | MB_ICONINFORMATION);
+        
+        if (hMutex) {
+            CloseHandle(hMutex);
+        }
+        return 0;
+    }
+    
     // Initialize error logging
     InitializeErrorLogging();
     
@@ -293,6 +309,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     
     // Cleanup error logging
     CleanupErrorLogging();
+    
+    // Release the single-instance mutex
+    if (hMutex) {
+        ReleaseMutex(hMutex);
+        CloseHandle(hMutex);
+    }
     
     return (int)msg.wParam;
 }

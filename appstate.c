@@ -84,6 +84,30 @@ BOOL InitializeApplicationState(ApplicationState* state) {
         state->ytdlpOutputBufferSize = 0;
     }
     
+    // Initialize yt-dlp session logs (in-memory only, separate from disk logging)
+    state->ytdlpSessionLogAllSize = 256 * 1024; // 256KB initial size for all logs
+    state->ytdlpSessionLogAll = (wchar_t*)SAFE_MALLOC(state->ytdlpSessionLogAllSize * sizeof(wchar_t));
+    state->ytdlpSessionLogLastSize = 64 * 1024; // 64KB initial size for last run
+    state->ytdlpSessionLogLast = (wchar_t*)SAFE_MALLOC(state->ytdlpSessionLogLastSize * sizeof(wchar_t));
+    
+    if (state->ytdlpSessionLogAll && state->ytdlpSessionLogLast) {
+        state->ytdlpSessionLogAll[0] = L'\0';
+        state->ytdlpSessionLogLast[0] = L'\0';
+        InitializeCriticalSection(&state->ytdlpSessionLogLock);
+    } else {
+        OutputDebugStringW(L"YouTubeCacher: InitializeApplicationState - ERROR: Failed to allocate yt-dlp session log buffers");
+        if (state->ytdlpSessionLogAll) {
+            SAFE_FREE(state->ytdlpSessionLogAll);
+            state->ytdlpSessionLogAll = NULL;
+        }
+        if (state->ytdlpSessionLogLast) {
+            SAFE_FREE(state->ytdlpSessionLogLast);
+            state->ytdlpSessionLogLast = NULL;
+        }
+        state->ytdlpSessionLogAllSize = 0;
+        state->ytdlpSessionLogLastSize = 0;
+    }
+    
     // Mark as initialized
     state->isInitialized = TRUE;
     
@@ -141,6 +165,22 @@ void CleanupApplicationState(ApplicationState* state) {
         state->ytdlpOutputBuffer = NULL;
         state->ytdlpOutputBufferSize = 0;
         DeleteCriticalSection(&state->ytdlpOutputLock);
+    }
+    
+    // Clean up yt-dlp session logs
+    if (state->ytdlpSessionLogAll || state->ytdlpSessionLogLast) {
+        OutputDebugStringW(L"YouTubeCacher: CleanupApplicationState - Cleaning up yt-dlp session logs");
+        if (state->ytdlpSessionLogAll) {
+            SAFE_FREE(state->ytdlpSessionLogAll);
+            state->ytdlpSessionLogAll = NULL;
+            state->ytdlpSessionLogAllSize = 0;
+        }
+        if (state->ytdlpSessionLogLast) {
+            SAFE_FREE(state->ytdlpSessionLogLast);
+            state->ytdlpSessionLogLast = NULL;
+            state->ytdlpSessionLogLastSize = 0;
+        }
+        DeleteCriticalSection(&state->ytdlpSessionLogLock);
     }
     
     // Mark as uninitialized
@@ -666,4 +706,89 @@ size_t GetYtDlpOutputBufferSize(void) {
     LeaveCriticalSection(&state->ytdlpOutputLock);
     
     return len;
+}
+
+// yt-dlp session log management functions (in-memory only, separate from disk logging)
+void StartNewYtDlpInvocation(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpSessionLogLast) return;
+    
+    EnterCriticalSection(&state->ytdlpSessionLogLock);
+    
+    // Clear the "last run" log to prepare for new invocation
+    state->ytdlpSessionLogLast[0] = L'\0';
+    
+    LeaveCriticalSection(&state->ytdlpSessionLogLock);
+}
+
+void AppendToYtDlpSessionLog(const wchar_t* output) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpSessionLogAll || !state->ytdlpSessionLogLast || !output) return;
+    
+    EnterCriticalSection(&state->ytdlpSessionLogLock);
+    
+    // Append to "all logs" buffer
+    size_t currentAllLen = wcslen(state->ytdlpSessionLogAll);
+    size_t outputLen = wcslen(output);
+    size_t requiredAllSize = currentAllLen + outputLen + 1;
+    
+    if (requiredAllSize > state->ytdlpSessionLogAllSize) {
+        size_t newSize = (state->ytdlpSessionLogAllSize * 2 > requiredAllSize) ? 
+                         state->ytdlpSessionLogAllSize * 2 : requiredAllSize;
+        
+        wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(state->ytdlpSessionLogAll, newSize * sizeof(wchar_t));
+        if (newBuffer) {
+            state->ytdlpSessionLogAll = newBuffer;
+            state->ytdlpSessionLogAllSize = newSize;
+        } else {
+            // Reallocation failed, truncate
+            size_t maxAppend = state->ytdlpSessionLogAllSize - currentAllLen - 1;
+            if (maxAppend > 0) {
+                wcsncat(state->ytdlpSessionLogAll, output, maxAppend);
+            }
+        }
+    }
+    
+    if (requiredAllSize <= state->ytdlpSessionLogAllSize) {
+        wcscat(state->ytdlpSessionLogAll, output);
+    }
+    
+    // Append to "last run" buffer
+    size_t currentLastLen = wcslen(state->ytdlpSessionLogLast);
+    size_t requiredLastSize = currentLastLen + outputLen + 1;
+    
+    if (requiredLastSize > state->ytdlpSessionLogLastSize) {
+        size_t newSize = (state->ytdlpSessionLogLastSize * 2 > requiredLastSize) ? 
+                         state->ytdlpSessionLogLastSize * 2 : requiredLastSize;
+        
+        wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(state->ytdlpSessionLogLast, newSize * sizeof(wchar_t));
+        if (newBuffer) {
+            state->ytdlpSessionLogLast = newBuffer;
+            state->ytdlpSessionLogLastSize = newSize;
+        } else {
+            // Reallocation failed, truncate
+            size_t maxAppend = state->ytdlpSessionLogLastSize - currentLastLen - 1;
+            if (maxAppend > 0) {
+                wcsncat(state->ytdlpSessionLogLast, output, maxAppend);
+            }
+        }
+    }
+    
+    if (requiredLastSize <= state->ytdlpSessionLogLastSize) {
+        wcscat(state->ytdlpSessionLogLast, output);
+    }
+    
+    LeaveCriticalSection(&state->ytdlpSessionLogLock);
+}
+
+const wchar_t* GetYtDlpSessionLogAll(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpSessionLogAll) return L"";
+    return state->ytdlpSessionLogAll;
+}
+
+const wchar_t* GetYtDlpSessionLogLast(void) {
+    ApplicationState* state = GetApplicationState();
+    if (!state || !state->ytdlpSessionLogLast) return L"";
+    return state->ytdlpSessionLogLast;
 }

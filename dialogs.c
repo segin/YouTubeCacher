@@ -2644,3 +2644,246 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
 void ShowAboutDialog(HWND parent) {
     DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_ABOUT_DIALOG), parent, AboutDialogProc);
 }
+
+// Log Viewer Dialog Procedure
+INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam);
+    
+    switch (message) {
+        case WM_INITDIALOG: {
+            // Register dialog with DPI manager for font scaling
+            if (g_dpiManager) {
+                RegisterWindowForDPI(g_dpiManager, hDlg);
+                
+                // Create monospaced font for log display
+                ScalableFont* monoFont = CreateAndRegisterFont(hDlg, L"Consolas", 9, FW_NORMAL);
+                if (monoFont) {
+                    DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+                    if (context) {
+                        SetControlFont(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), monoFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), monoFont, context->currentDpi);
+                    }
+                }
+            }
+            
+            // Set up tabs
+            HWND hTabControl = GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL);
+            if (hTabControl) {
+                TCITEMW tie;
+                tie.mask = TCIF_TEXT;
+                
+                tie.pszText = L"All Logs";
+                TabCtrl_InsertItem(hTabControl, 0, &tie);
+                
+                tie.pszText = L"Last Run";
+                TabCtrl_InsertItem(hTabControl, 1, &tie);
+                
+                TabCtrl_SetCurSel(hTabControl, 0);
+            }
+            
+            // Load log content from application state
+            const wchar_t* allLogs = GetYtDlpSessionLogAll();
+            const wchar_t* lastLog = GetYtDlpSessionLogLast();
+            
+            if (allLogs && wcslen(allLogs) > 0) {
+                SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, allLogs);
+            } else {
+                SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, L"No yt-dlp invocations logged this session.\r\n");
+            }
+            
+            if (lastLog && wcslen(lastLog) > 0) {
+                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog);
+            } else {
+                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, L"No recent yt-dlp invocation.\r\n");
+            }
+            
+            // Show the "All Logs" tab by default
+            ShowWindow(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), SW_SHOW);
+            ShowWindow(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), SW_HIDE);
+            
+            // Set accessible names for screen readers
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL), L"Log tabs", L"Switch between all logs and last run log");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), L"All logs", L"Complete log of all yt-dlp invocations this session");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), L"Last run log", L"Log of the most recent yt-dlp invocation");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_LOG_COPY_BTN), L"Copy", L"Copy current log to clipboard");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_LOG_OK_BTN), L"OK", L"Close log viewer");
+            
+            // Configure tab order
+            TabOrderConfig tabConfig;
+            TabOrderEntry entries[3];
+            
+            entries[0].controlId = IDC_LOG_TAB_CONTROL;
+            entries[0].tabOrder = 0;
+            entries[0].isTabStop = TRUE;
+            
+            entries[1].controlId = IDC_LOG_COPY_BTN;
+            entries[1].tabOrder = 1;
+            entries[1].isTabStop = TRUE;
+            
+            entries[2].controlId = IDC_LOG_OK_BTN;
+            entries[2].tabOrder = 2;
+            entries[2].isTabStop = TRUE;
+            
+            tabConfig.entries = entries;
+            tabConfig.count = 3;
+            SetDialogTabOrder(hDlg, &tabConfig);
+            
+            return TRUE;
+        }
+        
+        case WM_COMMAND:
+            switch (LOWORD(wParam)) {
+                case IDC_LOG_COPY_BTN: {
+                    // Copy current tab's log to clipboard
+                    HWND hTabControl = GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL);
+                    int currentTab = TabCtrl_GetCurSel(hTabControl);
+                    
+                    int textControlId = (currentTab == 0) ? IDC_LOG_ALL_TEXT : IDC_LOG_LAST_TEXT;
+                    HWND hTextControl = GetDlgItem(hDlg, textControlId);
+                    
+                    int textLen = GetWindowTextLengthW(hTextControl);
+                    if (textLen > 0) {
+                        wchar_t* buffer = (wchar_t*)SAFE_MALLOC((textLen + 1) * sizeof(wchar_t));
+                        if (buffer) {
+                            GetWindowTextW(hTextControl, buffer, textLen + 1);
+                            
+                            if (OpenClipboard(hDlg)) {
+                                EmptyClipboard();
+                                
+                                HGLOBAL hClipboardData = GlobalAlloc(GMEM_MOVEABLE, (textLen + 1) * sizeof(wchar_t));
+                                if (hClipboardData) {
+                                    wchar_t* pchData = (wchar_t*)GlobalLock(hClipboardData);
+                                    if (pchData) {
+                                        wcscpy(pchData, buffer);
+                                        GlobalUnlock(hClipboardData);
+                                        SetClipboardData(CF_UNICODETEXT, hClipboardData);
+                                    }
+                                }
+                                
+                                CloseClipboard();
+                            }
+                            
+                            SAFE_FREE(buffer);
+                        }
+                    }
+                    return TRUE;
+                }
+                
+                case IDC_LOG_OK_BTN:
+                case IDOK:
+                case IDCANCEL:
+                    EndDialog(hDlg, LOWORD(wParam));
+                    return TRUE;
+            }
+            break;
+            
+        case WM_NOTIFY: {
+            LPNMHDR pnmh = (LPNMHDR)lParam;
+            if (pnmh->code == TCN_SELCHANGE && pnmh->idFrom == IDC_LOG_TAB_CONTROL) {
+                int selectedTab = TabCtrl_GetCurSel(pnmh->hwndFrom);
+                
+                // Hide all text controls
+                ShowWindow(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), SW_HIDE);
+                
+                // Show selected tab
+                if (selectedTab == 0) {
+                    ShowWindow(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), SW_SHOW);
+                } else {
+                    ShowWindow(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), SW_SHOW);
+                }
+                
+                // Notify screen readers
+                if (IsScreenReaderActive()) {
+                    NotifyAccessibilityStateChange(pnmh->hwndFrom, EVENT_OBJECT_SELECTION);
+                }
+                
+                return TRUE;
+            }
+            break;
+        }
+        
+        case WM_SIZE: {
+            // Handle dialog resizing
+            RECT clientRect;
+            GetClientRect(hDlg, &clientRect);
+            
+            int width = clientRect.right - clientRect.left;
+            int height = clientRect.bottom - clientRect.top;
+            
+            int margin = 7;
+            int buttonHeight = 18;
+            int buttonWidth = 50;
+            int buttonGap = 5;
+            int buttonY = height - margin - buttonHeight;
+            
+            // Resize tab control
+            SetWindowPos(GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL), NULL,
+                        margin, margin,
+                        width - 2 * margin, height - 3 * margin - buttonHeight,
+                        SWP_NOZORDER);
+            
+            // Resize text controls inside tab
+            int tabHeaderHeight = 24;
+            int textX = margin + 5;
+            int textY = margin + tabHeaderHeight;
+            int textW = width - 2 * margin - 10;
+            int textH = height - 3 * margin - buttonHeight - tabHeaderHeight - 5;
+            
+            SetWindowPos(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), NULL,
+                        textX, textY, textW, textH, SWP_NOZORDER);
+            SetWindowPos(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), NULL,
+                        textX, textY, textW, textH, SWP_NOZORDER);
+            
+            // Position buttons
+            int okX = width - margin - buttonWidth;
+            int copyX = okX - buttonGap - buttonWidth;
+            
+            SetWindowPos(GetDlgItem(hDlg, IDC_LOG_OK_BTN), NULL,
+                        okX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
+            SetWindowPos(GetDlgItem(hDlg, IDC_LOG_COPY_BTN), NULL,
+                        copyX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
+            
+            return TRUE;
+        }
+        
+        case WM_DPICHANGED: {
+            // Handle DPI changes
+            int newDpi = HIWORD(wParam);
+            RECT* suggestedRect = (RECT*)lParam;
+            
+            DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+            if (context) {
+                context->currentDpi = newDpi;
+                context->scaleFactor = (double)newDpi / 96.0;
+                
+                // Rescale fonts
+                RescaleWindowForDPI(hDlg, context->currentDpi, newDpi);
+                
+                // Apply suggested window position and size
+                SetWindowPos(hDlg, NULL,
+                            suggestedRect->left, suggestedRect->top,
+                            suggestedRect->right - suggestedRect->left,
+                            suggestedRect->bottom - suggestedRect->top,
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            
+            return 0;
+        }
+        
+        case WM_SYSCOLORCHANGE:
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
+        
+        case WM_CLOSE:
+            EndDialog(hDlg, IDCANCEL);
+            return TRUE;
+    }
+    
+    return FALSE;
+}
+
+// Show Log Viewer Dialog
+void ShowLogViewerDialog(HWND parent) {
+    DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_LOG_VIEWER), parent, LogViewerDialogProc);
+}

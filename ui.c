@@ -1827,11 +1827,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     InstallYtDlpWithWinget(hDlg);
                     return TRUE;
                     
-                case ID_HELP_VIEW_LOG:
-                    // TODO: Implement View Log dialog
-                    SHOW_ERROR_DIALOG(hDlg, YTC_SEVERITY_INFO, YTC_ERROR_SUCCESS, 
-                                     L"View Log functionality will be implemented in a future update.\r\n\r\n"
-                                     L"This feature is planned for the next release.");
+                case ID_HELP_VIEW_YTDLP_LOG:
+                    ShowLogViewerDialog(hDlg);
                     return TRUE;
                     
                 case ID_HELP_ABOUT:

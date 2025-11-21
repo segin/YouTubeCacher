@@ -36,6 +36,13 @@ typedef struct {
     size_t ytdlpOutputBufferSize;
     CRITICAL_SECTION ytdlpOutputLock;
     
+    // yt-dlp session logs (in-memory only, not written to disk)
+    wchar_t* ytdlpSessionLogAll;      // Concatenated log of all yt-dlp invocations this session
+    size_t ytdlpSessionLogAllSize;
+    wchar_t* ytdlpSessionLogLast;     // Log of most recent yt-dlp invocation only
+    size_t ytdlpSessionLogLastSize;
+    CRITICAL_SECTION ytdlpSessionLogLock;
+    
     // Download tracking
     BOOL isDownloadActive;
     HANDLE hDownloadProcess;
@@ -101,6 +108,12 @@ void ClearYtDlpOutputBuffer(void);
 void AppendToYtDlpOutputBuffer(const wchar_t* output);
 const wchar_t* GetYtDlpOutputBuffer(void);
 size_t GetYtDlpOutputBufferSize(void);
+
+// yt-dlp session log functions (in-memory only, separate from disk logging)
+void StartNewYtDlpInvocation(void);  // Clears "last run" log, prepares for new invocation
+void AppendToYtDlpSessionLog(const wchar_t* output);  // Appends to both "all" and "last" logs
+const wchar_t* GetYtDlpSessionLogAll(void);
+const wchar_t* GetYtDlpSessionLogLast(void);
 
 // State change notification
 typedef void (*StateChangeCallback)(const char* stateType, void* newValue, void* userData);
