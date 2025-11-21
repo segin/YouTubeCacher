@@ -1,5 +1,10 @@
 0.0.2
 
+Memory Management:
+- Fix double-free vulnerabilities in FreeYtDlpRequest, FreeDetailedErrorInfo, FreeOperationResult, FreeYtDlpResult, FreeErrorAnalysis, and FreeSubprocessContext by NULLing pointers after freeing
+- Prevent double-free crashes when cleanup functions are called multiple times on the same structure
+- Add defensive NULL pointer assignments after SAFE_FREE calls to prevent use-after-free issues
+
 User Interface:
 - Update yt-dlp configuration error messages to mention Help > Install yt-dlp menu option
 - Use monospaced Consolas font for Technical Details tab in unified dialogs for better readability of system information

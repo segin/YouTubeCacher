@@ -230,15 +230,19 @@ void FreeYtDlpRequest(YtDlpRequest* request) {
     
     if (request->url) {
         SAFE_FREE(request->url);
+        request->url = NULL;
     }
     if (request->outputPath) {
         SAFE_FREE(request->outputPath);
+        request->outputPath = NULL;
     }
     if (request->tempDir) {
         SAFE_FREE(request->tempDir);
+        request->tempDir = NULL;
     }
     if (request->customArgs) {
         SAFE_FREE(request->customArgs);
+        request->customArgs = NULL;
     }
     
     SAFE_FREE(request);
@@ -629,12 +633,15 @@ void FreeYtDlpResult(YtDlpResult* result) {
     
     if (result->output) {
         SAFE_FREE(result->output);
+        result->output = NULL;
     }
     if (result->errorMessage) {
         SAFE_FREE(result->errorMessage);
+        result->errorMessage = NULL;
     }
     if (result->diagnostics) {
         SAFE_FREE(result->diagnostics);
+        result->diagnostics = NULL;
     }
     
     SAFE_FREE(result);
@@ -727,11 +734,26 @@ DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode,
 void FreeDetailedErrorInfo(DetailedErrorInfo* errorInfo) {
     if (!errorInfo) return;
     
-    if (errorInfo->operation) SAFE_FREE(errorInfo->operation);
-    if (errorInfo->details) SAFE_FREE(errorInfo->details);
-    if (errorInfo->diagnostics) SAFE_FREE(errorInfo->diagnostics);
-    if (errorInfo->solutions) SAFE_FREE(errorInfo->solutions);
-    if (errorInfo->context) SAFE_FREE(errorInfo->context);
+    if (errorInfo->operation) {
+        SAFE_FREE(errorInfo->operation);
+        errorInfo->operation = NULL;
+    }
+    if (errorInfo->details) {
+        SAFE_FREE(errorInfo->details);
+        errorInfo->details = NULL;
+    }
+    if (errorInfo->diagnostics) {
+        SAFE_FREE(errorInfo->diagnostics);
+        errorInfo->diagnostics = NULL;
+    }
+    if (errorInfo->solutions) {
+        SAFE_FREE(errorInfo->solutions);
+        errorInfo->solutions = NULL;
+    }
+    if (errorInfo->context) {
+        SAFE_FREE(errorInfo->context);
+        errorInfo->context = NULL;
+    }
     
     SAFE_FREE(errorInfo);
 }
@@ -751,6 +773,7 @@ void FreeOperationResult(OperationResult* result) {
     
     if (result->errorInfo) {
         FreeDetailedErrorInfo(result->errorInfo);
+        result->errorInfo = NULL;
     }
     
     SAFE_FREE(result);
@@ -811,12 +834,15 @@ void FreeErrorAnalysis(ErrorAnalysis* analysis) {
     
     if (analysis->description) {
         SAFE_FREE(analysis->description);
+        analysis->description = NULL;
     }
     if (analysis->solution) {
         SAFE_FREE(analysis->solution);
+        analysis->solution = NULL;
     }
     if (analysis->technicalDetails) {
         SAFE_FREE(analysis->technicalDetails);
+        analysis->technicalDetails = NULL;
     }
     
     SAFE_FREE(analysis);
@@ -2204,20 +2230,35 @@ void FreeSubprocessContext(SubprocessContext* context) {
     
     // Free deep-copied strings
     if (context->request) {
-        if (context->request->url) SAFE_FREE(context->request->url);
-        if (context->request->outputPath) SAFE_FREE(context->request->outputPath);
-        if (context->request->tempDir) SAFE_FREE(context->request->tempDir);
-        if (context->request->customArgs) SAFE_FREE(context->request->customArgs);
+        if (context->request->url) {
+            SAFE_FREE(context->request->url);
+            context->request->url = NULL;
+        }
+        if (context->request->outputPath) {
+            SAFE_FREE(context->request->outputPath);
+            context->request->outputPath = NULL;
+        }
+        if (context->request->tempDir) {
+            SAFE_FREE(context->request->tempDir);
+            context->request->tempDir = NULL;
+        }
+        if (context->request->customArgs) {
+            SAFE_FREE(context->request->customArgs);
+            context->request->customArgs = NULL;
+        }
         SAFE_FREE(context->request);
+        context->request = NULL;
     }
     
     if (context->config) {
         SAFE_FREE(context->config);
+        context->config = NULL;
     }
     
     // Free result if it exists
     if (context->result) {
         FreeYtDlpResult(context->result);
+        context->result = NULL;
     }
     
     // Note: accumulatedOutput is now used to store ThreadSafeSubprocessContext pointer
