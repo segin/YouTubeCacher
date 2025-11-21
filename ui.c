@@ -1966,6 +1966,55 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
+                    // Check for multiple URLs (space-separated)
+                    if (ContainsMultipleURLs(url)) {
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Multiple URLs Not Supported";
+                        config.message = L"Please enter only one YouTube URL at a time.";
+                        config.details = L"YouTubeCacher currently supports downloading one video at a time. "
+                                        L"Multiple URLs separated by spaces are not supported.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To download multiple videos:\r\n\r\n"
+                                            L"1. Download the first video\r\n"
+                                            L"2. Wait for it to complete\r\n"
+                                            L"3. Enter the next URL and download\r\n\r\n"
+                                            L"Each video must be downloaded individually to ensure proper "
+                                            L"quality selection and metadata handling.";
+                        config.tab2_name = L"How to Download Multiple Videos";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
+                        break;
+                    }
+                    
+                    // Check for playlist URLs
+                    if (IsYouTubePlaylistURL(url)) {
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Playlists Not Supported";
+                        config.message = L"YouTube playlist URLs are not currently supported.";
+                        config.details = L"YouTubeCacher is designed for downloading individual videos. "
+                                        L"Playlist URLs containing 'list=' parameter or '/playlist?' are not supported.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To download videos from a playlist:\r\n\r\n"
+                                            L"1. Open the playlist on YouTube\r\n"
+                                            L"2. Click on an individual video\r\n"
+                                            L"3. Copy the video URL (not the playlist URL)\r\n"
+                                            L"4. Paste the individual video URL here\r\n\r\n"
+                                            L"Individual video URLs look like:\r\n"
+                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
+                                            L"• https://youtu.be/VIDEO_ID\r\n\r\n"
+                                            L"Playlist URLs contain 'list=' and are not supported.";
+                        config.tab2_name = L"How to Download from Playlists";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
+                        break;
+                    }
+                    
                     // Check if we already have cached metadata for this URL
                     if (IsCachedMetadataValid(GetCachedVideoMetadata(), url)) {
                         // Use cached metadata to pre-populate UI fields
@@ -2090,6 +2139,54 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                             L"• https://youtu.be/dQw4w9WgXcQ\r\n\r\n"
                                             L"The URL must contain 'youtube.com' or 'youtu.be' in the domain.";
                         config.tab2_name = L"Supported Formats";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
+                        break;
+                    }
+                    
+                    // Check for multiple URLs (space-separated)
+                    if (ContainsMultipleURLs(url)) {
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Multiple URLs Not Supported";
+                        config.message = L"Please enter only one YouTube URL at a time.";
+                        config.details = L"YouTubeCacher currently supports getting information for one video at a time. "
+                                        L"Multiple URLs separated by spaces are not supported.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To get information for multiple videos:\r\n\r\n"
+                                            L"1. Get info for the first video\r\n"
+                                            L"2. Wait for it to complete\r\n"
+                                            L"3. Enter the next URL and get info\r\n\r\n"
+                                            L"Each video must be processed individually.";
+                        config.tab2_name = L"How to Process Multiple Videos";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = FALSE;
+                        
+                        ShowUnifiedDialog(hDlg, &config);
+                        break;
+                    }
+                    
+                    // Check for playlist URLs
+                    if (IsYouTubePlaylistURL(url)) {
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_ERROR;
+                        config.title = L"Playlists Not Supported";
+                        config.message = L"YouTube playlist URLs are not currently supported.";
+                        config.details = L"YouTubeCacher is designed for individual videos. "
+                                        L"Playlist URLs containing 'list=' parameter or '/playlist?' are not supported.";
+                        config.tab1_name = L"Details";
+                        config.tab2_content = L"To get info for videos from a playlist:\r\n\r\n"
+                                            L"1. Open the playlist on YouTube\r\n"
+                                            L"2. Click on an individual video\r\n"
+                                            L"3. Copy the video URL (not the playlist URL)\r\n"
+                                            L"4. Paste the individual video URL here\r\n\r\n"
+                                            L"Individual video URLs look like:\r\n"
+                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
+                                            L"• https://youtu.be/VIDEO_ID\r\n\r\n"
+                                            L"Playlist URLs contain 'list=' and are not supported.";
+                        config.tab2_name = L"How to Process Playlist Videos";
                         config.showDetailsButton = TRUE;
                         config.showCopyButton = FALSE;
                         
