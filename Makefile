@@ -41,9 +41,9 @@ RC64 = /mingw64/bin/windres.exe
 CFLAGS64 = $(COMMON_CFLAGS)
 LDFLAGS64 = $(COMMON_LDFLAGS)
 
-# ClangARM64 settings
-CCARM64 = /clangarm64/bin/clang.exe
-RCARM64 = /clangarm64/bin/windres.exe
+# ARM64 Cross-Compiler settings
+CCARM64 = aarch64-w64-mingw32-gcc
+RCARM64 = aarch64-w64-mingw32-windres
 CFLAGSARM64 = $(COMMON_CFLAGS)
 LDFLAGSARM64 = $(COMMON_LDFLAGS)
 

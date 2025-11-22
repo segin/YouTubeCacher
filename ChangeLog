@@ -59,8 +59,8 @@ Build System:
 
 - Add `dpi.c`, `accessibility.c`, `keyboard.c`, and `components.c` to build system
 - Update Makefile dependencies for new HiDPI and dialog enhancement modules
+- Add ARM64 cross-compilation support using `aarch64-w64-mingw32-gcc` toolchain
 - Add ARM64 build targets (`debugarm64`, `releasearm64`) with `objarm64` object directory
-- Add ClangARM64 toolchain support for native ARM64 Windows compilation
 
 # 0.0.1
 
