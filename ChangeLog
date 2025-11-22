@@ -2,246 +2,63 @@
 
 Multi-Instance Protection:
 
-- Add single-instance mutex to prevent multiple copies of YouTube Cacher from running simultaneously
-- Display informative message box when user attempts to launch a second instance
-- Prevent cache conflicts and data corruption from concurrent access
+- Add single-instance mutex to prevent concurrent executions and cache conflicts
 
 Logging and Diagnostics:
 
-- Add `yt-dlp` session log viewer dialog accessible via Help > View yt-dlp Log menu
-- Implement "All Logs" tab showing concatenated output from all `yt-dlp` invocations during current session
-- Implement "Last Run" tab showing output from most recent `yt-dlp` invocation only
-- Session logs are stored in-memory only and separate from disk-based logging
-- Add `StartNewYtDlpInvocation` function to clear "Last Run" log before each `yt-dlp` execution
-- Add `AppendToYtDlpSessionLog` function to capture `yt-dlp` output in real-time
-- Integrate session log tracking into thread-safe subprocess output reader
-- Add Copy button to log viewer dialog for copying current tab's log to clipboard
-- Use monospaced Consolas font for log display for better readability
-- Log viewer dialog is resizable with proper control repositioning
+- Add `yt-dlp` session log viewer dialog with "All Logs" and "Last Run" tabs
+- Implement in-memory session log tracking with real-time capture from subprocess output
+- Use monospaced Consolas font for log display and Technical Details tabs
 
 Memory Management:
 
-- Fix double-free vulnerabilities in `FreeYtDlpRequest`, `FreeDetailedErrorInfo`, `FreeOperationResult`, `FreeYtDlpResult`, `FreeErrorAnalysis`, and `FreeSubprocessContext` by NULLing pointers after freeing
-- Prevent double-free crashes when cleanup functions are called multiple times on the same structure
-- Add defensive NULL pointer assignments after `SAFE_FREE` calls to prevent use-after-free issues
+- Fix double-free vulnerabilities in cleanup functions by NULLing pointers after freeing
 
-User Interface:
+URL Validation:
 
-- Update `yt-dlp` configuration error messages to mention Help > Install yt-dlp menu option
-- Use monospaced Consolas font for Technical Details tab in unified dialogs for better readability of system information
-- Add URL validation to Get Info and Download buttons to prevent invalid input
-- Show error dialog with supported URL formats when invalid URL is entered
-- Prevent `yt-dlp` from being invoked with nonsense input
-- Add validation to reject multiple space-separated URLs in input field
-- Add validation to reject YouTube playlist URLs (containing `list=` or `/playlist?`)
-- Display informative error dialogs explaining single-video limitation and how to download from playlists
-- Implement `ContainsMultipleURLs` function to detect space-separated URLs
-- Implement `IsYouTubePlaylistURL` function to detect playlist URLs
-- Add column header sorting to cache `ListView`: click Title, Duration, or File Size to sort
-- Implement toggle between ascending and descending sort order on repeated column clicks
-- Add comprehensive right-click context menu to cache `ListView` with Delete, Copy operations, and Select All
-- Add Delete key (`Del`) accelerator for deleting selected cache entries
-- Add `Ctrl+C` accelerator for copying YouTube URL from selected cache entry
-- Implement fixed Edit menu structure with `ListView`-specific items
-- Edit menu now shows: Undo, Cut, Copy, Paste, Select All, Delete, Copy Title, Copy Path
-- Copy menu item changes to "Copy YouTube URL" when `ListView` has focus
-- Disable Undo, Cut, Paste when `ListView` has focus
-- Disable Delete, Copy Title, Copy Path when `ListView` does not have focus
-- Enable/disable menu items based on `ListView` selection state
-- Disable Copy menu items (Copy Title, Copy Path, Copy YouTube URL) when multiple videos are selected
-- Only Delete and Select All remain enabled for multiple selections in `ListView`
-- Implement `ID_LISTVIEW_COPY_TITLE` handler to copy video title to clipboard
-- Implement `ID_LISTVIEW_COPY_PATH` handler to copy file path to clipboard
-- Implement `ID_LISTVIEW_COPY_URL` handler to copy reconstructed YouTube URL to clipboard
-- Implement `ID_LISTVIEW_DELETE` handler to trigger delete operation via Delete button
-- Fix `ListView` sorting to use `ListView_SortItems` for proper `lParam` handling
-- Refactor Select All functionality to use new `SelectAllListViewItems` helper function
-- Fix Edit menu to rebuild consistently on each popup to prevent item accumulation
+- Add validation to Get Info and Download buttons to reject invalid URLs
+- Reject multiple space-separated URLs and YouTube playlist URLs
+- Display informative error dialogs explaining supported URL formats
 
-Cache Management:
+Cache ListView Enhancements:
 
-- Add `GetYouTubeUrlFromVideoId` helper function to reconstruct YouTube URLs from video IDs
-- Add `ParseDurationToSeconds` helper function to convert `MM:SS` or `HH:MM:SS` format to integer seconds
-- Implement `CompareListViewItems` callback for `ListView` column sorting with thread-safe cache access
-- Add `SortListViewByColumn` function to handle sort state management and `ListView` sorting
-- Add `SelectAllListViewItems` function for programmatic selection of all `ListView` items
-- Add `ListViewSortInfo` structure to track sort column, direction, and cache manager reference
+- Add column header sorting with ascending/descending toggle
+- Add comprehensive right-click context menu with Delete, Copy operations, and Select All
+- Add `Del` and `Ctrl+C` keyboard accelerators
+- Implement Edit menu with focus-aware enabling for `ListView` and edit controls
+- Add Copy Title, Copy Path, and Copy YouTube URL menu items
+- Disable Copy operations when multiple items are selected
 
 HiDPI Support:
 
-- Fix DPI change handling to prevent cumulative scaling errors when moving between monitors
-- Replace `RescaleWindowForDPI` with `ResizeControls` in `WM_DPICHANGED` handler for proper layout recalculation
-- Remove manual control position scaling that caused layout drift on repeated DPI changes
-- Ensure layout is always calculated fresh from window dimensions rather than scaled from previous positions
+- Add centralized DPI management system with `DPIManager` and per-window `DPIContext` tracking
+- Implement per-monitor DPI awareness v2 with fallback chain for older Windows versions
+- Add dynamic DPI change handling via `WM_DPICHANGED` for all windows and dialogs
+- Implement font scaling system with `FontManager` for automatic font rescaling on DPI changes
+- Implement icon scaling system with `IconManager` for multi-size icon support
+- Add window position persistence using DPI-independent logical coordinates
+- Fix DPI change layout drift by recalculating from window dimensions instead of scaling positions
+- Add custom About dialog layout recalculation for proper DPI scaling
 
-User Interface:
+Accessibility and Keyboard Navigation:
 
-- Fix About dialog text being replaced by accessibility labels - `SetControlAccessibility` now stores labels as window properties instead of overwriting visible text
-- Fix Settings dialog component issues: remove duplicate labels, make path fields editable, change browse buttons to "..." instead of "Browse..."
-- Implement DPI-aware component creation using actual resource control dimensions for proper scaling
-- Fix Settings dialog OK/Cancel buttons to meet Windows XP+ UI standards: 50 DLU width (was 32), proper 7 DLU margins, 6 DLU spacing
-- Fix Get Info duration display to apply `FormatDuration` sanitizer for proper `MM:SS` or `HH:MM:SS` format
+- Add screen reader support with accessible names and state change notifications
+- Implement high contrast mode support with dynamic color updates via `WM_SYSCOLORCHANGE`
+- Add tab order management system with automatic logical ordering
+- Add accelerator key system with conflict detection
+- Implement focus management for proper keyboard navigation
 
-HiDPI Support:
+Reusable UI Components:
 
-- Add centralized DPI management system with `DPIContext` and `DPIManager` structures
-- Implement `CreateDPIManager` and `DestroyDPIManager` for lifecycle management
-- Implement `RegisterWindowForDPI` and `UnregisterWindowForDPI` for window tracking
-- Implement `GetWindowDPI` with fallback to `GetDpiForWindow` API (Windows 10 1607+)
-- Implement `GetMonitorDPI` with fallback to `GetDpiForMonitor` API (Windows 8.1+)
-- Implement `GetDPIForPoint` for screen location DPI detection
-- Implement `GetWindowScaleFactor` to calculate DPI scale factor
-- Add coordinate conversion functions: `LogicalToPhysical` and `PhysicalToLogical`
-- Add rectangle conversion functions: `LogicalRectToPhysical` and `PhysicalRectToLogical`
-- Implement `ScaleValueForDPI` and `ScaleValueForDPIFloat` for value scaling
-- Replace `GetDpiForWindowSafe` calls with `GetWindowDPI` in `dialogs.c`
-- Add global `g_dpiManager` variable for centralized DPI management
-- Add `dpi.c` and `dpi.h` module to build system
-- Implement `InitializeDPIAwareness` function with per-monitor DPI awareness v2 support
-- Add fallback chain: Per-Monitor V2 → Per-Monitor V1 → Windows 8.1 API → Vista/7 API
-- Replace `SetProcessDPIAware` with `InitializeDPIAwareness` in `main.c`
-- Initialize global DPI manager on application startup
-- Add DPI manager cleanup on application exit
-- Implement dynamic DPI change handling with `WM_DPICHANGED` message support
-- Implement `RescaleWindowForDPI` function to rescale all child controls on DPI change
-- Add `WM_DPICHANGED` handler to main window (`DialogProc`) for per-monitor DPI awareness
-- Add `WM_DPICHANGED` handler to `UnifiedDialogProc` for dialog DPI changes
-- Add `WM_DPICHANGED` handler to `EnhancedErrorDialogProc` for error dialog DPI changes
-- Add `WM_DPICHANGED` handler to `SettingsDialogProc` for settings dialog DPI changes
-- Add `WM_DPICHANGED` handler to `AboutDialogProc` for about dialog DPI changes
-- Implement custom layout recalculation in `AboutDialogProc` `WM_DPICHANGED` handler
-- Recalculate all text measurements and control positions at new DPI in About dialog
-- Recreate scalable fonts at new DPI for About dialog title and small text
-- Resize About dialog window to maintain proper proportions at new DPI
-- Implement font scaling system with `ScalableFont` and `FontManager` structures
-- Implement `CreateFontManager` and `DestroyFontManager` for font lifecycle management
-- Implement `CreateScalableFont` to create fonts at specific DPI with `LOGFONT` structure
-- Implement `DestroyScalableFont` for font cleanup
-- Implement `GetFontForDPI` to get or create font at specific DPI
-- Implement `SetControlFont` to apply scalable fonts to controls via `WM_SETFONT`
-- Implement `AddFontToManager` to register fonts with `FontManager`
-- Implement `CreateAndRegisterFont` helper to create and register fonts in one call
-- Implement `RescaleFontsForDPI` to update all fonts in window on DPI change
-- Integrate font scaling with main window in `WM_INITDIALOG` (`DialogProc`)
-- Integrate font scaling with Settings dialog in `WM_INITDIALOG` (`SettingsDialogProc`)
+- Add component system with `FileBrowserComponent`, `FolderBrowserComponent`, `LabeledTextInput`, and `ButtonRowComponent`
+- Implement validation framework with visual error feedback (red borders and error labels)
+- Add dialog validation integration to prevent closing on validation failure
+- Update Settings dialog to use reusable components with validation
 
 Build System:
 
-- Add `dpi.c` to `SOURCES` variable in `Makefile` for HiDPI support module
-- Add dependency tracking for `dpi.o` with `dpi.c`, `dpi.h`, and `YouTubeCacher.h`
-- Update `main.o` dependencies to include `dpi.h` for DPI initialization functions
-- Update `ui.o` dependencies to include `YouTubeCacher.h` and `dpi.h` for DPI management
-- Update `dialogs.o` dependencies to include `dpi.h` for dialog DPI handling
-- Integrate font scaling with Unified dialog in `WM_INITDIALOG` (`UnifiedDialogProc`)
-- Integrate font scaling with About dialog in `WM_INITDIALOG` (`AboutDialogProc`)
-- Create default Segoe UI 9pt font for all dialog controls
-- Create title font (12pt bold) and small font (7pt) for About dialog
-- Verify unified dialog DPI handling implementation with `GetWindowDPI` and `WM_DPICHANGED` handler
-- Apply fonts to all main window controls (text fields, labels, buttons, list view)
-- Register main window with DPI manager for per-monitor DPI tracking
-- Add explicit `ResizeControls` call after window initialization for proper initial scaling
-- Implement main window DPI change handling via `WM_DPICHANGED` message
-- Scale all main window controls dynamically based on current DPI
-- Apply fonts to all dialog controls (buttons, labels, tab controls, text areas)
-- Font rescaling automatically triggered by `WM_DPICHANGED` handlers via `RescaleWindowForDPI`
-- Implement icon scaling system with `ScalableIcon` and `IconManager` structures
-- Implement `CreateIconManager` and `DestroyIconManager` for icon lifecycle management
-- Implement `CreateScalableIcon` to track icon resources at multiple sizes
-- Implement `DestroyScalableIcon` for icon cleanup with proper handle destruction
-- Implement window position and size persistence with logical coordinate storage
-- Add `SaveWindowPositionLogical` function to save window position in DPI-independent coordinates
-- Add `RestoreWindowPositionLogical` function to restore window position with DPI conversion
-- Add `EnsureWindowOnScreen` function to validate and adjust window position for current monitor
-- Integrate window position save in `WM_DESTROY` handler of main window
-- Integrate window position restore in `WM_INITDIALOG` handler of main window
-- Window position stored in registry at `Software\Talamar Developments\YouTube Cacher`
-- Registry values use window name prefix (e.g., `MainWindow_Left`, `MainWindow_Top`)
-- Position saved in logical coordinates (96 DPI) for DPI-independent persistence
-- Position restored with conversion to current DPI for proper scaling
-- Screen bounds checking ensures window remains visible after DPI or monitor changes
-- Implement `AddIconToManager` to register icons with `IconManager`
-- Implement `GetIconSizeForDPI` to calculate appropriate icon size for DPI
-- Implement `LoadIconForDPI` to load icon at appropriate size with fallback logic
-- Implement `SetControlIcon` to apply icons to controls via `STM_SETICON` message
-- Implement `ReloadIconsForDPI` to update all icons in window on DPI change
-- Implement `SetControlIconWithTracking` to store resource ID for DPI change tracking
-- Implement `InitializeIconControl` helper for dialog icon initialization
-- Add icon resource documentation to `YouTubeCacher.rc` for future custom icons
-- Icon scaling infrastructure ready for custom icons at 16x16, 20x20, 24x24, 32x32, 48x48, 64x64 sizes
-- System icons (`IDI_QUESTION`) remain DPI-aware by default via Windows
-
-User Interface:
-
-- Add accessibility support with screen reader integration
-- Implement `SetControlAccessibility` function for accessible names and descriptions
-- Implement `NotifyAccessibilityStateChange` function for screen reader notifications
-- Implement `IsScreenReaderActive` function to detect active screen readers (NVDA, Narrator, JAWS, etc.)
-- Implement high contrast mode support with `IsHighContrastMode` function
-- Implement `GetHighContrastColor` function to retrieve system colors for high contrast
-- Implement `ApplyHighContrastColors` function to update dialog colors dynamically
-- Add `WM_SYSCOLORCHANGE` handling to all dialog procedures for theme change detection
-- Add accessible names to unified dialog controls (icon, message, buttons, tabs)
-- Add screen reader notifications when dialogs are shown
-- Add keyboard navigation system with tab order management
-- Implement `SetDialogTabOrder` function to configure tab order for dialog controls
-- Implement `CalculateTabOrder` function for automatic logical tab ordering (top-to-bottom, left-to-right)
-- Implement `FreeTabOrderConfig` cleanup function for tab order configurations
-- Add accelerator key system with conflict detection
-- Implement `ValidateAcceleratorKeys` function to check for accelerator key conflicts
-- Implement `GetAcceleratorChar` function to extract accelerator from button labels
-- Implement `HasAcceleratorConflict` function to detect duplicate accelerators
-- Add default accelerator keys to unified dialog buttons (`Alt+D` for Details, `Alt+C` for Copy, `Alt+O` for OK)
-- Add focus management system for proper keyboard navigation
-- Implement `SetInitialDialogFocus` function to set focus to logical first control
-- Implement `GetNextFocusableControl` function for custom focus navigation
-- Implement `EnsureFocusVisible` function to ensure focus indicators are visible
-- Update `UnifiedDialogConfig` structure to support custom accelerator key text
-- Update unified dialog to use accelerator keys in button text with ampersand notation
-- Add reusable UI component system with base component architecture
-- Implement `UIComponent` base structure with function pointers for init, destroy, validate, getValue, setValue
-- Implement `ComponentRegistry` for managing component lifecycle
-- Add `FileBrowserComponent` with label, edit control, and browse button
-- Implement file browser with `GetOpenFileNameW` dialog integration
-- Add file path validation to check file existence
-- Add `FolderBrowserComponent` with label, edit control, and browse button
-- Implement folder browser with `SHBrowseForFolderW` dialog integration
-- Add folder path validation to check directory existence
-- Add `LabeledTextInput` component with validation support
-- Implement validation types: none, required, numeric, path, URL, custom
-- Add visual error feedback with red error labels for invalid inputs
-- Add custom validation function support for specialized input validation
-- Add `ButtonRowComponent` with standard and custom button layouts
-- Implement standard button layouts: OK, OK/Cancel, Yes/No, Yes/No/Cancel
-- Add right-aligned button positioning with proper spacing (`6px` between buttons)
-- Add Edit menu with Select All option (`Ctrl+A` accelerator)
-- Add validation framework for component validation
-- Implement `ComponentValidationResult` and `ComponentValidationSummary` structures
-- Implement `ValidateComponent` function for single component validation
-- Implement `ValidateDialog` function to validate all components in a dialog
-- Implement `ShowValidationErrors` function to display errors near controls
-- Update Settings dialog to use reusable FileBrowserComponent and FolderBrowserComponent
-- Replace yt-dlp path controls with FileBrowserComponent in Settings dialog
-- Replace download folder controls with FolderBrowserComponent in Settings dialog
-- Replace media player path controls with FileBrowserComponent in Settings dialog
-- Add validation to all Settings dialog input fields
-- Update Settings dialog to save values from components to registry
-- Update About dialog with accessibility enhancements
-- Add accessible names to all About dialog controls (icon, title, version, links, buttons)
-- Configure tab order for About dialog focusable controls (links and close button)
-- Add accelerator key to About dialog Close button (`Alt+C`)
-- Add high contrast mode support to About dialog with `WM_SYSCOLORCHANGE` handling
-- Implement `FreeValidationSummary` cleanup function
-- Add visual validation feedback with red borders for invalid controls
-- Implement `DrawValidationBorder` function to draw red borders around invalid controls
-- Implement `SetControlErrorMessage` function to display error messages
-- Implement `SetEditValidationState` function with window subclassing for border drawing
-- Implement `HandleErrorLabelColor` function for red text color in error labels
-- Add dialog validation integration functions
-- Implement `ValidateDialogBeforeClose` function to prevent dialog close on validation failure
-- Implement `ClearDialogValidationErrors` function to clear all validation errors
-- Implement `HandleDialogValidation` function for OK/Apply button validation
-- Add automatic focus management to first invalid control on validation failure
-- Add validation error summary message box for multiple validation errors
+- Add `dpi.c`, `accessibility.c`, `keyboard.c`, and `components.c` to build system
+- Update Makefile dependencies for new HiDPI and dialog enhancement modules
 
 # 0.0.1
 
