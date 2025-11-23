@@ -6,7 +6,10 @@ Multi-Instance Protection:
 
 Logging and Diagnostics:
 
-- Add `yt-dlp` session log viewer dialog with "All Logs" and "Last Run" tabs
+- Add `yt-dlp` session log viewer dialog with real-time updates
+- Implement "All Logs" tab showing complete session history
+- Implement "Current Run" / "Last Run" tab that changes based on `yt-dlp` execution status
+- Add automatic log refresh every 250ms with auto-scroll to bottom
 - Implement in-memory session log tracking with real-time capture from subprocess output
 - Use monospaced Consolas font for log display and Technical Details tabs
 

@@ -2675,11 +2675,15 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 tie.pszText = L"All Logs";
                 TabCtrl_InsertItem(hTabControl, 0, &tie);
                 
-                tie.pszText = L"Last Run";
+                // Set tab name based on whether yt-dlp is running
+                tie.pszText = IsDownloadActive() ? L"Current Run" : L"Last Run";
                 TabCtrl_InsertItem(hTabControl, 1, &tie);
                 
                 TabCtrl_SetCurSel(hTabControl, 0);
             }
+            
+            // Start timer for real-time updates (250ms interval)
+            SetTimer(hDlg, 1, 250, NULL);
             
             // Load log content from application state
             const wchar_t* allLogs = GetYtDlpSessionLogAll();
@@ -2731,6 +2735,45 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             return TRUE;
         }
         
+        case WM_TIMER: {
+            if (wParam == 1) {
+                // Update tab label based on yt-dlp status
+                HWND hTabControl = GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL);
+                if (hTabControl) {
+                    TCITEMW tie;
+                    tie.mask = TCIF_TEXT;
+                    tie.pszText = IsDownloadActive() ? L"Current Run" : L"Last Run";
+                    TabCtrl_SetItem(hTabControl, 1, &tie);
+                }
+                
+                // Update log content
+                const wchar_t* allLogs = GetYtDlpSessionLogAll();
+                const wchar_t* lastLog = GetYtDlpSessionLogLast();
+                
+                HWND hAllText = GetDlgItem(hDlg, IDC_LOG_ALL_TEXT);
+                HWND hLastText = GetDlgItem(hDlg, IDC_LOG_LAST_TEXT);
+                
+                // Update "All Logs" tab
+                if (allLogs && wcslen(allLogs) > 0) {
+                    SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, allLogs);
+                    // Scroll to bottom
+                    SendMessageW(hAllText, EM_SETSEL, 0, -1);
+                    SendMessageW(hAllText, EM_SETSEL, -1, -1);
+                    SendMessageW(hAllText, EM_SCROLLCARET, 0, 0);
+                }
+                
+                // Update "Current Run" / "Last Run" tab
+                if (lastLog && wcslen(lastLog) > 0) {
+                    SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog);
+                    // Scroll to bottom
+                    SendMessageW(hLastText, EM_SETSEL, 0, -1);
+                    SendMessageW(hLastText, EM_SETSEL, -1, -1);
+                    SendMessageW(hLastText, EM_SCROLLCARET, 0, 0);
+                }
+            }
+            return TRUE;
+        }
+        
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case IDC_LOG_COPY_BTN: {
@@ -2772,6 +2815,7 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 case IDC_LOG_OK_BTN:
                 case IDOK:
                 case IDCANCEL:
+                    KillTimer(hDlg, 1);  // Stop the update timer
                     EndDialog(hDlg, LOWORD(wParam));
                     return TRUE;
             }
@@ -2876,6 +2920,7 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             return TRUE;
         
         case WM_CLOSE:
+            KillTimer(hDlg, 1);  // Stop the update timer
             EndDialog(hDlg, IDCANCEL);
             return TRUE;
     }
