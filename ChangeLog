@@ -2,7 +2,7 @@
 
 Multi-Instance Protection:
 
-- Add single-instance mutex to prevent concurrent executions and cache conflicts
+- Add single-instance mutex to prevent concurrent executions and data corruption
 
 Logging and Diagnostics:
 
@@ -58,6 +58,10 @@ Reusable UI Components:
 Build System:
 
 - Add `dpi.c`, `accessibility.c`, `keyboard.c`, and `components.c` to build system
+- Update Makefile dependencies for new HiDPI and dialog enhancement modules
+- Add ARM64 cross-compilation support using `aarch64-w64-mingw32-gcc` toolchain
+- Add ARM64 build targets (`debugarm64`, `releasearm64`) with `objarm64` object directory
+- Enable Link Time Optimization (LTO) with `-flto` flag for release builds
 - Update Makefile dependencies for new HiDPI and dialog enhancement modules
 - Add ARM64 cross-compilation support using `aarch64-w64-mingw32-gcc` toolchain
 - Add ARM64 build targets (`debugarm64`, `releasearm64`) with `objarm64` object directory

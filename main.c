@@ -190,7 +190,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         // Another instance is already running
         MessageBoxW(NULL, 
                    L"YouTube Cacher is already running.\r\n\r\n"
-                   L"Only one instance of YouTube Cacher can run at a time to prevent cache conflicts.",
+                   L"Only one instance of YouTube Cacher can run at a time to prevent data corruption.",
                    L"YouTube Cacher - Already Running",
                    MB_OK | MB_ICONINFORMATION);
         
