@@ -2701,6 +2701,10 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, L"No recent yt-dlp invocation.\r\n");
             }
             
+            // Store initial text lengths to track what's been displayed
+            SetPropW(hDlg, L"AllLogsLength", (HANDLE)(size_t)wcslen(allLogs ? allLogs : L""));
+            SetPropW(hDlg, L"LastLogLength", (HANDLE)(size_t)wcslen(lastLog ? lastLog : L""));
+            
             // Show the "All Logs" tab by default
             ShowWindow(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), SW_SHOW);
             ShowWindow(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), SW_HIDE);
@@ -2745,30 +2749,65 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 TabCtrl_SetItem(hTabControl, 1, &tie);
             }
             
-            // Update log content
+            // Get current log content
             const wchar_t* allLogs = GetYtDlpSessionLogAll();
             const wchar_t* lastLog = GetYtDlpSessionLogLast();
             
             HWND hAllText = GetDlgItem(hDlg, IDC_LOG_ALL_TEXT);
             HWND hLastText = GetDlgItem(hDlg, IDC_LOG_LAST_TEXT);
             
-            // Update "All Logs" tab
-            if (allLogs && wcslen(allLogs) > 0) {
-                SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, allLogs);
+            // Get previously displayed lengths
+            size_t prevAllLen = (size_t)GetPropW(hDlg, L"AllLogsLength");
+            size_t prevLastLen = (size_t)GetPropW(hDlg, L"LastLogLength");
+            
+            size_t currentAllLen = allLogs ? wcslen(allLogs) : 0;
+            size_t currentLastLen = lastLog ? wcslen(lastLog) : 0;
+            
+            // Update "All Logs" tab - only append new text
+            if (currentAllLen > prevAllLen && allLogs) {
+                const wchar_t* newText = allLogs + prevAllLen;
+                
+                // Move to end of text
+                int textLen = GetWindowTextLengthW(hAllText);
+                SendMessageW(hAllText, EM_SETSEL, textLen, textLen);
+                
+                // Append new text
+                SendMessageW(hAllText, EM_REPLACESEL, FALSE, (LPARAM)newText);
+                
                 // Scroll to bottom
-                SendMessageW(hAllText, EM_SETSEL, 0, -1);
-                SendMessageW(hAllText, EM_SETSEL, -1, -1);
                 SendMessageW(hAllText, EM_SCROLLCARET, 0, 0);
+                
+                // Update stored length
+                SetPropW(hDlg, L"AllLogsLength", (HANDLE)currentAllLen);
             }
             
-            // Update "Current Run" / "Last Run" tab
-            if (lastLog && wcslen(lastLog) > 0) {
-                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog);
+            // Update "Current Run" / "Last Run" tab - only append new text
+            if (currentLastLen > prevLastLen && lastLog) {
+                const wchar_t* newText = lastLog + prevLastLen;
+                
+                // Move to end of text
+                int textLen = GetWindowTextLengthW(hLastText);
+                SendMessageW(hLastText, EM_SETSEL, textLen, textLen);
+                
+                // Append new text
+                SendMessageW(hLastText, EM_REPLACESEL, FALSE, (LPARAM)newText);
+                
+                // Scroll to bottom
+                SendMessageW(hLastText, EM_SCROLLCARET, 0, 0);
+                
+                // Update stored length
+                SetPropW(hDlg, L"LastLogLength", (HANDLE)currentLastLen);
+            } else if (currentLastLen < prevLastLen) {
+                // Log was cleared (new invocation started), replace entire content
+                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog ? lastLog : L"");
+                SetPropW(hDlg, L"LastLogLength", (HANDLE)currentLastLen);
+                
                 // Scroll to bottom
                 SendMessageW(hLastText, EM_SETSEL, 0, -1);
                 SendMessageW(hLastText, EM_SETSEL, -1, -1);
                 SendMessageW(hLastText, EM_SCROLLCARET, 0, 0);
             }
+            
             return TRUE;
         }
         
@@ -2918,11 +2957,19 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             return TRUE;
         
         case WM_CLOSE:
+            // Clean up window properties
+            RemovePropW(hDlg, L"AllLogsLength");
+            RemovePropW(hDlg, L"LastLogLength");
+            
             g_hLogViewerDialog = NULL;  // Clear global handle
             DestroyWindow(hDlg);  // Use DestroyWindow for non-modal dialogs
             return TRUE;
         
         case WM_DESTROY:
+            // Clean up window properties
+            RemovePropW(hDlg, L"AllLogsLength");
+            RemovePropW(hDlg, L"LastLogLength");
+            
             g_hLogViewerDialog = NULL;  // Ensure global handle is cleared
             return TRUE;
     }

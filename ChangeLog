@@ -13,6 +13,7 @@ Logging and Diagnostics:
 - Use monospaced Consolas font for log display and Technical Details tabs
 - Change log viewer to non-modal dialog allowing main window interaction
 - Add real-time log display updates as `yt-dlp` output is processed
+- Optimize log viewer to append only new text instead of replacing entire content to eliminate flickering
 - Add automatic log viewer cleanup when main window closes or on Ctrl+Q
 
 Memory Management:
