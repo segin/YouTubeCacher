@@ -5,6 +5,9 @@
 #define _countof(array) (sizeof(array) / sizeof(array[0]))
 #endif
 
+// Global log viewer window handle
+HWND g_hLogViewerDialog = NULL;
+
 // HiDPI helper functions
 static int ScaleForDpi(int value, int dpi) {
     return MulDiv(value, dpi, 96); // 96 is the standard DPI
@@ -2682,9 +2685,6 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 TabCtrl_SetCurSel(hTabControl, 0);
             }
             
-            // Start timer for real-time updates (250ms interval)
-            SetTimer(hDlg, 1, 250, NULL);
-            
             // Load log content from application state
             const wchar_t* allLogs = GetYtDlpSessionLogAll();
             const wchar_t* lastLog = GetYtDlpSessionLogLast();
@@ -2735,41 +2735,39 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             return TRUE;
         }
         
-        case WM_TIMER: {
-            if (wParam == 1) {
-                // Update tab label based on yt-dlp status
-                HWND hTabControl = GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL);
-                if (hTabControl) {
-                    TCITEMW tie;
-                    tie.mask = TCIF_TEXT;
-                    tie.pszText = IsDownloadActive() ? L"Current Run" : L"Last Run";
-                    TabCtrl_SetItem(hTabControl, 1, &tie);
-                }
-                
-                // Update log content
-                const wchar_t* allLogs = GetYtDlpSessionLogAll();
-                const wchar_t* lastLog = GetYtDlpSessionLogLast();
-                
-                HWND hAllText = GetDlgItem(hDlg, IDC_LOG_ALL_TEXT);
-                HWND hLastText = GetDlgItem(hDlg, IDC_LOG_LAST_TEXT);
-                
-                // Update "All Logs" tab
-                if (allLogs && wcslen(allLogs) > 0) {
-                    SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, allLogs);
-                    // Scroll to bottom
-                    SendMessageW(hAllText, EM_SETSEL, 0, -1);
-                    SendMessageW(hAllText, EM_SETSEL, -1, -1);
-                    SendMessageW(hAllText, EM_SCROLLCARET, 0, 0);
-                }
-                
-                // Update "Current Run" / "Last Run" tab
-                if (lastLog && wcslen(lastLog) > 0) {
-                    SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog);
-                    // Scroll to bottom
-                    SendMessageW(hLastText, EM_SETSEL, 0, -1);
-                    SendMessageW(hLastText, EM_SETSEL, -1, -1);
-                    SendMessageW(hLastText, EM_SCROLLCARET, 0, 0);
-                }
+        case WM_LOG_VIEWER_UPDATE: {
+            // Update tab label based on yt-dlp status
+            HWND hTabControl = GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL);
+            if (hTabControl) {
+                TCITEMW tie;
+                tie.mask = TCIF_TEXT;
+                tie.pszText = IsDownloadActive() ? L"Current Run" : L"Last Run";
+                TabCtrl_SetItem(hTabControl, 1, &tie);
+            }
+            
+            // Update log content
+            const wchar_t* allLogs = GetYtDlpSessionLogAll();
+            const wchar_t* lastLog = GetYtDlpSessionLogLast();
+            
+            HWND hAllText = GetDlgItem(hDlg, IDC_LOG_ALL_TEXT);
+            HWND hLastText = GetDlgItem(hDlg, IDC_LOG_LAST_TEXT);
+            
+            // Update "All Logs" tab
+            if (allLogs && wcslen(allLogs) > 0) {
+                SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, allLogs);
+                // Scroll to bottom
+                SendMessageW(hAllText, EM_SETSEL, 0, -1);
+                SendMessageW(hAllText, EM_SETSEL, -1, -1);
+                SendMessageW(hAllText, EM_SCROLLCARET, 0, 0);
+            }
+            
+            // Update "Current Run" / "Last Run" tab
+            if (lastLog && wcslen(lastLog) > 0) {
+                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog);
+                // Scroll to bottom
+                SendMessageW(hLastText, EM_SETSEL, 0, -1);
+                SendMessageW(hLastText, EM_SETSEL, -1, -1);
+                SendMessageW(hLastText, EM_SCROLLCARET, 0, 0);
             }
             return TRUE;
         }
@@ -2815,8 +2813,8 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 case IDC_LOG_OK_BTN:
                 case IDOK:
                 case IDCANCEL:
-                    KillTimer(hDlg, 1);  // Stop the update timer
-                    EndDialog(hDlg, LOWORD(wParam));
+                    g_hLogViewerDialog = NULL;  // Clear global handle
+                    DestroyWindow(hDlg);  // Use DestroyWindow for non-modal dialogs
                     return TRUE;
             }
             break;
@@ -2920,8 +2918,12 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             return TRUE;
         
         case WM_CLOSE:
-            KillTimer(hDlg, 1);  // Stop the update timer
-            EndDialog(hDlg, IDCANCEL);
+            g_hLogViewerDialog = NULL;  // Clear global handle
+            DestroyWindow(hDlg);  // Use DestroyWindow for non-modal dialogs
+            return TRUE;
+        
+        case WM_DESTROY:
+            g_hLogViewerDialog = NULL;  // Ensure global handle is cleared
             return TRUE;
     }
     
@@ -2930,5 +2932,15 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
 
 // Show Log Viewer Dialog
 void ShowLogViewerDialog(HWND parent) {
-    DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_LOG_VIEWER), parent, LogViewerDialogProc);
+    // If log viewer is already open, bring it to front
+    if (g_hLogViewerDialog && IsWindow(g_hLogViewerDialog)) {
+        SetForegroundWindow(g_hLogViewerDialog);
+        return;
+    }
+    
+    // Create non-modal dialog
+    g_hLogViewerDialog = CreateDialogW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_LOG_VIEWER), parent, LogViewerDialogProc);
+    if (g_hLogViewerDialog) {
+        ShowWindow(g_hLogViewerDialog, SW_SHOW);
+    }
 }

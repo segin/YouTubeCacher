@@ -51,6 +51,7 @@
 
 // Custom window messages
 #define WM_CACHE_SIZE_UPDATE (WM_USER + 200)
+#define WM_LOG_VIEWER_UPDATE (WM_USER + 201)
 #define BUTTON_HEIGHT_SMALL 24
 #define BUTTON_HEIGHT_LARGE 30
 #define TEXT_FIELD_HEIGHT   20
@@ -600,6 +601,9 @@ typedef struct {
 
 // Global DPI manager instance
 extern DPIManager* g_dpiManager;
+
+// Global log viewer window handle
+extern HWND g_hLogViewerDialog;
 
 // Include other headers after all type definitions to avoid circular dependencies
 #include "uri.h"

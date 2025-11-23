@@ -2711,6 +2711,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             return TRUE;
             
         case WM_CLOSE:
+            // Close log viewer if open
+            if (g_hLogViewerDialog && IsWindow(g_hLogViewerDialog)) {
+                DestroyWindow(g_hLogViewerDialog);
+                g_hLogViewerDialog = NULL;
+            }
+            
             // Restore original text field window procedure
             WNDPROC originalProc = GetOriginalTextFieldProc();
             if (originalProc) {
@@ -3020,6 +3026,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             
             // Write session end marker for clean shutdown
             WriteSessionEndToLogfile(L"Clean program shutdown");
+            
+            // Close log viewer if open
+            if (g_hLogViewerDialog && IsWindow(g_hLogViewerDialog)) {
+                DestroyWindow(g_hLogViewerDialog);
+                g_hLogViewerDialog = NULL;
+            }
             
             // Restore original text field window procedure FIRST to avoid issues with third-party hooks
             // (This is a safety check in case WM_CLOSE wasn't called)

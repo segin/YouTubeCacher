@@ -779,6 +779,12 @@ void AppendToYtDlpSessionLog(const wchar_t* output) {
     }
     
     LeaveCriticalSection(&state->ytdlpSessionLogLock);
+    
+    // Notify log viewer window if it's open (real-time update)
+    extern HWND g_hLogViewerDialog;
+    if (g_hLogViewerDialog && IsWindow(g_hLogViewerDialog)) {
+        PostMessageW(g_hLogViewerDialog, WM_LOG_VIEWER_UPDATE, 0, 0);
+    }
 }
 
 const wchar_t* GetYtDlpSessionLogAll(void) {
