@@ -15,6 +15,12 @@ Logging and Diagnostics:
 - Add real-time log display updates as `yt-dlp` output is processed
 - Optimize log viewer to append only new text instead of replacing entire content to eliminate flickering
 - Add automatic log viewer cleanup when main window closes or on Ctrl+Q
+- Fix log viewer dialog initial size from 600×400 to 450×300 for better screen usage
+- Fix log viewer resize behavior with proper DPI-aware scaling and dynamic tab header measurement
+- Add timestamp logging at start of each `yt-dlp` invocation
+- Add command-line logging showing exact command executed
+- Add exit code logging at completion of each `yt-dlp` invocation
+- Add cancellation logging when user cancels download prematurely
 
 Memory Management:
 

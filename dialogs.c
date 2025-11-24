@@ -2885,38 +2885,72 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
         }
         
         case WM_SIZE: {
-            // Handle dialog resizing
+            // Handle dialog resizing with proper DPI scaling
             RECT clientRect;
             GetClientRect(hDlg, &clientRect);
             
             int width = clientRect.right - clientRect.left;
             int height = clientRect.bottom - clientRect.top;
             
-            int margin = 7;
-            int buttonHeight = 18;
-            int buttonWidth = 50;
-            int buttonGap = 5;
+            // Get DPI for proper scaling
+            int dpi = GetWindowDPI(hDlg);
+            double scaleFactor = (double)dpi / 96.0;
+            
+            // Base measurements at 96 DPI
+            const int BASE_MARGIN = 7;
+            const int BASE_BUTTON_HEIGHT = 18;
+            const int BASE_BUTTON_WIDTH = 50;
+            const int BASE_BUTTON_GAP = 5;
+            const int BASE_TAB_PADDING = 5;  // Padding inside tab control
+            
+            // Scale to current DPI
+            int margin = (int)(BASE_MARGIN * scaleFactor);
+            int buttonHeight = (int)(BASE_BUTTON_HEIGHT * scaleFactor);
+            int buttonWidth = (int)(BASE_BUTTON_WIDTH * scaleFactor);
+            int buttonGap = (int)(BASE_BUTTON_GAP * scaleFactor);
+            int tabPadding = (int)(BASE_TAB_PADDING * scaleFactor);
+            
+            // Calculate button Y position
             int buttonY = height - margin - buttonHeight;
+            
+            // Calculate tab control dimensions
+            // Layout: [margin] [tab control] [margin]
+            //         [margin] [buttons] [margin]
+            int tabControlHeight = height - (3 * margin) - buttonHeight;
             
             // Resize tab control
             SetWindowPos(GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL), NULL,
                         margin, margin,
-                        width - 2 * margin, height - 3 * margin - buttonHeight,
+                        width - (2 * margin), tabControlHeight,
                         SWP_NOZORDER);
             
-            // Resize text controls inside tab
-            int tabHeaderHeight = 24;
-            int textX = margin + 5;
-            int textY = margin + tabHeaderHeight;
-            int textW = width - 2 * margin - 10;
-            int textH = height - 3 * margin - buttonHeight - tabHeaderHeight - 5;
+            // Measure actual tab header height dynamically
+            HWND hTabControl = GetDlgItem(hDlg, IDC_LOG_TAB_CONTROL);
+            RECT tabRect;
+            GetClientRect(hTabControl, &tabRect);
             
+            // Get display area (area inside tab control excluding header)
+            TabCtrl_AdjustRect(hTabControl, FALSE, &tabRect);
+            
+            // Calculate text control position relative to tab control
+            // The tab control is at (margin, margin) in dialog coordinates
+            // Text controls are positioned inside the tab's display area
+            int textX = margin + tabRect.left + tabPadding;
+            int textY = margin + tabRect.top + tabPadding;
+            int textW = (tabRect.right - tabRect.left) - (2 * tabPadding);
+            int textH = (tabRect.bottom - tabRect.top) - (2 * tabPadding);
+            
+            // Ensure minimum sizes
+            if (textW < 100) textW = 100;
+            if (textH < 50) textH = 50;
+            
+            // Resize text controls inside tab
             SetWindowPos(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), NULL,
                         textX, textY, textW, textH, SWP_NOZORDER);
             SetWindowPos(GetDlgItem(hDlg, IDC_LOG_LAST_TEXT), NULL,
                         textX, textY, textW, textH, SWP_NOZORDER);
             
-            // Position buttons
+            // Position buttons (right-aligned)
             int okX = width - margin - buttonWidth;
             int copyX = okX - buttonGap - buttonWidth;
             

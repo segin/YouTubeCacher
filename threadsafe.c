@@ -513,6 +513,19 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
         swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command (truncated): %.500ls...", cmdLine);
         ThreadSafeDebugOutput(logMsg);
     }
+    
+    // Log timestamp and command-line to session log
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    wchar_t timestampMsg[512];
+    swprintf(timestampMsg, 512, 
+             L"\r\n========================================\r\n"
+             L"yt-dlp invocation started: %04d-%02d-%02d %02d:%02d:%02d\r\n"
+             L"Command: %ls\r\n"
+             L"========================================\r\n",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+             cmdLine);
+    AppendToYtDlpSessionLog(timestampMsg);
 
     // Copy working directory if set
     wchar_t* workDir = NULL;
@@ -633,6 +646,17 @@ BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
 
     // Set cancellation flag (atomic operation, no lock needed)
     context->cancellationRequested = TRUE;
+    
+    // Log cancellation to session log
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    wchar_t cancelMsg[512];
+    swprintf(cancelMsg, 512,
+             L"========================================\r\n"
+             L"yt-dlp invocation CANCELLED by user: %04d-%02d-%02d %02d:%02d:%02d\r\n"
+             L"========================================\r\n\r\n",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    AppendToYtDlpSessionLog(cancelMsg);
     
     // Safely set cancellation event
     if (context->cancellationEvent && context->cancellationEvent != INVALID_HANDLE_VALUE) {
@@ -1080,6 +1104,23 @@ BOOL WaitForThreadSafeSubprocessWithOutputCompletion(ThreadSafeSubprocessContext
 
         Sleep(100); // Check every 100ms
     }
+
+    // Log completion with exit code and timestamp
+    EnterCriticalSection(&context->processStateLock);
+    DWORD exitCode = context->exitCode;
+    LeaveCriticalSection(&context->processStateLock);
+    
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    wchar_t completionMsg[512];
+    swprintf(completionMsg, 512,
+             L"========================================\r\n"
+             L"yt-dlp invocation completed: %04d-%02d-%02d %02d:%02d:%02d\r\n"
+             L"Exit code: %lu\r\n"
+             L"========================================\r\n\r\n",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+             exitCode);
+    AppendToYtDlpSessionLog(completionMsg);
 
     ThreadSafeDebugOutput(L"WaitForThreadSafeSubprocessWithOutputCompletion: Subprocess and output collection completed");
     return TRUE;
