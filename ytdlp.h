@@ -104,6 +104,14 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata);
 BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata);
 void FreeVideoMetadata(VideoMetadata* metadata);
 
+// Playlist metadata functions
+void FreePlaylistVideoEntry(PlaylistVideoEntry* entry);
+void FreePlaylistMetadata(PlaylistMetadata* playlist);
+BOOL ParsePlaylistMetadataOutput(const wchar_t* output, PlaylistMetadata* playlist);
+BOOL ParsePlaylistProgressLine(const wchar_t* line, int* current, int* total);
+BOOL ParseVideoStartMarker(const wchar_t* line, wchar_t** videoId, wchar_t** title);
+BOOL ParseVideoEndMarker(const wchar_t* line, wchar_t** videoId);
+
 // Cached metadata functions
 void InitializeCachedMetadata(CachedVideoMetadata* cached);
 void FreeCachedMetadata(CachedVideoMetadata* cached);

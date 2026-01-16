@@ -939,6 +939,38 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             wcscpy(operationArgs, L"--version");
             break;
             
+        case YTDLP_OP_GET_PLAYLIST_INFO:
+            if (url && wcslen(url) > 0) {
+                // Fast playlist enumeration with flat-playlist (no full video extraction)
+                // Output format: id|title|duration (duration in seconds)
+                swprintf(operationArgs, 4096, 
+                    L"--flat-playlist --no-download --no-warnings --encoding utf-8 "
+                    L"--print \"%%(id)s|%%(title)s|%%(duration)s\" \"%ls\"", url);
+            } else {
+                return FALSE;
+            }
+            break;
+            
+        case YTDLP_OP_DOWNLOAD_PLAYLIST:
+            if (url && outputPath) {
+                // Playlist download with per-video markers and progress tracking
+                // --ignore-errors: continue if individual videos fail
+                // --print before_dl: mark start of each video download
+                // --print after_video: mark completion of each video
+                // Progress template includes video ID for tracking
+                swprintf(operationArgs, 4096, 
+                    L"--newline --no-colors --force-overwrites --ignore-errors "
+                    L"--write-info-json "
+                    L"--print \"before_dl:VIDEOSTART|%%(id)s|%%(title)s\" "
+                    L"--print \"after_video:VIDEOEND|%%(id)s\" "
+                    L"--progress-template \"download:%%(info.id)s|%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
+                    L"--output \"%ls\\\\%%(id)s.%%(ext)s\" \"%ls\"", 
+                    outputPath, url);
+            } else {
+                return FALSE;
+            }
+            break;
+            
         default:
             return FALSE;
     }
@@ -973,6 +1005,199 @@ void FreeVideoMetadata(VideoMetadata* metadata) {
         metadata->id = NULL;
     }
     metadata->success = FALSE;
+}
+
+// Free a single playlist video entry
+void FreePlaylistVideoEntry(PlaylistVideoEntry* entry) {
+    if (!entry) return;
+    
+    if (entry->videoId) {
+        SAFE_FREE(entry->videoId);
+        entry->videoId = NULL;
+    }
+    if (entry->title) {
+        SAFE_FREE(entry->title);
+        entry->title = NULL;
+    }
+    entry->durationSeconds = 0;
+    entry->index = 0;
+}
+
+// Free playlist metadata structure
+void FreePlaylistMetadata(PlaylistMetadata* playlist) {
+    if (!playlist) return;
+    
+    if (playlist->playlistId) {
+        SAFE_FREE(playlist->playlistId);
+        playlist->playlistId = NULL;
+    }
+    if (playlist->playlistTitle) {
+        SAFE_FREE(playlist->playlistTitle);
+        playlist->playlistTitle = NULL;
+    }
+    if (playlist->videos) {
+        for (int i = 0; i < playlist->videoCount; i++) {
+            FreePlaylistVideoEntry(&playlist->videos[i]);
+        }
+        SAFE_FREE(playlist->videos);
+        playlist->videos = NULL;
+    }
+    playlist->videoCount = 0;
+    playlist->currentVideoIndex = 0;
+}
+
+// Parse playlist metadata from yt-dlp --flat-playlist output
+// Each line is in format: id|title|duration
+BOOL ParsePlaylistMetadataOutput(const wchar_t* output, PlaylistMetadata* playlist) {
+    if (!output || !playlist) return FALSE;
+    
+    // Initialize playlist
+    memset(playlist, 0, sizeof(PlaylistMetadata));
+    
+    // Count lines to allocate array
+    int lineCount = 0;
+    const wchar_t* p = output;
+    while (*p) {
+        if (*p == L'\n') lineCount++;
+        p++;
+    }
+    // Add one more if last line doesn't end with newline
+    if (p > output && *(p - 1) != L'\n') lineCount++;
+    
+    if (lineCount == 0) return FALSE;
+    
+    // Allocate video array
+    playlist->videos = (PlaylistVideoEntry*)SAFE_MALLOC(sizeof(PlaylistVideoEntry) * lineCount);
+    if (!playlist->videos) return FALSE;
+    memset(playlist->videos, 0, sizeof(PlaylistVideoEntry) * lineCount);
+    
+    // Parse each line
+    wchar_t* outputCopy = SAFE_WCSDUP(output);
+    if (!outputCopy) {
+        SAFE_FREE(playlist->videos);
+        playlist->videos = NULL;
+        return FALSE;
+    }
+    
+    wchar_t* context = NULL;
+    wchar_t* line = wcstok(outputCopy, L"\r\n", &context);
+    int index = 0;
+    
+    while (line && index < lineCount) {
+        // Skip empty lines
+        if (wcslen(line) == 0) {
+            line = wcstok(NULL, L"\r\n", &context);
+            continue;
+        }
+        
+        // Parse: id|title|duration
+        wchar_t* id = line;
+        wchar_t* title = wcschr(id, L'|');
+        if (title) {
+            *title = L'\0';
+            title++;
+            wchar_t* duration = wcschr(title, L'|');
+            if (duration) {
+                *duration = L'\0';
+                duration++;
+                
+                // Store parsed values
+                playlist->videos[index].videoId = SAFE_WCSDUP(id);
+                playlist->videos[index].title = SAFE_WCSDUP(title);
+                playlist->videos[index].durationSeconds = _wtoi(duration);
+                playlist->videos[index].index = index + 1;  // 1-based
+                
+                index++;
+            }
+        }
+        
+        line = wcstok(NULL, L"\r\n", &context);
+    }
+    
+    SAFE_FREE(outputCopy);
+    
+    playlist->videoCount = index;
+    playlist->currentVideoIndex = 0;
+    
+    ThreadSafeDebugOutputF(L"ParsePlaylistMetadataOutput: Parsed %d videos from playlist", index);
+    
+    return (index > 0);
+}
+
+// Parse "Downloading item X of Y" progress line
+BOOL ParsePlaylistProgressLine(const wchar_t* line, int* current, int* total) {
+    if (!line || !current || !total) return FALSE;
+    
+    // Look for pattern: "[download] Downloading item X of Y"
+    const wchar_t* marker = wcsstr(line, L"Downloading item ");
+    if (!marker) return FALSE;
+    
+    marker += wcslen(L"Downloading item ");
+    
+    // Parse current item number
+    *current = _wtoi(marker);
+    
+    // Find " of "
+    const wchar_t* ofMarker = wcsstr(marker, L" of ");
+    if (!ofMarker) return FALSE;
+    
+    ofMarker += wcslen(L" of ");
+    *total = _wtoi(ofMarker);
+    
+    return (*current > 0 && *total > 0);
+}
+
+// Parse VIDEOSTART marker: "VIDEOSTART|id|title"
+BOOL ParseVideoStartMarker(const wchar_t* line, wchar_t** videoId, wchar_t** title) {
+    if (!line || !videoId || !title) return FALSE;
+    
+    *videoId = NULL;
+    *title = NULL;
+    
+    const wchar_t* marker = wcsstr(line, L"VIDEOSTART|");
+    if (!marker) return FALSE;
+    
+    marker += wcslen(L"VIDEOSTART|");
+    
+    // Find next separator
+    const wchar_t* sep = wcschr(marker, L'|');
+    if (!sep) return FALSE;
+    
+    // Extract video ID
+    size_t idLen = sep - marker;
+    *videoId = (wchar_t*)SAFE_MALLOC((idLen + 1) * sizeof(wchar_t));
+    if (!*videoId) return FALSE;
+    wcsncpy(*videoId, marker, idLen);
+    (*videoId)[idLen] = L'\0';
+    
+    // Extract title (rest of line)
+    *title = SAFE_WCSDUP(sep + 1);
+    
+    return TRUE;
+}
+
+// Parse VIDEOEND marker: "VIDEOEND|id"
+BOOL ParseVideoEndMarker(const wchar_t* line, wchar_t** videoId) {
+    if (!line || !videoId) return FALSE;
+    
+    *videoId = NULL;
+    
+    const wchar_t* marker = wcsstr(line, L"VIDEOEND|");
+    if (!marker) return FALSE;
+    
+    marker += wcslen(L"VIDEOEND|");
+    
+    *videoId = SAFE_WCSDUP(marker);
+    
+    // Trim trailing whitespace/newlines
+    if (*videoId) {
+        size_t len = wcslen(*videoId);
+        while (len > 0 && ((*videoId)[len-1] == L'\r' || (*videoId)[len-1] == L'\n' || (*videoId)[len-1] == L' ')) {
+            (*videoId)[--len] = L'\0';
+        }
+    }
+    
+    return (*videoId != NULL && wcslen(*videoId) > 0);
 }
 
 // Parse JSON output from yt-dlp to extract metadata

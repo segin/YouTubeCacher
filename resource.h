@@ -33,6 +33,7 @@
 #define ID_HELP_INSTALL_YTDLP 2010
 #define ID_HELP_VIEW_YTDLP_LOG  2011
 #define ID_HELP_ABOUT     2012
+#define ID_TOOLS_MULTI_DOWNLOAD 2015
 
 // Settings Dialog
 #define IDD_SETTINGS      103
@@ -70,6 +71,7 @@
 #define IDC_VIDEO_DURATION_LABEL 1043
 #define IDC_VIDEO_DURATION     1044
 #define IDC_PROGRESS_TEXT      1045
+#define IDC_VIDEO_PROGRESS     1046  // "Video: X/Y" for playlist downloads
 
 // Unified Dialog - handles all message types (info, warning, error, success)
 #define IDD_UNIFIED_DIALOG     105
@@ -108,6 +110,12 @@
 #define IDC_LOG_LAST_TEXT      1073
 #define IDC_LOG_COPY_BTN       1074
 #define IDC_LOG_OK_BTN         1075
+
+// Multi-Download Dialog
+#define IDD_MULTI_DOWNLOAD     109
+#define IDC_MULTI_URL_EDIT     1080
+#define IDC_MULTI_STATUS_LABEL 1081
+#define IDC_MULTI_DOWNLOAD_BTN 1082
 
 
 // Error dialog tab IDs

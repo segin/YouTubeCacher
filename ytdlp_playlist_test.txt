@@ -1,0 +1,8 @@
+VIDEOSTART|0VH1Lim8gL8|Deep Learning State of the Art (2020)
+ERROR: Unable to rename file: [WinError 32] The process cannot access the file because it is being used by another process: 'test_playlist_output\\0VH1Lim8gL8.f399.mp4.part' -> 'test_playlist_output\\0VH1Lim8gL8.f399.mp4'. Giving up after 3 retries
+ERROR: Unable to rename file: [WinError 32] The process cannot access the file because it is being used by another process: 'test_playlist_output\\0VH1Lim8gL8.f251.webm.part' -> 'test_playlist_output\\0VH1Lim8gL8.f251.webm'. Giving up after 3 retries
+ERROR: [WinError 2] The system cannot find the file specified: 'test_playlist_output\\0VH1Lim8gL8.f399.mp4'
+VIDEOSTART|O5xeyoRL95U|Deep Learning Basics: Introduction and Overview
+ERROR: Unable to rename file: [WinError 32] The process cannot access the file because it is being used by another process: 'test_playlist_output\\O5xeyoRL95U.f399.mp4.part' -> 'test_playlist_output\\O5xeyoRL95U.f399.mp4'. Giving up after 3 retries
+ERROR: Unable to rename file: [WinError 32] The process cannot access the file because it is being used by another process: 'test_playlist_output\\O5xeyoRL95U.f251.webm.part' -> 'test_playlist_output\\O5xeyoRL95U.f251.webm'. Giving up after 3 retries
+ERROR: [WinError 2] The system cannot find the file specified: 'test_playlist_output\\O5xeyoRL95U.f399.mp4'

@@ -70,7 +70,9 @@ typedef enum {
     YTDLP_OP_GET_DURATION,
     YTDLP_OP_GET_TITLE_DURATION,
     YTDLP_OP_DOWNLOAD,
-    YTDLP_OP_VALIDATE
+    YTDLP_OP_VALIDATE,
+    YTDLP_OP_GET_PLAYLIST_INFO,  // Get playlist metadata without downloading
+    YTDLP_OP_DOWNLOAD_PLAYLIST   // Download all videos in a playlist
 } YtDlpOperation;
 
 // Validation result types
@@ -180,6 +182,32 @@ typedef struct {
     wchar_t* id;
     BOOL success;
 } VideoMetadata;
+
+// Playlist video entry structure (for individual videos in a playlist)
+typedef struct {
+    wchar_t* videoId;
+    wchar_t* title;
+    int durationSeconds;
+    int index;                    // 1-based index in playlist
+} PlaylistVideoEntry;
+
+// Download status for queue entries
+typedef enum {
+    DOWNLOAD_STATUS_PENDING,
+    DOWNLOAD_STATUS_DOWNLOADING,
+    DOWNLOAD_STATUS_COMPLETE,
+    DOWNLOAD_STATUS_FAILED,
+    DOWNLOAD_STATUS_SKIPPED
+} DownloadStatus;
+
+// Playlist metadata structure
+typedef struct {
+    wchar_t* playlistId;
+    wchar_t* playlistTitle;
+    int videoCount;
+    PlaylistVideoEntry* videos;   // Array of video entries
+    int currentVideoIndex;        // Currently downloading video (0-based)
+} PlaylistMetadata;
 
 // Cached video metadata structure
 typedef struct {

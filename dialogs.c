@@ -2132,9 +2132,25 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
     
     switch (message) {
         case WM_INITDIALOG: {
+            // Get the actual DPI for the monitor where this dialog will appear.
+            // PROBLEM: During WM_INITDIALOG, the dialog hasn't been centered yet,
+            // so GetWindowRect returns the initial position (not final position).
+            // SOLUTION: Use cursor position - user just clicked to open the dialog,
+            // so cursor is on the monitor where dialog will appear.
+            
+            POINT cursorPos;
+            GetCursorPos(&cursorPos);
+            HMONITOR hMonitor = MonitorFromPoint(cursorPos, MONITOR_DEFAULTTONEAREST);
+            int dpi = GetMonitorDPI(hMonitor);
+            
             // Register dialog with DPI manager for font scaling
             if (g_dpiManager) {
-                RegisterWindowForDPI(g_dpiManager, hDlg);
+                DPIContext* context = RegisterWindowForDPI(g_dpiManager, hDlg);
+                // Override the context DPI with the correct monitor DPI
+                if (context) {
+                    context->currentDpi = dpi;
+                    context->scaleFactor = (double)dpi / 96.0;
+                }
             }
             
             // Set the application icon
@@ -2148,9 +2164,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             
             // === DYNAMIC LAYOUT CALCULATION ===
             // Using Microsoft UI Guidelines (Windows 98/2000/XP era) + GNOME font sizing
-            
-            // Get DPI for scaling calculations
-            int dpi = GetWindowDPI(hDlg);
+            // (dpi variable was calculated above based on dialog's actual monitor)
             
             // Microsoft UI Guidelines - convert DLU to pixels at current DPI
             // 1 DLU horizontal = (dialog_base_unit_x / 4) pixels
@@ -2409,6 +2423,11 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             // Set initial focus to Close button
             SetInitialDialogFocus(hDlg);
             
+            // Post a message to ourselves to do a deferred layout recalculation
+            // AFTER the dialog is fully visible and positioned on the correct monitor.
+            // This fixes cross-DPI issues when dialog spawns on a different monitor.
+            PostMessage(hDlg, WM_APP, 0, 0);
+            
             return FALSE; // Allow custom focus setting
         }
         
@@ -2626,6 +2645,29 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 InvalidateRect(hDlg, NULL, TRUE);
             }
             
+            return 0;
+        }
+        
+        case WM_APP: {
+            // Deferred layout recalculation - runs after dialog is visible
+            // Re-detect DPI from dialog's ACTUAL position (now it's positioned correctly)
+            RECT dlgRect;
+            GetWindowRect(hDlg, &dlgRect);
+            POINT dlgCenter = {
+                (dlgRect.left + dlgRect.right) / 2,
+                (dlgRect.top + dlgRect.bottom) / 2
+            };
+            HMONITOR hMonitor = MonitorFromPoint(dlgCenter, MONITOR_DEFAULTTONEAREST);
+            int actualDpi = GetMonitorDPI(hMonitor);
+            
+            // Check if DPI differs from what we initially calculated
+            DPIContext* ctx = GetDPIContext(g_dpiManager, hDlg);
+            if (ctx && ctx->currentDpi != actualDpi) {
+                // DPI mismatch - trigger layout recalculation via WM_DPICHANGED
+                RECT suggestedRect;
+                GetWindowRect(hDlg, &suggestedRect);
+                SendMessage(hDlg, WM_DPICHANGED, MAKEWPARAM(actualDpi, actualDpi), (LPARAM)&suggestedRect);
+            }
             return 0;
         }
         
@@ -3024,4 +3066,121 @@ void ShowLogViewerDialog(HWND parent) {
     if (g_hLogViewerDialog) {
         ShowWindow(g_hLogViewerDialog, SW_SHOW);
     }
+}
+
+// Multi-Download Dialog Procedure
+INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam);
+    
+    switch (message) {
+        case WM_INITDIALOG: {
+            // Apply modern Windows theming to dialog and controls
+            ApplyModernThemeToDialog(hDlg);
+            
+            // Register dialog with DPI manager for font scaling
+            if (g_dpiManager) {
+                RegisterWindowForDPI(g_dpiManager, hDlg);
+                
+                // Create default scalable font for dialog controls
+                ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
+                if (defaultFont) {
+                    DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+                    if (context) {
+                        SetControlFont(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_MULTI_STATUS_LABEL), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), defaultFont, context->currentDpi);
+                        SetControlFont(GetDlgItem(hDlg, IDCANCEL), defaultFont, context->currentDpi);
+                    }
+                }
+            }
+            
+            // Set accessible names for controls
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), L"URL list", L"Enter YouTube URLs, one per line");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_STATUS_LABEL), L"Status", L"Current status of the multi-download operation");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), L"Download", L"Start downloading all entered URLs");
+            SetControlAccessibility(GetDlgItem(hDlg, IDCANCEL), L"Cancel", L"Close the multi-download dialog");
+            
+            // Configure tab order
+            TabOrderConfig tabConfig;
+            TabOrderEntry entries[3];
+            
+            entries[0].controlId = IDC_MULTI_URL_EDIT;
+            entries[0].tabOrder = 0;
+            entries[0].isTabStop = TRUE;
+            
+            entries[1].controlId = IDC_MULTI_DOWNLOAD_BTN;
+            entries[1].tabOrder = 1;
+            entries[1].isTabStop = TRUE;
+            
+            entries[2].controlId = IDCANCEL;
+            entries[2].tabOrder = 2;
+            entries[2].isTabStop = TRUE;
+            
+            tabConfig.entries = entries;
+            tabConfig.count = 3;
+            SetDialogTabOrder(hDlg, &tabConfig);
+            
+            // Set initial focus to URL edit control
+            SetFocus(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT));
+            
+            return FALSE; // Return FALSE since we set focus manually
+        }
+        
+        case WM_COMMAND:
+            switch (LOWORD(wParam)) {
+                case IDC_MULTI_DOWNLOAD_BTN: {
+                    // Placeholder - show info dialog
+                    UnifiedDialogConfig config = {0};
+                    config.dialogType = UNIFIED_DIALOG_INFO;
+                    config.title = L"Not Implemented";
+                    config.message = L"Multi-download functionality is not yet implemented.";
+                    config.details = L"This is a placeholder UI for the multi-download feature. The actual download logic will be added in a future update.";
+                    config.tab1_name = L"Details";
+                    config.showDetailsButton = TRUE;
+                    config.showCopyButton = FALSE;
+                    
+                    ShowUnifiedDialog(hDlg, &config);
+                    return TRUE;
+                }
+                
+                case IDCANCEL:
+                    EndDialog(hDlg, IDCANCEL);
+                    return TRUE;
+            }
+            break;
+            
+        case WM_DPICHANGED: {
+            // Handle DPI changes
+            int newDpi = HIWORD(wParam);
+            RECT* suggestedRect = (RECT*)lParam;
+            
+            DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+            if (context) {
+                context->currentDpi = newDpi;
+                context->scaleFactor = (double)newDpi / 96.0;
+                
+                // Rescale fonts
+                RescaleFontsForDPI(hDlg, newDpi);
+                
+                // Apply suggested window position and size
+                SetWindowPos(hDlg, NULL,
+                            suggestedRect->left, suggestedRect->top,
+                            suggestedRect->right - suggestedRect->left,
+                            suggestedRect->bottom - suggestedRect->top,
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            
+            return 0;
+        }
+        
+        case WM_SYSCOLORCHANGE:
+            ApplyHighContrastColors(hDlg);
+            return TRUE;
+        
+        case WM_CLOSE:
+            EndDialog(hDlg, IDCANCEL);
+            return TRUE;
+    }
+    
+    return FALSE;
 }

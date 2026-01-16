@@ -42,6 +42,24 @@ void UpdateDebugControlVisibility(HWND hDlg) {
     ShowWindow(GetDlgItem(hDlg, IDC_DEBUG_TEST_SUCCESS), showState);
 }
 
+// Show or hide the video progress counter (for playlist downloads)
+// When shown, triggers layout recalculation to resize title field
+void ShowVideoProgress(HWND hDlg, BOOL show) {
+    HWND hProgress = GetDlgItem(hDlg, IDC_VIDEO_PROGRESS);
+    if (hProgress) {
+        ShowWindow(hProgress, show ? SW_SHOW : SW_HIDE);
+        // Trigger layout recalculation so title width adjusts
+        SendMessage(hDlg, WM_SIZE, 0, 0);
+    }
+}
+
+// Update the video progress counter text (e.g., "Video: 2/10")
+void UpdateVideoProgress(HWND hDlg, int current, int total) {
+    wchar_t progressText[32];
+    swprintf(progressText, 32, L"Video: %d/%d", current, total);
+    SetDlgItemTextW(hDlg, IDC_VIDEO_PROGRESS, progressText);
+}
+
 void CheckClipboardForYouTubeURL(HWND hDlg) {
     // Check if autopaste is enabled
     if (!GetAutopasteState()) {
@@ -639,11 +657,24 @@ void ResizeControls(HWND hDlg) {
     SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_TITLE_LABEL), NULL, 
                 downloadGroupX + margin, currentY, (int)(35 * scaleX), labelHeight, SWP_NOZORDER);
     
-    // Title text width = availableTextWidth - label width (35px)
-    // This ensures title truncates BEFORE hitting the "Get Info" button
+    // Title text width depends on whether video progress is visible (playlist mode)
+    // When progress is visible, title is narrower to make room for "Video: X/Y"
+    int videoProgressWidth = (int)(70 * scaleX);
+    HWND hVideoProgress = GetDlgItem(hDlg, IDC_VIDEO_PROGRESS);
+    BOOL progressVisible = IsWindowVisible(hVideoProgress);
+    
     int titleTextWidth = availableTextWidth - (int)(35 * scaleX);
+    if (progressVisible) {
+        titleTextWidth -= videoProgressWidth;
+    }
     SetWindowPos(GetDlgItem(hDlg, IDC_VIDEO_TITLE), NULL, 
                 urlFieldX, currentY, titleTextWidth, labelHeight, SWP_NOZORDER);
+    
+    // Position video progress counter (right-aligned with buttons, same row as title)
+    // Only positioned when visible; hidden by default for single videos
+    int progressX = downloadGroupX + downloadGroupWidth - margin - videoProgressWidth;
+    SetWindowPos(hVideoProgress, NULL, 
+                progressX, currentY, videoProgressWidth, labelHeight, SWP_NOZORDER);
     
     // Move to next line for duration + download status
     currentY += labelHeight + (margin / 2);  // 6px spacing between lines
@@ -1835,6 +1866,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     ShowAboutDialog(hDlg);
                     return TRUE;
                     
+                case ID_TOOLS_MULTI_DOWNLOAD:
+                    DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_MULTI_DOWNLOAD), hDlg, MultiDownloadDialogProc);
+                    return TRUE;
+                    
                 case IDC_TEXT_FIELD:
                     if (HIWORD(wParam) == EN_CHANGE) {
                         // Skip processing if this is a programmatic change
@@ -1989,31 +2024,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Check for playlist URLs
-                    if (IsYouTubePlaylistURL(url)) {
-                        UnifiedDialogConfig config = {0};
-                        config.dialogType = UNIFIED_DIALOG_ERROR;
-                        config.title = L"Playlists Not Supported";
-                        config.message = L"YouTube playlist URLs are not currently supported.";
-                        config.details = L"YouTubeCacher is designed for downloading individual videos. "
-                                        L"Playlist URLs containing 'list=' parameter or '/playlist?' are not supported.";
-                        config.tab1_name = L"Details";
-                        config.tab2_content = L"To download videos from a playlist:\r\n\r\n"
-                                            L"1. Open the playlist on YouTube\r\n"
-                                            L"2. Click on an individual video\r\n"
-                                            L"3. Copy the video URL (not the playlist URL)\r\n"
-                                            L"4. Paste the individual video URL here\r\n\r\n"
-                                            L"Individual video URLs look like:\r\n"
-                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
-                                            L"• https://youtu.be/VIDEO_ID\r\n\r\n"
-                                            L"Playlist URLs contain 'list=' and are not supported.";
-                        config.tab2_name = L"How to Download from Playlists";
-                        config.showDetailsButton = TRUE;
-                        config.showCopyButton = FALSE;
-                        
-                        ShowUnifiedDialog(hDlg, &config);
-                        break;
-                    }
+                    // Note: Playlist URLs are now supported - yt-dlp handles them natively
+                    // The IsYouTubePlaylistURL() check that previously blocked playlists has been removed
                     
                     // Check if we already have cached metadata for this URL
                     if (IsCachedMetadataValid(GetCachedVideoMetadata(), url)) {
@@ -2168,31 +2180,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                         break;
                     }
                     
-                    // Check for playlist URLs
-                    if (IsYouTubePlaylistURL(url)) {
-                        UnifiedDialogConfig config = {0};
-                        config.dialogType = UNIFIED_DIALOG_ERROR;
-                        config.title = L"Playlists Not Supported";
-                        config.message = L"YouTube playlist URLs are not currently supported.";
-                        config.details = L"YouTubeCacher is designed for individual videos. "
-                                        L"Playlist URLs containing 'list=' parameter or '/playlist?' are not supported.";
-                        config.tab1_name = L"Details";
-                        config.tab2_content = L"To get info for videos from a playlist:\r\n\r\n"
-                                            L"1. Open the playlist on YouTube\r\n"
-                                            L"2. Click on an individual video\r\n"
-                                            L"3. Copy the video URL (not the playlist URL)\r\n"
-                                            L"4. Paste the individual video URL here\r\n\r\n"
-                                            L"Individual video URLs look like:\r\n"
-                                            L"• https://www.youtube.com/watch?v=VIDEO_ID\r\n"
-                                            L"• https://youtu.be/VIDEO_ID\r\n\r\n"
-                                            L"Playlist URLs contain 'list=' and are not supported.";
-                        config.tab2_name = L"How to Process Playlist Videos";
-                        config.showDetailsButton = TRUE;
-                        config.showCopyButton = FALSE;
-                        
-                        ShowUnifiedDialog(hDlg, &config);
-                        break;
-                    }
+                    // Note: Playlist URLs are now supported - yt-dlp handles them natively
+                    // The IsYouTubePlaylistURL() check that previously blocked playlists has been removed
                     
                     // Check if we already have cached data for this URL
                     if (IsCachedMetadataValid(GetCachedVideoMetadata(), url)) {
