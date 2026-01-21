@@ -6,20 +6,27 @@ BOOL IsYouTubeURL(const wchar_t* url) {
     }
     
     // Check if URL begins with any of the YouTube URL prefixes
+    // Including: watch, shorts, playlist, and youtu.be
     return (wcsncmp(url, L"https://www.youtube.com/watch", 29) == 0 ||
             wcsncmp(url, L"https://www.youtube.com/shorts/", 31) == 0 ||
+            wcsncmp(url, L"https://www.youtube.com/playlist", 32) == 0 ||
             wcsncmp(url, L"https://youtu.be/", 17) == 0 ||
             wcsncmp(url, L"https://m.youtube.com/watch", 27) == 0 ||
             wcsncmp(url, L"https://m.youtube.com/shorts/", 29) == 0 ||
+            wcsncmp(url, L"https://m.youtube.com/playlist", 30) == 0 ||
             wcsncmp(url, L"https://youtube.com/watch", 25) == 0 ||
             wcsncmp(url, L"https://youtube.com/shorts/", 27) == 0 ||
+            wcsncmp(url, L"https://youtube.com/playlist", 28) == 0 ||
             wcsncmp(url, L"http://www.youtube.com/watch", 28) == 0 ||
             wcsncmp(url, L"http://www.youtube.com/shorts/", 30) == 0 ||
+            wcsncmp(url, L"http://www.youtube.com/playlist", 31) == 0 ||
             wcsncmp(url, L"http://youtu.be/", 16) == 0 ||
             wcsncmp(url, L"http://m.youtube.com/watch", 26) == 0 ||
             wcsncmp(url, L"http://m.youtube.com/shorts/", 28) == 0 ||
+            wcsncmp(url, L"http://m.youtube.com/playlist", 29) == 0 ||
             wcsncmp(url, L"http://youtube.com/watch", 24) == 0 ||
-            wcsncmp(url, L"http://youtube.com/shorts/", 26) == 0);
+            wcsncmp(url, L"http://youtube.com/shorts/", 26) == 0 ||
+            wcsncmp(url, L"http://youtube.com/playlist", 27) == 0);
 }
 
 BOOL ContainsMultipleURLs(const wchar_t* input) {

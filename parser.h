@@ -68,6 +68,12 @@ typedef struct {
     wchar_t** preDownloadMessages;
     int messageCount;
     int maxMessages;
+    
+    // Playlist progress tracking
+    BOOL isPlaylist;
+    int playlistCurrentVideo;
+    int playlistTotalVideos;
+    wchar_t* currentVideoTitle;
 } EnhancedProgressInfo;
 
 // Output line classification

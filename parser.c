@@ -99,6 +99,50 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
             lineTypeNames[lineType], line);
     DebugOutput(debugMsg2);
     
+    // Check for playlist progress markers BEFORE the switch
+    // These can appear on lines that have other classifications
+    
+    // Check for "[download] Downloading item X of Y" pattern
+    int playlistCurrent = 0, playlistTotal = 0;
+    if (ParsePlaylistProgressLine(line, &playlistCurrent, &playlistTotal)) {
+        progress->isPlaylist = TRUE;
+        progress->playlistCurrentVideo = playlistCurrent;
+        progress->playlistTotalVideos = playlistTotal;
+        
+        wchar_t debugProgress[128];
+        swprintf(debugProgress, 128, L"YouTubeCacher: Playlist progress: %d of %d", playlistCurrent, playlistTotal);
+        DebugOutput(debugProgress);
+        
+        // Send playlist progress update to UI
+        if (progress->parentWindow) {
+            // UpdateVideoProgress posts to UI with current/total
+            PostMessageW(progress->parentWindow, WM_USER + 113, 9, MAKELPARAM(playlistCurrent, playlistTotal));
+        }
+    }
+    
+    // Check for VIDEOSTART marker
+    wchar_t* videoId = NULL;
+    wchar_t* videoTitle = NULL;
+    if (ParseVideoStartMarker(line, &videoId, &videoTitle)) {
+        if (progress->currentVideoTitle) SAFE_FREE(progress->currentVideoTitle);
+        progress->currentVideoTitle = videoTitle;
+        
+        // Also update the main video title for display
+        if (progress->videoTitle) SAFE_FREE(progress->videoTitle);
+        progress->videoTitle = SAFE_WCSDUP(videoTitle);
+        
+        // Send title update to UI
+        if (progress->parentWindow && videoTitle) {
+            wchar_t* titleCopy = SAFE_WCSDUP(videoTitle);
+            if (titleCopy) {
+                PostMessageW(progress->parentWindow, WM_USER + 113, 1, (LPARAM)titleCopy);
+            }
+        }
+        
+        SAFE_FREE(videoId);
+        // Don't free videoTitle - it's stored in currentVideoTitle
+    }
+    
     switch (lineType) {
         case LINE_TYPE_INFO_EXTRACTION:
             return ParseInfoExtractionLine(line, progress);

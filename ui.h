@@ -26,6 +26,10 @@ void UpdateMainProgressBar(HWND hDlg, int percentage, const wchar_t* status);
 void ShowMainProgressBar(HWND hDlg, BOOL show);
 void SetProgressBarMarquee(HWND hDlg, BOOL enable);
 
+// Playlist progress functions
+void ShowVideoProgress(HWND hDlg, BOOL show);
+void UpdateVideoProgress(HWND hDlg, int current, int total);
+
 // Window sizing functions
 void CalculateMinimumWindowSize(int* minWidth, int* minHeight, double dpiScaleX, double dpiScaleY);
 void CalculateDefaultWindowSize(int* defaultWidth, int* defaultHeight, double dpiScaleX, double dpiScaleY);

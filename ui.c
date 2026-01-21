@@ -3001,8 +3001,15 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     UpdateMainProgressBar(hDlg, 0, L"Download failed");
                     ClearActiveDownload();
                     SetDownloadUIState(hDlg, FALSE);
+                    ShowVideoProgress(hDlg, FALSE);  // Hide video counter on failure
                     Sleep(500);
                     ShowMainProgressBar(hDlg, FALSE);
+                    break;
+                }
+                case 9: { // Playlist video progress (current, total in LPARAM)
+                    int current = LOWORD(data);
+                    int total = HIWORD(data);
+                    UpdateVideoProgress(hDlg, current, total);
                     break;
                 }
             }

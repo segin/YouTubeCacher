@@ -953,18 +953,14 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_DOWNLOAD_PLAYLIST:
             if (url && outputPath) {
-                // Playlist download with per-video markers and progress tracking
-                // --ignore-errors: continue if individual videos fail
-                // --print before_dl: mark start of each video download
-                // --print after_video: mark completion of each video
-                // Progress template includes video ID for tracking
+                // Playlist download - same as regular download but with --ignore-errors
+                // so we continue if individual videos fail
+                // Keep the same progress template format as single video for consistent parsing
                 swprintf(operationArgs, 4096, 
                     L"--newline --no-colors --force-overwrites --ignore-errors "
                     L"--write-info-json "
-                    L"--print \"before_dl:VIDEOSTART|%%(id)s|%%(title)s\" "
-                    L"--print \"after_video:VIDEOEND|%%(id)s\" "
-                    L"--progress-template \"download:%%(info.id)s|%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
-                    L"--output \"%ls\\\\%%(id)s.%%(ext)s\" \"%ls\"", 
+                    L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
+                    L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
                     outputPath, url);
             } else {
                 return FALSE;
@@ -2206,9 +2202,17 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     }
     OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Download directory ready\n");
     
-    // Create request
+    // Detect if this is a playlist URL
+    BOOL isPlaylist = IsYouTubePlaylistURL(url);
+    YtDlpOperation operation = isPlaylist ? YTDLP_OP_DOWNLOAD_PLAYLIST : YTDLP_OP_DOWNLOAD;
+    
+    if (isPlaylist) {
+        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Detected playlist URL, using YTDLP_OP_DOWNLOAD_PLAYLIST\n");
+    }
+    
+    // Create request with appropriate operation
     OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating YtDlp request\n");
-    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_DOWNLOAD, url, downloadPath);
+    YtDlpRequest* request = CreateYtDlpRequest(operation, url, downloadPath);
     if (!request) {
         OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create YtDlp request\n");
         CleanupYtDlpConfig(&config);
@@ -2253,7 +2257,15 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Setting up UI");
     ShowMainProgressBar(hDlg, TRUE);
     SetProgressBarMarquee(hDlg, TRUE);  // Start with marquee for indefinite "Starting..." phase
-    UpdateMainProgressBar(hDlg, -1, L"Starting download...");
+    
+    // For playlists, show the video progress counter
+    if (isPlaylist) {
+        ShowVideoProgress(hDlg, TRUE);
+        UpdateVideoProgress(hDlg, 0, 0);  // Will be updated when we parse "Downloading item X of Y"
+        UpdateMainProgressBar(hDlg, -1, L"Starting playlist download...");
+    } else {
+        UpdateMainProgressBar(hDlg, -1, L"Starting download...");
+    }
     SetDownloadUIState(hDlg, TRUE);
     
     // Start worker thread using new error handling macro
