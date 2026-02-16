@@ -363,6 +363,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
 
 BOOL CleanupTempDirectory(const wchar_t* tempDir) {
     if (!tempDir || wcslen(tempDir) == 0) return FALSE;
+
     ThreadSafeDebugOutputF(L"Cleaning up temporary directory: %ls", tempDir);
 
     // Find and delete all files in the temp directory
@@ -2619,6 +2620,7 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
         return 1;
     }
 
+    wchar_t logBuffer[512];
     ThreadSafeDebugOutputF(L"YouTubeCacher: UnifiedDownloadWorkerThread - Executing download for URL: %ls", context->request->url ? context->request->url : L"NULL");
 
     // Execute the download using the enhanced method for real-time progress
