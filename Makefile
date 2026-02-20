@@ -209,3 +209,14 @@ $(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o $(OBJARM64_DIR)/YouTub
 
 # Phony targets
 .PHONY: all debug debug32 debug64 debugarm64 release release32 release64 releasearm64 clean clean32 clean64 cleanarm64 clean-objects run run32 run64 runarm64
+# Testing target
+TEST_CC = gcc
+test:
+	@mkdir -p tests
+	@sed -n '/BOOL IsYouTubeURL/,/^}/p' uri.c > tests/uri_functions.c
+	@sed -n '/BOOL IsYouTubePlaylistURL/,/^}/p' uri.c >> tests/uri_functions.c
+	@$(TEST_CC) -o tests/test_runner tests/test_uri.c -Itests
+	@./tests/test_runner
+
+clean-tests:
+	rm -f tests/test_runner tests/uri_functions.c
