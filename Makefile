@@ -27,7 +27,7 @@ COMMON_CFLAGS = -Wall -Wextra -Werror -std=c99 -DUNICODE -D_UNICODE -static-libg
 
 # Debug flags for memory tracking
 DEBUG_CFLAGS = -g -DMEMORY_DEBUG -DLEAK_DETECTION
-COMMON_LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -static
+COMMON_LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -lbcrypt -static
 
 # MinGW32 settings
 CC32 = /mingw32/bin/gcc.exe
