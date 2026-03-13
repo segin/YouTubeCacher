@@ -208,4 +208,10 @@ $(OBJ32_DIR)/dpi.o $(OBJ64_DIR)/dpi.o $(OBJARM64_DIR)/dpi.o: dpi.c dpi.h YouTube
 $(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o $(OBJARM64_DIR)/YouTubeCacher.o: YouTubeCacher.rc resource.h
 
 # Phony targets
-.PHONY: all debug debug32 debug64 debugarm64 release release32 release64 releasearm64 clean clean32 clean64 cleanarm64 clean-objects run run32 run64 runarm64
+.PHONY: all debug debug32 debug64 debugarm64 release release32 release64 releasearm64 clean clean32 clean64 cleanarm64 clean-objects run run32 run64 runarm64 test
+
+# Test target
+test:
+	gcc -I./tests -I. tests/test_base64.c -o tests/test_base64
+	./tests/test_base64
+	rm ./tests/test_base64
