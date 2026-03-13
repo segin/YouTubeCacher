@@ -126,7 +126,8 @@ void FormatDuration(wchar_t* duration, size_t bufferSize) {
     
     // Check if it's a pure number (seconds)
     BOOL isNumber = TRUE;
-    for (size_t i = 0; i < wcslen(duration); i++) {
+    size_t len = wcslen(duration);
+    for (size_t i = 0; i < len; i++) {
         if (!iswdigit(duration[i])) {
             isNumber = FALSE;
             break;
@@ -159,7 +160,7 @@ void FormatDuration(wchar_t* duration, size_t bufferSize) {
         duration[bufferSize - 1] = L'\0';
     } else {
         // Not a pure number, check for single digit case
-        if (wcslen(duration) == 1 && iswdigit(duration[0])) {
+        if (len == 1 && iswdigit(duration[0])) {
             // Single digit - treat as seconds and format as "00:0X"
             wchar_t temp[32];
             swprintf(temp, 32, L"00:0%lc", duration[0]);
