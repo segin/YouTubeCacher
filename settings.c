@@ -92,9 +92,10 @@ void FormatDuration(wchar_t* duration, size_t bufferSize) {
         src++;
     }
     *dst = L'\0';
+    size_t len = wcslen(duration);
     
     // If empty, leave as is
-    if (wcslen(duration) == 0) return;
+    if (len == 0) return;
     
     // Check if it's already in time format (contains colon)
     if (wcschr(duration, L':') != NULL) {
@@ -126,7 +127,6 @@ void FormatDuration(wchar_t* duration, size_t bufferSize) {
     
     // Check if it's a pure number (seconds)
     BOOL isNumber = TRUE;
-    size_t len = wcslen(duration);
     for (size_t i = 0; i < len; i++) {
         if (!iswdigit(duration[i])) {
             isNumber = FALSE;
