@@ -157,9 +157,6 @@ DWORD WINAPI IPCWorkerThread(LPVOID lpParam) {
                     PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 8, 0);
                     break;
                     
-                case IPC_MSG_VIDEO_INFO_COMPLETE:
-                    PostMessageW(message.targetWindow, WM_USER + 101, 0, (LPARAM)message.data.completion.context);
-                    break;
                     
                 case IPC_MSG_METADATA_COMPLETE:
                     PostMessageW(message.targetWindow, WM_USER + 103, 

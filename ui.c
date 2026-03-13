@@ -2729,57 +2729,6 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             return TRUE;
         }
         
-        case WM_USER + 101: {
-            // Handle video info thread completion
-            VideoInfoThreadData* data = (VideoInfoThreadData*)lParam;
-            if (data) {
-                if (data->success) {
-                    UpdateMainProgressBar(hDlg, 90, L"Updating interface...");
-                    
-                    // Update the UI with the retrieved information
-                    UpdateVideoInfoUI(hDlg, data->title, data->duration);
-                    
-                    UpdateMainProgressBar(hDlg, 100, L"Video information retrieved successfully");
-                    // Keep progress bar visible - don't hide it
-                    // Success dialog removed - info is displayed in the UI fields
-                } else {
-                    UpdateMainProgressBar(hDlg, 0, L"Failed to retrieve video information");
-                    // Keep progress bar visible to show failure status
-                    
-                    // Clear any existing video info
-                    UpdateVideoInfoUI(hDlg, L"", L"");
-                    
-                    UnifiedDialogConfig config = {0};
-                    config.dialogType = UNIFIED_DIALOG_ERROR;
-                    config.title = L"Information Retrieval Failed";
-                    config.message = L"Could not retrieve video information from the provided URL.";
-                    config.details = L"The video information could not be retrieved. This may be due to network issues, an invalid URL, or the video being unavailable.";
-                    config.tab1_name = L"Details";
-                    config.tab2_content = L"Please check:\n\n"
-                                        L"• The URL is valid and accessible\n"
-                                        L"• yt-dlp is properly installed and configured\n"
-                                        L"• You have an internet connection\n"
-                                        L"• The video is not private or restricted\n"
-                                        L"• The video hasn't been deleted or made unavailable\n\n"
-                                        L"If the URL works in your web browser but not here, try:\n"
-                                        L"• Updating yt-dlp to the latest version\n"
-                                        L"• Checking if YouTube has changed their API\n"
-                                        L"• Waiting a few minutes and trying again";
-                    config.tab2_name = L"Troubleshooting";
-                    config.showDetailsButton = TRUE;
-                    config.showCopyButton = TRUE;
-                    
-                    ShowUnifiedDialog(hDlg, &config);
-                }
-                
-                // Cleanup thread data
-                if (data->hThread) {
-                    CloseHandle(data->hThread);
-                }
-                SAFE_FREE(data);
-            }
-            return TRUE;
-        }
         
         case WM_USER + 103: {
             // Handle enhanced metadata retrieval completion with detailed error reporting
