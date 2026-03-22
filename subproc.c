@@ -63,7 +63,7 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     }
 
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Starting thread-safe execution");
-    
+
     // Start new yt-dlp invocation in session log (clears "last run" log)
     StartNewYtDlpInvocation();
 
@@ -86,12 +86,12 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     DWORD timeoutMs = config->timeoutSeconds * 1000;
     if (!WaitForThreadSafeSubprocessWithOutputCompletion(context, timeoutMs)) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Subprocess did not complete within timeout");
-        
+
         // Try to cancel and cleanup
         CancelThreadSafeSubprocess(context);
         WaitForThreadSafeSubprocessCompletion(context, 5000); // Wait 5 seconds for graceful shutdown
         ForceKillThreadSafeSubprocess(context); // Force kill if needed
-        
+
         CleanupThreadSafeSubprocessContext(context);
         SAFE_FREE(context);
         return NULL;
@@ -118,13 +118,13 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
         result->exitCode = exitCode;
         result->success = (exitCode == 0);
 
-        ThreadSafeDebugOutputF(L"ExecuteYtDlpRequestThreadSafe: Completed with exit code %lu, success: %s, output length: %zu", 
+        ThreadSafeDebugOutputF(L"ExecuteYtDlpRequestThreadSafe: Completed with exit code %lu, success: %s, output length: %zu",
                               exitCode, result->success ? L"TRUE" : L"FALSE", outputLength);
 
         // Create error message if failed
         if (!result->success) {
             result->errorMessage = CreateUserFriendlyYtDlpError(exitCode, output, request->url);
-            
+
             // Create diagnostics
             wchar_t* diagnostics = (wchar_t*)SAFE_MALLOC(2048 * sizeof(wchar_t));
             if (diagnostics) {
@@ -135,7 +135,7 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
                     L"URL: %ls\r\n"
                     L"Output Path: %ls\r\n\r\n"
                     L"Process output:\r\n%ls",
-                    exitCode, 
+                    exitCode,
                     config->ytDlpPath,
                     request->operation,
                     request->url ? request->url : L"(null)",
@@ -162,7 +162,7 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
 /**
  * Enhanced subprocess context creation with progress callback support
  */
-ThreadSafeSubprocessContext* CreateThreadSafeSubprocessWithCallback(const YtDlpConfig* config, const YtDlpRequest* request, 
+ThreadSafeSubprocessContext* CreateThreadSafeSubprocessWithCallback(const YtDlpConfig* config, const YtDlpRequest* request,
                                                                    ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow) {
     ThreadSafeSubprocessContext* context = CreateThreadSafeSubprocessFromYtDlp(config, request);
     if (!context) {
@@ -188,7 +188,7 @@ BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext
 
     // Create thread-safe context from legacy context
     ThreadSafeSubprocessContext* threadSafeContext = CreateThreadSafeSubprocessWithCallback(
-        legacyContext->config, 
+        legacyContext->config,
         legacyContext->request,
         legacyContext->progressCallback,
         legacyContext->callbackUserData,
@@ -201,17 +201,16 @@ BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext
     }
 
     // Store the thread-safe context in the legacy context for cleanup
-    // We'll use the accumulatedOutput field to store our context pointer (hack but works)
-    legacyContext->accumulatedOutput = (wchar_t*)threadSafeContext;
+    legacyContext->threadSafeContext = threadSafeContext;
 
     // Start execution
     BOOL success = ExecuteThreadSafeSubprocessWithOutput(threadSafeContext);
-    
+
     if (!success) {
         ThreadSafeDebugOutput(L"StartThreadSafeSubprocessFromLegacyContext: Failed to start thread-safe execution");
         CleanupThreadSafeSubprocessContext(threadSafeContext);
         SAFE_FREE(threadSafeContext);
-        legacyContext->accumulatedOutput = NULL;
+        legacyContext->threadSafeContext = NULL;
         return FALSE;
     }
 
@@ -223,11 +222,11 @@ BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext
  * Check if legacy subprocess context is running (using thread-safe backend)
  */
 BOOL IsLegacySubprocessRunning(const SubprocessContext* legacyContext) {
-    if (!legacyContext || !legacyContext->accumulatedOutput) {
+    if (!legacyContext || !legacyContext->threadSafeContext) {
         return FALSE;
     }
 
-    ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
+    ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
     return IsThreadSafeSubprocessRunning(threadSafeContext);
 }
 
@@ -235,11 +234,11 @@ BOOL IsLegacySubprocessRunning(const SubprocessContext* legacyContext) {
  * Wait for legacy subprocess completion (using thread-safe backend)
  */
 BOOL WaitForLegacySubprocessCompletion(SubprocessContext* legacyContext, DWORD timeoutMs) {
-    if (!legacyContext || !legacyContext->accumulatedOutput) {
+    if (!legacyContext || !legacyContext->threadSafeContext) {
         return FALSE;
     }
 
-    ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
+    ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
     BOOL completed = WaitForThreadSafeSubprocessWithOutputCompletion(threadSafeContext, timeoutMs);
 
     if (completed) {
@@ -279,11 +278,11 @@ BOOL WaitForLegacySubprocessCompletion(SubprocessContext* legacyContext, DWORD t
  * Cancel legacy subprocess execution (using thread-safe backend)
  */
 BOOL CancelLegacySubprocessExecution(SubprocessContext* legacyContext) {
-    if (!legacyContext || !legacyContext->accumulatedOutput) {
+    if (!legacyContext || !legacyContext->threadSafeContext) {
         return FALSE;
     }
 
-    ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
+    ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
     return CancelThreadSafeSubprocess(threadSafeContext);
 }
 
@@ -296,17 +295,17 @@ void CleanupLegacySubprocessContext(SubprocessContext* legacyContext) {
     }
 
     // Cleanup thread-safe context if it exists
-    if (legacyContext->accumulatedOutput) {
-        ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
-        
+    if (legacyContext->threadSafeContext) {
+        ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
+
         // Validate the context pointer before cleanup
         // Check if it looks like a valid context by checking if initialized flag is reasonable
         if (threadSafeContext) {
             CleanupThreadSafeSubprocessContext(threadSafeContext);
             SAFE_FREE(threadSafeContext);
         }
-        
-        legacyContext->accumulatedOutput = NULL;
+
+        legacyContext->threadSafeContext = NULL;
     }
 
     // Continue with normal legacy cleanup
