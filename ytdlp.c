@@ -1,4 +1,29 @@
 #include "YouTubeCacher.h"
+#include <bcrypt.h>
+
+#ifndef STATUS_SUCCESS
+#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
+#endif
+
+// Helper function to generate a cryptographically secure random name
+static void GenerateSecureRandomName(wchar_t* buffer, size_t bufferSize) {
+    if (!buffer || bufferSize < 64) return;
+
+    unsigned char randomBytes[8];
+    // Attempt to generate secure random bytes
+    NTSTATUS status = BCryptGenRandom(NULL, randomBytes, sizeof(randomBytes), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+
+    if (status == STATUS_SUCCESS) {
+        // Convert to hex string
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%02X%02X%02X%02X%02X%02X%02X%02X",
+                 randomBytes[0], randomBytes[1], randomBytes[2], randomBytes[3],
+                 randomBytes[4], randomBytes[5], randomBytes[6], randomBytes[7]);
+    } else {
+        // Fallback to GetTickCount if BCrypt fails
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%lu", GetTickCount());
+    }
+}
+
 
 // Function to install yt-dlp using winget
 void InstallYtDlpWithWinget(HWND hParent) {
@@ -283,7 +308,7 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
     
     // Append unique subdirectory name
     wchar_t uniqueName[64];
-    swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+    GenerateSecureRandomName(uniqueName, 64);
     
     if (wcslen(tempDir) + wcslen(uniqueName) + 2 >= tempDirSize) {
         return FALSE;
@@ -310,7 +335,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
     if (SUCCEEDED(hr) && localAppDataW) {
         wchar_t uniqueName[64];
-        swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+        GenerateSecureRandomName(uniqueName, 64);
         swprintf(tempPath, pathSize, L"%ls\\YouTubeCacher\\Temp\\%ls", localAppDataW, uniqueName);
         CoTaskMemFree(localAppDataW);
         
@@ -345,7 +370,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
             wcsstr(tempPath, L"\\SysWOW64\\") == NULL) {
             
             wchar_t uniqueName[64];
-            swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+            GenerateSecureRandomName(uniqueName, 64);
             
             if (wcslen(tempPath) + wcslen(uniqueName) + 1 < pathSize) {
                 wcscat(tempPath, uniqueName);
