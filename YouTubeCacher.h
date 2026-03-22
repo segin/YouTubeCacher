@@ -14,6 +14,7 @@
 #include <tlhelp32.h>
 #include <psapi.h>
 #include <shlwapi.h>
+#include <bcrypt.h>
 #include <stdint.h>
 #include "resource.h"
 #include "cache.h"

@@ -1,5 +1,18 @@
 #include "YouTubeCacher.h"
 
+// Helper function to generate a secure random name for temporary directories
+static void GenerateSecureRandomName(wchar_t* buffer, size_t bufferSize) {
+    unsigned long long randomValue = 0;
+
+    // Use BCryptGenRandom for cryptographically secure random numbers
+    if (BCryptGenRandom(NULL, (PUCHAR)&randomValue, sizeof(randomValue), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0) {
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%016llx", randomValue);
+    } else {
+        // Fallback to GetTickCount if BCryptGenRandom fails (should not happen on modern Windows)
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%lu_%lu", GetTickCount(), GetCurrentProcessId());
+    }
+}
+
 // Function to install yt-dlp using winget
 void InstallYtDlpWithWinget(HWND hParent) {
     ThreadSafeDebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - Starting yt-dlp installation");
@@ -283,7 +296,7 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
     
     // Append unique subdirectory name
     wchar_t uniqueName[64];
-    swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+    GenerateSecureRandomName(uniqueName, 64);
     
     if (wcslen(tempDir) + wcslen(uniqueName) + 2 >= tempDirSize) {
         return FALSE;
@@ -310,7 +323,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
     if (SUCCEEDED(hr) && localAppDataW) {
         wchar_t uniqueName[64];
-        swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+        GenerateSecureRandomName(uniqueName, 64);
         swprintf(tempPath, pathSize, L"%ls\\YouTubeCacher\\Temp\\%ls", localAppDataW, uniqueName);
         CoTaskMemFree(localAppDataW);
         
@@ -345,7 +358,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
             wcsstr(tempPath, L"\\SysWOW64\\") == NULL) {
             
             wchar_t uniqueName[64];
-            swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+            GenerateSecureRandomName(uniqueName, 64);
             
             if (wcslen(tempPath) + wcslen(uniqueName) + 1 < pathSize) {
                 wcscat(tempPath, uniqueName);
