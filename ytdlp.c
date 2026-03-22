@@ -1477,15 +1477,7 @@ void FreeProgressInfo(ProgressInfo* progress) {
 // Parse yt-dlp progress output (pipe-delimited machine format)
 // Expected format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
 // Example: 5562368|104857600|1290000.0|77
-BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
-    if (!line || !progress) return FALSE;
-    
-    // Initialize progress info
-    memset(progress, 0, sizeof(ProgressInfo));
-    
-    // Check for pipe-delimited progress format (downloaded|total|speed|eta)
-    const wchar_t* firstPipe = wcschr(line, L'|');
-    if (firstPipe) {
+static BOOL ParsePipeDelimitedProgress(const wchar_t* line, ProgressInfo* progress) {
         // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
         const wchar_t* dataStart = line;
         if (wcsstr(line, L"download:") == line) {
@@ -1645,8 +1637,9 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
         }
         
         return TRUE;
-    }
-    
+}
+
+static BOOL ParseLegacyProgress(const wchar_t* line, ProgressInfo* progress) {
     // Fallback: Look for old format [download] lines for compatibility
     if (wcsstr(line, L"[download]") == NULL) {
         return FALSE;
@@ -1723,6 +1716,22 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
 }
 
 // VideoInfoThread moved to ytdlp.h
+
+BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
+    if (!line || !progress) return FALSE;
+
+    // Initialize progress info
+    memset(progress, 0, sizeof(ProgressInfo));
+
+    // Check for pipe-delimited progress format (downloaded|total|speed|eta)
+    const wchar_t* firstPipe = wcschr(line, L'|');
+    if (firstPipe) {
+        return ParsePipeDelimitedProgress(line, progress);
+    }
+
+    // Fallback: Look for old format [download] lines for compatibility
+    return ParseLegacyProgress(line, progress);
+}
 
 // Thread function for getting video info
 DWORD WINAPI VideoInfoWorkerThread(LPVOID lpParam) {
