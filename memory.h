@@ -15,38 +15,23 @@ typedef struct {
     SYSTEMTIME allocTime;
 } AllocationInfo;
 
-// Hash table entry for fast allocation lookup
-typedef struct HashEntry {
-    AllocationInfo* allocation;
-    struct HashEntry* next;
-} HashEntry;
-
-// Hash table for allocation lookup
-typedef struct {
-    HashEntry** buckets;
-    size_t bucketCount;
-} AllocationHashTable;
-
 // Memory manager global state
 typedef struct {
     // Allocation tracking
     AllocationInfo* allocations;
     size_t allocationCount;
     size_t allocationCapacity;
-    
-    // Hash table for fast lookup
-    AllocationHashTable hashTable;
-    
+
     // Statistics
     size_t totalAllocated;
     size_t totalFreed;
     size_t peakUsage;
     size_t currentUsage;
-    
+
     // Configuration
     BOOL leakDetectionEnabled;
     BOOL verboseLogging;
-    
+
     // Synchronization
     CRITICAL_SECTION lock;
     BOOL initialized;
@@ -284,7 +269,7 @@ typedef void (*MemoryErrorCallback)(const MemoryError* error);
 // Memory error handling functions
 void SetMemoryErrorCallback(MemoryErrorCallback callback);
 MemoryErrorCallback GetMemoryErrorCallback(void);
-void ReportMemoryError(MemoryErrorType type, void* address, size_t size, 
+void ReportMemoryError(MemoryErrorType type, void* address, size_t size,
                       const char* file, int line, const wchar_t* description);
 void ClearMemoryErrorCallback(void);
 
