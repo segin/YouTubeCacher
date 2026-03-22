@@ -191,10 +191,10 @@ void ThreadSafeDebugOutputF(const wchar_t* format, ...) {
     // Format the message using variable arguments
     va_list args;
     va_start(args, format);
-    
+
     wchar_t formattedMessage[2048];
     vswprintf(formattedMessage, 2048, format, args);
-    
+
     va_end(args);
 
     // Enter critical section to ensure atomic debug output
@@ -276,19 +276,19 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     if (!context) {
         return;
     }
-    
+
     // Defensive: Check if context memory looks valid
     // If initialized flag is corrupted (not 0 or 1), bail out
     if (context->initialized != TRUE && context->initialized != FALSE) {
         OutputDebugStringW(L"CleanupThreadSafeSubprocessContext: Context appears corrupted, skipping cleanup\r\n");
         return;
     }
-    
+
     // Check if already cleaned up to prevent double-cleanup
     if (!context->initialized) {
         return;
     }
-    
+
     // Mark as not initialized immediately to prevent re-entry
     context->initialized = FALSE;
 
@@ -340,7 +340,7 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         // Defensive: Check if handle is still valid before closing
         // Use DuplicateHandle to test validity without side effects
         HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->cancellationEvent, 
+        if (DuplicateHandle(GetCurrentProcess(), context->cancellationEvent,
                            GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
             // Handle is valid, close both the test and original
             CloseHandle(hTest);
@@ -367,16 +367,16 @@ BOOL SetSubprocessExecutable(ThreadSafeSubprocessContext* context, const wchar_t
     }
 
     EnterCriticalSection(&context->configLock);
-    
+
     // Free existing path
     if (context->executablePath) {
         SAFE_FREE(context->executablePath);
     }
-    
+
     // Copy new path
     context->executablePath = SAFE_WCSDUP(path);
     BOOL success = (context->executablePath != NULL);
-    
+
     LeaveCriticalSection(&context->configLock);
     return success;
 }
@@ -390,16 +390,16 @@ BOOL SetSubprocessArguments(ThreadSafeSubprocessContext* context, const wchar_t*
     }
 
     EnterCriticalSection(&context->configLock);
-    
+
     // Free existing arguments
     if (context->arguments) {
         SAFE_FREE(context->arguments);
     }
-    
+
     // Copy new arguments
     context->arguments = SAFE_WCSDUP(args);
     BOOL success = (context->arguments != NULL);
-    
+
     LeaveCriticalSection(&context->configLock);
     return success;
 }
@@ -413,19 +413,19 @@ BOOL SetSubprocessWorkingDirectory(ThreadSafeSubprocessContext* context, const w
     }
 
     EnterCriticalSection(&context->configLock);
-    
+
     // Free existing directory
     if (context->workingDirectory) {
         SAFE_FREE(context->workingDirectory);
     }
-    
+
     // Copy new directory (can be NULL)
     if (dir) {
         context->workingDirectory = SAFE_WCSDUP(dir);
     } else {
         context->workingDirectory = NULL;
     }
-    
+
     LeaveCriticalSection(&context->configLock);
     return TRUE;
 }
@@ -495,13 +495,21 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
     }
 
     // Build command line
-    size_t cmdLineLen = wcslen(context->executablePath) + wcslen(context->arguments) + 10;
-    wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
-    if (!cmdLine) {
+    wchar_t* escapedExecPath = EscapeCommandLineArgument(context->executablePath);
+    if (!escapedExecPath) {
         LeaveCriticalSection(&context->configLock);
         return FALSE;
     }
-    swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->executablePath, context->arguments);
+
+    size_t cmdLineLen = wcslen(escapedExecPath) + wcslen(context->arguments) + 2;
+    wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
+    if (!cmdLine) {
+        SAFE_FREE(escapedExecPath);
+        LeaveCriticalSection(&context->configLock);
+        return FALSE;
+    }
+    swprintf(cmdLine, cmdLineLen, L"%ls %ls", escapedExecPath, context->arguments);
+    SAFE_FREE(escapedExecPath);
 
     // Log the command being executed for debugging
     wchar_t logMsg[8192];
@@ -513,12 +521,12 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
         swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command (truncated): %.500ls...", cmdLine);
         ThreadSafeDebugOutput(logMsg);
     }
-    
+
     // Log timestamp and command-line to session log
     SYSTEMTIME st;
     GetLocalTime(&st);
     wchar_t timestampMsg[512];
-    swprintf(timestampMsg, 512, 
+    swprintf(timestampMsg, 512,
              L"\r\n========================================\r\n"
              L"yt-dlp invocation started: %04d-%02d-%02d %02d:%02d:%02d\r\n"
              L"Command: %ls\r\n"
@@ -537,13 +545,13 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
     // Create pipes for output capture
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     HANDLE hOutputRead = NULL, hOutputWrite = NULL;
-    
+
     if (!CreatePipe(&hOutputRead, &hOutputWrite, &sa, 0)) {
         SAFE_FREE(cmdLine);
         if (workDir) SAFE_FREE(workDir);
         return FALSE;
     }
-    
+
     // Make sure the read handle is not inherited
     SetHandleInformation(hOutputRead, HANDLE_FLAG_INHERIT, 0);
 
@@ -584,7 +592,7 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
         CloseHandle(hOutputRead);
         return FALSE;
     }
-    
+
     ThreadSafeDebugOutputF(L"StartThreadSafeSubprocess: Process created successfully, PID=%lu", pi.dwProcessId);
 
     // Store process information safely
@@ -617,7 +625,7 @@ BOOL IsThreadSafeSubprocessRunning(ThreadSafeSubprocessContext* context) {
 
     EnterCriticalSection(&context->processStateLock);
     BOOL running = context->processRunning && !context->processCompleted;
-    
+
     // If we think it's running, double-check with the actual process
     if (running && context->hProcess) {
         DWORD exitCode;
@@ -631,7 +639,7 @@ BOOL IsThreadSafeSubprocessRunning(ThreadSafeSubprocessContext* context) {
             }
         }
     }
-    
+
     LeaveCriticalSection(&context->processStateLock);
     return running;
 }
@@ -646,7 +654,7 @@ BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
 
     // Set cancellation flag (atomic operation, no lock needed)
     context->cancellationRequested = TRUE;
-    
+
     // Log cancellation to session log
     SYSTEMTIME st;
     GetLocalTime(&st);
@@ -657,7 +665,7 @@ BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
              L"========================================\r\n\r\n",
              st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
     AppendToYtDlpSessionLog(cancelMsg);
-    
+
     // Safely set cancellation event
     if (context->cancellationEvent && context->cancellationEvent != INVALID_HANDLE_VALUE) {
         SetEvent(context->cancellationEvent);
@@ -693,7 +701,7 @@ BOOL WaitForThreadSafeSubprocessCompletion(ThreadSafeSubprocessContext* context,
 
     // Wait for process completion
     DWORD waitResult = WaitForSingleObject(hProcess, timeoutMs);
-    
+
     if (waitResult == WAIT_OBJECT_0) {
         // Process completed, update state
         DWORD exitCode;
@@ -721,7 +729,7 @@ DWORD GetThreadSafeSubprocessExitCode(ThreadSafeSubprocessContext* context) {
     EnterCriticalSection(&context->processStateLock);
     DWORD exitCode = context->exitCode;
     LeaveCriticalSection(&context->processStateLock);
-    
+
     return exitCode;
 }
 
@@ -734,7 +742,7 @@ BOOL GetThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, wchar_t
     }
 
     EnterCriticalSection(&context->outputLock);
-    
+
     if (context->outputBuffer && context->outputLength > 0) {
         // Create a copy of the output
         *output = SAFE_WCSDUP(context->outputBuffer);
@@ -743,7 +751,7 @@ BOOL GetThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, wchar_t
         *output = NULL;
         *length = 0;
     }
-    
+
     LeaveCriticalSection(&context->outputLock);
     return (*output != NULL || *length == 0);
 }
@@ -757,29 +765,29 @@ BOOL AppendToThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, co
     }
 
     EnterCriticalSection(&context->outputLock);
-    
+
     // Check if we need to expand the buffer
     size_t requiredSize = context->outputLength + length + 1; // +1 for null terminator
     if (requiredSize > context->outputBufferSize) {
         // Expand buffer (double the size or required size, whichever is larger)
-        size_t newSize = (context->outputBufferSize * 2 > requiredSize) ? 
+        size_t newSize = (context->outputBufferSize * 2 > requiredSize) ?
                          context->outputBufferSize * 2 : requiredSize;
-        
+
         wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(context->outputBuffer, newSize * sizeof(wchar_t));
         if (!newBuffer) {
             LeaveCriticalSection(&context->outputLock);
             return FALSE;
         }
-        
+
         context->outputBuffer = newBuffer;
         context->outputBufferSize = newSize;
     }
-    
+
     // Append the data
     wcsncpy(context->outputBuffer + context->outputLength, data, length);
     context->outputLength += length;
     context->outputBuffer[context->outputLength] = L'\0';
-    
+
     LeaveCriticalSection(&context->outputLock);
     return TRUE;
 }
@@ -810,7 +818,7 @@ BOOL TerminateThreadSafeSubprocess(ThreadSafeSubprocessContext* context, DWORD e
 
     EnterCriticalSection(&context->processStateLock);
     BOOL success = FALSE;
-    
+
     if (context->processRunning && context->hProcess) {
         success = TerminateProcess(context->hProcess, exitCode);
         if (success) {
@@ -819,7 +827,7 @@ BOOL TerminateThreadSafeSubprocess(ThreadSafeSubprocessContext* context, DWORD e
             context->exitCode = exitCode;
         }
     }
-    
+
     LeaveCriticalSection(&context->processStateLock);
     return success;
 }
@@ -921,7 +929,7 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
         // Combine with any accumulated bytes from previous incomplete UTF-8 sequences
         size_t totalBytes = accumulatorLength + bytesRead;
         char* processBuffer = buffer;
-        
+
         if (accumulatorLength > 0) {
             // We have incomplete UTF-8 from previous read
             if (totalBytes < sizeof(utf8Accumulator)) {
@@ -939,10 +947,10 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
         // Process complete lines only to avoid partial UTF-8 sequences
         char* lineStart = processBuffer;
         char* lineEnd;
-        
+
         while ((lineEnd = strchr(lineStart, '\n')) != NULL) {
             *lineEnd = '\0'; // Null-terminate the line
-            
+
             // Remove \r if present (Windows line endings)
             size_t lineLength = lineEnd - lineStart;
             if (lineLength > 0 && lineStart[lineLength - 1] == '\r') {
@@ -956,15 +964,15 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
                 int converted = MultiByteToWideChar(CP_UTF8, 0, lineStart, (int)lineLength, wideBuffer, 2047);
                 if (converted > 0) {
                     wideBuffer[converted] = L'\0';
-                    
+
                     // Append to output buffer with Windows line endings
                     wchar_t lineWithEnding[2050];
                     swprintf(lineWithEnding, 2050, L"%ls\r\n", wideBuffer);
-                    
+
                     if (!AppendToThreadSafeSubprocessOutput(context, lineWithEnding, wcslen(lineWithEnding))) {
                         ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Failed to append output");
                     }
-                    
+
                     // Also append to session log (in-memory only, separate from disk logging)
                     AppendToYtDlpSessionLog(lineWithEnding);
 
@@ -1040,7 +1048,7 @@ BOOL StartThreadSafeSubprocessOutputCollection(ThreadSafeSubprocessContext* cont
 
     // Store the thread handle for cleanup (we'll close it immediately since we don't need to wait for it)
     CloseHandle(hOutputThread);
-    
+
     ThreadSafeDebugOutput(L"StartThreadSafeSubprocessOutputCollection: Output collection thread started");
     return TRUE;
 }
@@ -1083,7 +1091,7 @@ BOOL WaitForThreadSafeSubprocessWithOutputCompletion(ThreadSafeSubprocessContext
 
     // Wait for process completion
     BOOL processCompleted = WaitForThreadSafeSubprocessCompletion(context, timeoutMs);
-    
+
     if (!processCompleted) {
         ThreadSafeDebugOutput(L"WaitForThreadSafeSubprocessWithOutputCompletion: Process did not complete within timeout");
         return FALSE;
@@ -1109,7 +1117,7 @@ BOOL WaitForThreadSafeSubprocessWithOutputCompletion(ThreadSafeSubprocessContext
     EnterCriticalSection(&context->processStateLock);
     DWORD exitCode = context->exitCode;
     LeaveCriticalSection(&context->processStateLock);
-    
+
     SYSTEMTIME st;
     GetLocalTime(&st);
     wchar_t completionMsg[512];
@@ -1147,14 +1155,14 @@ BOOL GetFinalThreadSafeSubprocessOutput(ThreadSafeSubprocessContext* context, wc
 
     // Get the output
     BOOL success = GetThreadSafeSubprocessOutput(context, output, length);
-    
+
     if (exitCode) {
         *exitCode = code;
     }
 
-    ThreadSafeDebugOutputF(L"GetFinalThreadSafeSubprocessOutput: Retrieved %zu characters of output, exit code %lu", 
+    ThreadSafeDebugOutputF(L"GetFinalThreadSafeSubprocessOutput: Retrieved %zu characters of output, exit code %lu",
                           length ? *length : 0, code);
-    
+
     return success;
 }
 
@@ -1196,7 +1204,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
 
     // Build command line arguments
     wchar_t arguments[4096];
-    if (!GetYtDlpArgsForOperation(legacyContext->request->operation, legacyContext->request->url, 
+    if (!GetYtDlpArgsForOperation(legacyContext->request->operation, legacyContext->request->url,
                                  legacyContext->request->outputPath, legacyContext->config, arguments, 4096)) {
         ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to build arguments");
         CleanupThreadSafeSubprocessContext(context);
@@ -1247,7 +1255,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     wchar_t* output = NULL;
     size_t outputLength = 0;
     DWORD exitCode = 0;
-    
+
     if (GetFinalThreadSafeSubprocessOutput(context, &output, &outputLength, &exitCode)) {
         result->success = (exitCode == 0);
         result->exitCode = exitCode;
