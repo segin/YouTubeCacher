@@ -35,8 +35,6 @@ static const size_t MAX_FREED_MEMORY_TRACKING = 1000; // Limit to prevent excess
 static BOOL AddAllocationRecord(void* address, size_t size, const char* file, int line);
 static void ExpandAllocationTable(void);
 static BOOL RemoveAllocationRecord(void* address, size_t* outSize);
-// Simplified allocation tracking - remove complex hash table
-// static int FindAllocationIndex(void* address); // Unused function
 static void CleanupHashTable(AllocationHashTable* table);
 
 // Internal error handling function declarations
