@@ -1154,7 +1154,40 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         return 1;
     }
     
-    swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->config->ytDlpPath, arguments);
+    wchar_t* escapedYtDlpPath = EscapeCommandLineArgument(context->config->ytDlpPath);
+    if (!escapedYtDlpPath) {
+        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to escape yt-dlp path");
+        SAFE_FREE(cmdLine);
+        CloseHandle(context->hOutputRead);
+        CloseHandle(context->hOutputWrite);
+        context->result->success = FALSE;
+        context->result->exitCode = 1;
+        context->result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed for escaped path");
+        context->completed = TRUE;
+        return 1;
+    }
+
+    // Make sure cmdLine buffer is large enough for the escaped path
+    size_t newCmdLineLen = wcslen(escapedYtDlpPath) + wcslen(arguments) + 10;
+    if (newCmdLineLen > cmdLineLen) {
+        wchar_t* newCmdLine = (wchar_t*)realloc(cmdLine, newCmdLineLen * sizeof(wchar_t));
+        if (!newCmdLine) {
+            SAFE_FREE(cmdLine);
+            SAFE_FREE(escapedYtDlpPath);
+            CloseHandle(context->hOutputRead);
+            CloseHandle(context->hOutputWrite);
+            context->result->success = FALSE;
+            context->result->exitCode = 1;
+            context->result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed");
+            context->completed = TRUE;
+            return 1;
+        }
+        cmdLine = newCmdLine;
+        cmdLineLen = newCmdLineLen;
+    }
+
+    swprintf(cmdLine, cmdLineLen, L"%ls %ls", escapedYtDlpPath, arguments);
+    SAFE_FREE(escapedYtDlpPath);
     
     // Log the exact command being executed
     wchar_t logMsg[8192];

@@ -869,6 +869,59 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
     return TRUE;
 }
 
+
+wchar_t* EscapeCommandLineArgument(const wchar_t* argument) {
+    if (!argument) return NULL;
+
+    size_t len = wcslen(argument);
+    // Max length: each char could be backslash or quote, leading to max 2 chars per char, plus enclosing quotes
+    size_t allocSize = (len * 2 + 3) * sizeof(wchar_t);
+    wchar_t* escaped = (wchar_t*)SAFE_MALLOC(allocSize);
+    if (!escaped) return NULL;
+
+    size_t writeIndex = 0;
+
+    // Always enclose the argument in double quotes
+    escaped[writeIndex++] = L'"';
+
+    for (size_t i = 0; i < len; ) {
+        size_t backslashes = 0;
+
+        while (i < len && argument[i] == L'\\') {
+            backslashes++;
+            i++;
+        }
+
+        if (i == len) {
+            // End of string, escape all pending backslashes
+            for (size_t j = 0; j < backslashes * 2; ++j) {
+                escaped[writeIndex++] = L'\\';
+            }
+            break;
+        } else if (argument[i] == L'"') {
+            // Found a double quote. Escape all pending backslashes AND the double quote.
+            for (size_t j = 0; j < backslashes * 2 + 1; ++j) {
+                escaped[writeIndex++] = L'\\';
+            }
+            escaped[writeIndex++] = L'"';
+            i++;
+        } else {
+            // Found a normal character. Copy the backslashes as-is.
+            for (size_t j = 0; j < backslashes; ++j) {
+                escaped[writeIndex++] = L'\\';
+            }
+            escaped[writeIndex++] = argument[i];
+            i++;
+        }
+    }
+
+    // Add closing double quote
+    escaped[writeIndex++] = L'"';
+    escaped[writeIndex] = L'\0';
+
+    return escaped;
+}
+
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
@@ -886,7 +939,13 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
         case YTDLP_OP_GET_INFO:
             if (url && wcslen(url) > 0) {
                 // Use JSON output for structured data extraction
-                swprintf(operationArgs, 4096, L"--dump-json --no-download --no-warnings \"%ls\"", url);
+                wchar_t* escapedUrl = EscapeCommandLineArgument(url);
+                if (escapedUrl) {
+                    swprintf(operationArgs, 4096, L"--dump-json --no-download --no-warnings %ls", escapedUrl);
+                    SAFE_FREE(escapedUrl);
+                } else {
+                    return FALSE;
+                }
             } else {
                 wcscpy(operationArgs, L"--version");
             }
@@ -894,7 +953,13 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_TITLE:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 4096, L"--get-title --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+                wchar_t* escapedUrl = EscapeCommandLineArgument(url);
+                if (escapedUrl) {
+                    swprintf(operationArgs, 4096, L"--get-title --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
+                    SAFE_FREE(escapedUrl);
+                } else {
+                    return FALSE;
+                }
             } else {
                 return FALSE;
             }
@@ -902,7 +967,13 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_DURATION:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 4096, L"--get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+                wchar_t* escapedUrl = EscapeCommandLineArgument(url);
+                if (escapedUrl) {
+                    swprintf(operationArgs, 4096, L"--get-duration --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
+                    SAFE_FREE(escapedUrl);
+                } else {
+                    return FALSE;
+                }
             } else {
                 return FALSE;
             }
@@ -910,7 +981,13 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             
         case YTDLP_OP_GET_TITLE_DURATION:
             if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 4096, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+                wchar_t* escapedUrl = EscapeCommandLineArgument(url);
+                if (escapedUrl) {
+                    swprintf(operationArgs, 4096, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
+                    SAFE_FREE(escapedUrl);
+                } else {
+                    return FALSE;
+                }
             } else {
                 return FALSE;
             }
@@ -924,12 +1001,25 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
                 // Double %% is only needed in C format strings, not in the actual command
                 // Note: yt-dlp progress dict fields are: downloaded_bytes, total_bytes, speed, eta
                 // REMOVED --print-json because it outputs massive JSON blob that breaks parsing
-                swprintf(operationArgs, 4096, 
-                    L"--newline --no-colors --force-overwrites "
-                    L"--write-info-json "
-                    L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
-                    L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
-                    outputPath, url);
+                wchar_t* escapedUrl = EscapeCommandLineArgument(url);
+                wchar_t outputTemplate[1024];
+                swprintf(outputTemplate, 1024, L"%ls\\%%(id)s.%%(ext)s", outputPath);
+                wchar_t* escapedOutput = EscapeCommandLineArgument(outputTemplate);
+
+                if (escapedUrl && escapedOutput) {
+                    swprintf(operationArgs, 4096,
+                        L"--newline --no-colors --force-overwrites "
+                        L"--write-info-json "
+                        L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
+                        L"--output %ls %ls",
+                        escapedOutput, escapedUrl);
+                    SAFE_FREE(escapedUrl);
+                    SAFE_FREE(escapedOutput);
+                } else {
+                    if (escapedUrl) SAFE_FREE(escapedUrl);
+                    if (escapedOutput) SAFE_FREE(escapedOutput);
+                    return FALSE;
+                }
             } else {
                 return FALSE;
             }
@@ -943,9 +1033,15 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             if (url && wcslen(url) > 0) {
                 // Fast playlist enumeration with flat-playlist (no full video extraction)
                 // Output format: id|title|duration (duration in seconds)
-                swprintf(operationArgs, 4096, 
-                    L"--flat-playlist --no-download --no-warnings --encoding utf-8 "
-                    L"--print \"%%(id)s|%%(title)s|%%(duration)s\" \"%ls\"", url);
+                wchar_t* escapedUrl = EscapeCommandLineArgument(url);
+                if (escapedUrl) {
+                    swprintf(operationArgs, 4096,
+                        L"--flat-playlist --no-download --no-warnings --encoding utf-8 "
+                        L"--print \"%%(id)s|%%(title)s|%%(duration)s\" %ls", escapedUrl);
+                    SAFE_FREE(escapedUrl);
+                } else {
+                    return FALSE;
+                }
             } else {
                 return FALSE;
             }
@@ -956,12 +1052,25 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
                 // Playlist download - same as regular download but with --ignore-errors
                 // so we continue if individual videos fail
                 // Keep the same progress template format as single video for consistent parsing
-                swprintf(operationArgs, 4096, 
-                    L"--newline --no-colors --force-overwrites --ignore-errors "
-                    L"--write-info-json "
-                    L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
-                    L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
-                    outputPath, url);
+                wchar_t* escapedUrl = EscapeCommandLineArgument(url);
+                wchar_t outputTemplate[1024];
+                swprintf(outputTemplate, 1024, L"%ls\\%%(id)s.%%(ext)s", outputPath);
+                wchar_t* escapedOutput = EscapeCommandLineArgument(outputTemplate);
+
+                if (escapedUrl && escapedOutput) {
+                    swprintf(operationArgs, 4096,
+                        L"--newline --no-colors --force-overwrites --ignore-errors "
+                        L"--write-info-json "
+                        L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
+                        L"--output %ls %ls",
+                        escapedOutput, escapedUrl);
+                    SAFE_FREE(escapedUrl);
+                    SAFE_FREE(escapedOutput);
+                } else {
+                    if (escapedUrl) SAFE_FREE(escapedUrl);
+                    if (escapedOutput) SAFE_FREE(escapedOutput);
+                    return FALSE;
+                }
             } else {
                 return FALSE;
             }
