@@ -120,18 +120,11 @@ BOOL ValidateYtDlpExecutable(const wchar_t* path) {
     // Check if it's an executable file (has .exe, .cmd, .bat, .py, or .ps1 extension)
     const wchar_t* ext = wcsrchr(path, L'.');
     if (ext != NULL) {
-        // Convert extension to lowercase for comparison
-        wchar_t lowerExt[10];
-        wcscpy(lowerExt, ext);
-        for (int i = 0; lowerExt[i]; i++) {
-            lowerExt[i] = towlower(lowerExt[i]);
-        }
-        
-        if (wcscmp(lowerExt, L".exe") == 0 ||
-            wcscmp(lowerExt, L".cmd") == 0 ||
-            wcscmp(lowerExt, L".bat") == 0 ||
-            wcscmp(lowerExt, L".py") == 0 ||
-            wcscmp(lowerExt, L".ps1") == 0) {
+        if (_wcsicmp(ext, L".exe") == 0 ||
+            _wcsicmp(ext, L".cmd") == 0 ||
+            _wcsicmp(ext, L".bat") == 0 ||
+            _wcsicmp(ext, L".py") == 0 ||
+            _wcsicmp(ext, L".ps1") == 0) {
             return TRUE;
         }
     }
