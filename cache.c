@@ -1597,34 +1597,82 @@ static DWORD WINAPI UpdateFileSizesWorker(LPVOID param) {
     CacheManager* manager = data->manager;
     HWND hMainWindow = data->hMainWindow;
     
+    // Define a structure to hold pending updates
+    typedef struct {
+        wchar_t* videoId;
+        wchar_t* filePath;
+        DWORD fileSize;
+        FILETIME modTime;
+        BOOL success;
+    } PendingUpdate;
+
+    PendingUpdate* updates = NULL;
+    int pendingCount = 0;
+    int totalCapacity = 0;
+
+    // Step 1: Collect entries that need updates while holding the lock briefly
     EnterCriticalSection(&manager->lock);
-    CacheEntry* current = manager->entries;
+    totalCapacity = manager->totalEntries;
+    if (totalCapacity > 0) {
+        updates = (PendingUpdate*)SAFE_MALLOC(totalCapacity * sizeof(PendingUpdate));
+        if (updates) {
+            CacheEntry* current = manager->entries;
+            while (current && pendingCount < totalCapacity) {
+                // Only collect if fileSize is 0 (not yet populated)
+                if (current->fileSize == 0 && current->mainVideoFile && current->videoId) {
+                    wchar_t* vId = SAFE_WCSDUP(current->videoId);
+                    wchar_t* fPath = SAFE_WCSDUP(current->mainVideoFile);
+
+                    if (vId && fPath) {
+                        updates[pendingCount].videoId = vId;
+                        updates[pendingCount].filePath = fPath;
+                        updates[pendingCount].success = FALSE;
+                        pendingCount++;
+                    } else {
+                        // Memory allocation failure for strings
+                        if (vId) SAFE_FREE(vId);
+                        if (fPath) SAFE_FREE(fPath);
+                    }
+                }
+                current = current->next;
+            }
+        }
+    }
     LeaveCriticalSection(&manager->lock);
     
-    // Iterate through entries and update file sizes
-    while (current) {
-        // Only update if fileSize is 0 (not yet populated)
-        if (current->fileSize == 0 && current->mainVideoFile) {
-            DWORD fileSize = 0;
-            FILETIME modTime = {0};
-            
-            // Get file info (this is the blocking I/O operation)
-            if (GetVideoFileInfo(current->mainVideoFile, &fileSize, &modTime)) {
-                // Update the entry
-                EnterCriticalSection(&manager->lock);
-                current->fileSize = fileSize;
-                current->downloadTime = modTime;
-                LeaveCriticalSection(&manager->lock);
-                
-                // Notify the main window to update the display
-                PostMessage(hMainWindow, WM_CACHE_SIZE_UPDATE, 0, 0);
+    // Step 2: Perform blocking I/O operations without holding any locks
+    if (updates) {
+        for (int i = 0; i < pendingCount; i++) {
+            if (GetVideoFileInfo(updates[i].filePath, &updates[i].fileSize, &updates[i].modTime)) {
+                updates[i].success = TRUE;
             }
         }
         
-        // Move to next entry (need to lock to safely traverse)
+        // Step 3: Update the cache entries while holding the lock briefly
+        BOOL anyUpdated = FALSE;
         EnterCriticalSection(&manager->lock);
-        current = current->next;
+        for (int i = 0; i < pendingCount; i++) {
+            if (updates[i].success) {
+                // Re-find the entry as it might have moved or been removed
+                CacheEntry* entry = FindCacheEntry(manager, updates[i].videoId);
+                if (entry && entry->fileSize == 0) {
+                    entry->fileSize = updates[i].fileSize;
+                    entry->downloadTime = updates[i].modTime;
+                    anyUpdated = TRUE;
+                }
+            }
+            // Free temporary strings
+            SAFE_FREE(updates[i].videoId);
+            SAFE_FREE(updates[i].filePath);
+        }
         LeaveCriticalSection(&manager->lock);
+
+        SAFE_FREE(updates);
+
+        // Notify the main window to update the display if any changes were made
+        if (anyUpdated) {
+            PostMessage(hMainWindow, WM_CACHE_SIZE_UPDATE, 0, 0);
+        }
     }
     
     // Final update to ensure display is current
