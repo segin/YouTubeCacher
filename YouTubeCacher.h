@@ -14,6 +14,7 @@
 #include <tlhelp32.h>
 #include <psapi.h>
 #include <shlwapi.h>
+#include <bcrypt.h>
 #include <stdint.h>
 #include "resource.h"
 #include "cache.h"
@@ -339,6 +340,9 @@ typedef struct {
     HANDLE hOutputWrite;
     wchar_t* accumulatedOutput;
     size_t outputBufferSize;
+
+    // Thread-safe backend
+    ThreadSafeSubprocessContext* threadSafeContext;
 } SubprocessContext;
 
 // Legacy context adapter functions for thread-safe subprocess handling
