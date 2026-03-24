@@ -4,6 +4,17 @@
 static DWORD WINAPI CacheSaveWorkerThread(LPVOID lpParam);
 static BOOL SaveCacheToFileInternal(CacheManager* manager);
 
+// Hash function for videoId (djb2)
+static unsigned int GetCacheHash(const wchar_t* videoId) {
+    if (!videoId) return 0;
+    unsigned int hash = 5381;
+    const wchar_t* p = videoId;
+    while (*p) {
+        hash = ((hash << 5) + hash) + *p++;
+    }
+    return hash % CACHE_HASH_BUCKETS;
+}
+
 // Enhanced file operation error handling macro for cache operations
 #define CHECK_FILE_OPERATION_WITH_CONTEXT(call, operation_name, file_path, cleanup_label) \
     do { \
@@ -83,6 +94,11 @@ BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) 
     
     memset(manager, 0, sizeof(CacheManager));
     
+    // Initialize hash buckets to NULL
+    for (int i = 0; i < CACHE_HASH_BUCKETS; i++) {
+        manager->hashBuckets[i] = NULL;
+    }
+    
     // Initialize critical section for thread safety
     InitializeCriticalSection(&manager->lock);
     ThreadSafeDebugOutput(L"YouTubeCacher: InitializeCacheManager - Critical section initialized");
@@ -147,6 +163,11 @@ void CleanupCacheManager(CacheManager* manager) {
     
     manager->entries = NULL;
     manager->totalEntries = 0;
+
+    // Clear hash buckets
+    for (int i = 0; i < CACHE_HASH_BUCKETS; i++) {
+        manager->hashBuckets[i] = NULL;
+    }
     
     LeaveCriticalSection(&manager->lock);
     DeleteCriticalSection(&manager->lock);
@@ -616,6 +637,12 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     // Add to linked list
     entry->next = manager->entries;
     manager->entries = entry;
+    
+    // Add to hash map (PR 34)
+    unsigned int hash = GetCacheHash(videoId);
+    entry->hashNext = manager->hashBuckets[hash];
+    manager->hashBuckets[hash] = entry;
+
     manager->totalEntries++;
     
     LeaveCriticalSection(&manager->lock);
@@ -652,6 +679,23 @@ BOOL RemoveCacheEntry(CacheManager* manager, const wchar_t* videoId) {
                 manager->entries = current->next;
             }
             
+            // Remove from hash map (PR 34)
+            unsigned int hash = GetCacheHash(videoId);
+            CacheEntry* hCurrent = manager->hashBuckets[hash];
+            CacheEntry* hPrevious = NULL;
+            while (hCurrent) {
+                if (hCurrent == current) {
+                    if (hPrevious) {
+                        hPrevious->hashNext = current->hashNext;
+                    } else {
+                        manager->hashBuckets[hash] = current->hashNext;
+                    }
+                    break;
+                }
+                hPrevious = hCurrent;
+                hCurrent = hCurrent->hashNext;
+            }
+
             manager->totalEntries--;
             FreeCacheEntry(current);
             
@@ -674,12 +718,13 @@ BOOL RemoveCacheEntry(CacheManager* manager, const wchar_t* videoId) {
 CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId) {
     if (!manager || !videoId) return NULL;
     
-    CacheEntry* current = manager->entries;
+    unsigned int hash = GetCacheHash(videoId);
+    CacheEntry* current = manager->hashBuckets[hash];
     while (current) {
         if (current->videoId && wcscmp(current->videoId, videoId) == 0) {
             return current;
         }
-        current = current->next;
+        current = current->hashNext;
     }
     
     return NULL;

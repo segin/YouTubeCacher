@@ -248,9 +248,95 @@ int test_debug_output() {
     return 0;
 }
 
+int test_clear_and_dir_null() {
+    printf("Starting ClearThreadSafeSubprocessOutput and NULL directory tests...\n");
+
+    // Initialize
+    ThreadSafeSubprocessContext context;
+    InitializeThreadSafeSubprocessContext(&context);
+
+    // Test ClearThreadSafeSubprocessOutput with NULL context (PR 28)
+    printf("Testing ClearThreadSafeSubprocessOutput(NULL)... ");
+    ClearThreadSafeSubprocessOutput(NULL);
+    printf("Passed.\n");
+
+    // Test ClearThreadSafeSubprocessOutput with uninitialized context (PR 28)
+    printf("Testing ClearThreadSafeSubprocessOutput(uninitialized)... ");
+    ThreadSafeSubprocessContext uninitContext;
+    memset(&uninitContext, 0, sizeof(ThreadSafeSubprocessContext));
+    uninitContext.initialized = FALSE;
+    ClearThreadSafeSubprocessOutput(&uninitContext);
+    printf("Passed.\n");
+
+    // Test SetSubprocessWorkingDirectory with NULL directory (PR 29)
+    printf("Testing SetSubprocessWorkingDirectory(NULL)... ");
+    if (SetSubprocessWorkingDirectory(&context, NULL)) {
+        if (context.workingDirectory == NULL) {
+            printf("Passed.\n");
+        } else {
+            printf("FAILED (Expected NULL workingDirectory)\n");
+            return 1;
+        }
+    } else {
+        printf("FAILED (Expected TRUE return)\n");
+        return 1;
+    }
+
+    // Cleanup
+    CleanupThreadSafeSubprocessContext(&context);
+
+    printf("All ClearThreadSafeSubprocessOutput and NULL directory tests passed successfully!\n");
+    return 0;
+}
+
+int test_exit_code() {
+    printf("Starting GetThreadSafeSubprocessExitCode tests...\n");
+
+    // Test with NULL context
+    printf("Testing GetThreadSafeSubprocessExitCode(NULL)... ");
+    if (GetThreadSafeSubprocessExitCode(NULL) == (DWORD)-1) {
+        printf("Passed.\n");
+    } else {
+        printf("FAILED (Expected -1)\n");
+        return 1;
+    }
+
+    // Test with uninitialized context
+    printf("Testing GetThreadSafeSubprocessExitCode(uninitialized)... ");
+    ThreadSafeSubprocessContext uninitContext;
+    memset(&uninitContext, 0, sizeof(ThreadSafeSubprocessContext));
+    uninitContext.initialized = FALSE;
+    if (GetThreadSafeSubprocessExitCode(&uninitContext) == (DWORD)-1) {
+        printf("Passed.\n");
+    } else {
+        printf("FAILED (Expected -1)\n");
+        return 1;
+    }
+
+    // Test with initialized context
+    printf("Testing GetThreadSafeSubprocessExitCode(initialized)... ");
+    ThreadSafeSubprocessContext context;
+    InitializeThreadSafeSubprocessContext(&context);
+    context.exitCode = 42;
+    if (GetThreadSafeSubprocessExitCode(&context) == 42) {
+        printf("Passed.\n");
+    } else {
+        printf("FAILED (Expected 42)\n");
+        return 1;
+    }
+
+    // Cleanup
+    CleanupThreadSafeSubprocessContext(&context);
+
+    printf("All GetThreadSafeSubprocessExitCode tests passed successfully!\n");
+    return 0;
+}
+
 int main() {
     if (test_initialization() != 0) return 1;
     if (test_set_executable() != 0) return 1;
     if (test_debug_output() != 0) return 1;
+    if (test_clear_and_dir_null() != 0) return 1;
+    if (test_exit_code() != 0) return 1;
     return 0;
 }

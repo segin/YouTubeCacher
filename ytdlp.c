@@ -1540,177 +1540,169 @@ void FreeProgressInfo(ProgressInfo* progress) {
 // Parse yt-dlp progress output (pipe-delimited machine format)
 // Expected format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
 // Example: 5562368|104857600|1290000.0|77
-BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
-    if (!line || !progress) return FALSE;
-
-    // Initialize progress info
-    memset(progress, 0, sizeof(ProgressInfo));
-
-    // Check for pipe-delimited progress format (downloaded|total|speed|eta)
-    const wchar_t* firstPipe = wcschr(line, L'|');
-    if (firstPipe) {
-        // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
-        const wchar_t* dataStart = line;
-        if (wcsstr(line, L"download:") == line) {
-            dataStart = line + 9; // Skip "download:" prefix
-        }
-
-        // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-        wchar_t* lineCopy = SAFE_WCSDUP(dataStart);
-        if (!lineCopy) return FALSE;
-
-        wchar_t* context = NULL;
-        wchar_t* token = wcstok(lineCopy, L"|", &context);
-        int tokenIndex = 0;
-
-        long long downloadedBytes = 0;
-        long long totalBytes = 0;
-        double speedBytesPerSec = 0.0;
-        long long etaSeconds = 0;
-
-        while (token && tokenIndex < 4) {
-            switch (tokenIndex) {
-                case 0: { // Downloaded bytes
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        downloadedBytes = wcstoll(token, NULL, 10);
-                        progress->downloadedBytes = downloadedBytes;
-                    }
-                    break;
-                }
-                case 1: { // Total bytes
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        totalBytes = wcstoll(token, NULL, 10);
-                        progress->totalBytes = totalBytes;
-                    }
-                    break;
-                }
-                case 2: { // Speed in bytes per second (can be decimal)
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        speedBytesPerSec = wcstod(token, NULL);
-                        if (speedBytesPerSec > 0) {
-                            // Convert to human-readable format for display
-                            wchar_t speedStr[64];
-                            if (speedBytesPerSec >= 1024 * 1024 * 1024) {
-                                swprintf(speedStr, 64, L"%.1f GB/s", speedBytesPerSec / (1024.0 * 1024.0 * 1024.0));
-                            } else if (speedBytesPerSec >= 1024 * 1024) {
-                                swprintf(speedStr, 64, L"%.1f MB/s", speedBytesPerSec / (1024.0 * 1024.0));
-                            } else if (speedBytesPerSec >= 1024) {
-                                swprintf(speedStr, 64, L"%.1f KB/s", speedBytesPerSec / 1024.0);
-                            } else {
-                                swprintf(speedStr, 64, L"%.0f B/s", speedBytesPerSec);
-                            }
-                            progress->speed = SAFE_WCSDUP(speedStr);
-                        }
-                    }
-                    break;
-                }
-                case 3: { // ETA in seconds
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        etaSeconds = wcstoll(token, NULL, 10);
-                        if (etaSeconds > 0) {
-                            // Convert seconds to human-readable format
-                            wchar_t etaStr[32];
-                            if (etaSeconds >= 3600) {
-                                int hours = (int)(etaSeconds / 3600);
-                                int minutes = (int)((etaSeconds % 3600) / 60);
-                                int seconds = (int)(etaSeconds % 60);
-                                swprintf(etaStr, 32, L"%d:%02d:%02d", hours, minutes, seconds);
-                            } else if (etaSeconds >= 60) {
-                                int minutes = (int)(etaSeconds / 60);
-                                int seconds = (int)(etaSeconds % 60);
-                                swprintf(etaStr, 32, L"%d:%02d", minutes, seconds);
-                            } else {
-                                swprintf(etaStr, 32, L"%llds", etaSeconds);
-                            }
-                            progress->eta = SAFE_WCSDUP(etaStr);
-                        }
-                    }
-                    break;
-                }
-            }
-            token = wcstok(NULL, L"|", &context);
-            tokenIndex++;
-        }
-
-        SAFE_FREE(lineCopy);
-
-        // Calculate percentage ourselves from the raw data
-        if (totalBytes > 0 && downloadedBytes >= 0) {
-            progress->percentage = (int)((downloadedBytes * 100) / totalBytes);
-            if (progress->percentage > 100) progress->percentage = 100;
-        } else {
-            // No total size available - use marquee mode (indicated by -1)
-            progress->percentage = -1;
-        }
-
-        // Build comprehensive status message
-        wchar_t statusMsg[256];
-        if (downloadedBytes > 0 && totalBytes > 0) {
-            // Convert bytes to human-readable format
-            wchar_t downloadedStr[32], totalStr[32];
-
-            if (totalBytes >= 1024 * 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
-                swprintf(totalStr, 32, L"%.1f GB", totalBytes / (1024.0 * 1024.0 * 1024.0));
-            } else if (totalBytes >= 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
-                swprintf(totalStr, 32, L"%.1f MB", totalBytes / (1024.0 * 1024.0));
-            } else if (totalBytes >= 1024) {
-                swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
-                swprintf(totalStr, 32, L"%.1f KB", totalBytes / 1024.0);
-            } else {
-                swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
-                swprintf(totalStr, 32, L"%lld B", totalBytes);
-            }
-
-            if (progress->speed && progress->eta) {
-                swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls (ETA: %ls)",
-                        downloadedStr, totalStr, progress->speed, progress->eta);
-            } else if (progress->speed) {
-                swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls",
-                        downloadedStr, totalStr, progress->speed);
-            } else {
-                swprintf(statusMsg, 256, L"Downloading %ls of %ls (%d%%)", downloadedStr, totalStr, progress->percentage);
-            }
-        } else if (downloadedBytes > 0) {
-            // We have downloaded bytes but no total - show downloaded amount with speed if available
-            wchar_t downloadedStr[32];
-            if (downloadedBytes >= 1024 * 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
-            } else if (downloadedBytes >= 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
-            } else if (downloadedBytes >= 1024) {
-                swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
-            } else {
-                swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
-            }
-
-            if (progress->speed) {
-                swprintf(statusMsg, 256, L"Downloaded %ls at %ls", downloadedStr, progress->speed);
-            } else {
-                swprintf(statusMsg, 256, L"Downloaded %ls", downloadedStr);
-            }
-        } else if (progress->speed) {
-            swprintf(statusMsg, 256, L"Downloading at %ls", progress->speed);
-        } else {
-            wcscpy(statusMsg, L"Downloading");
-        }
-
-        progress->status = SAFE_WCSDUP(statusMsg);
-
-        // Check for completion
-        if (progress->percentage >= 100 || (totalBytes > 0 && downloadedBytes >= totalBytes)) {
-            progress->isComplete = TRUE;
-            if (progress->status) {
-                SAFE_FREE(progress->status);
-                progress->status = SAFE_WCSDUP(L"Download complete");
-            }
-        }
-
-        return TRUE;
+static BOOL ParsePipeDelimitedProgress(const wchar_t* line, ProgressInfo* progress) {
+    // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
+    const wchar_t* dataStart = line;
+    if (wcsstr(line, L"download:") == line) {
+        dataStart = line + 9; // Skip "download:" prefix
     }
 
-    // Fallback: Look for old format [download] lines for compatibility
+    // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
+    wchar_t* lineCopy = SAFE_WCSDUP(dataStart);
+    if (!lineCopy) return FALSE;
+
+    wchar_t* context = NULL;
+    wchar_t* token = wcstok(lineCopy, L"|", &context);
+    int tokenIndex = 0;
+
+    long long downloadedBytes = 0;
+    long long totalBytes = 0;
+    double speedBytesPerSec = 0.0;
+    long long etaSeconds = 0;
+
+    while (token && tokenIndex < 4) {
+        switch (tokenIndex) {
+            case 0: { // Downloaded bytes
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    downloadedBytes = wcstoll(token, NULL, 10);
+                    progress->downloadedBytes = downloadedBytes;
+                }
+                break;
+            }
+            case 1: { // Total bytes
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    totalBytes = wcstoll(token, NULL, 10);
+                    progress->totalBytes = totalBytes;
+                }
+                break;
+            }
+            case 2: { // Speed in bytes per second (can be decimal)
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    speedBytesPerSec = wcstod(token, NULL);
+                    if (speedBytesPerSec > 0) {
+                        // Convert to human-readable format for display
+                        wchar_t speedStr[64];
+                        if (speedBytesPerSec >= 1024 * 1024 * 1024) {
+                            swprintf(speedStr, 64, L"%.1f GB/s", speedBytesPerSec / (1024.0 * 1024.0 * 1024.0));
+                        } else if (speedBytesPerSec >= 1024 * 1024) {
+                            swprintf(speedStr, 64, L"%.1f MB/s", speedBytesPerSec / (1024.0 * 1024.0));
+                        } else if (speedBytesPerSec >= 1024) {
+                            swprintf(speedStr, 64, L"%.1f KB/s", speedBytesPerSec / 1024.0);
+                        } else {
+                            swprintf(speedStr, 64, L"%.0f B/s", speedBytesPerSec);
+                        }
+                        progress->speed = SAFE_WCSDUP(speedStr);
+                    }
+                }
+                break;
+            }
+            case 3: { // ETA in seconds
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    etaSeconds = wcstoll(token, NULL, 10);
+                    if (etaSeconds > 0) {
+                        // Convert seconds to human-readable format
+                        wchar_t etaStr[32];
+                        if (etaSeconds >= 3600) {
+                            int hours = (int)(etaSeconds / 3600);
+                            int minutes = (int)((etaSeconds % 3600) / 60);
+                            int seconds = (int)(etaSeconds % 60);
+                            swprintf(etaStr, 32, L"%d:%02d:%02d", hours, minutes, seconds);
+                        } else if (etaSeconds >= 60) {
+                            int minutes = (int)(etaSeconds / 60);
+                            int seconds = (int)(etaSeconds % 60);
+                            swprintf(etaStr, 32, L"%d:%02d", minutes, seconds);
+                        } else {
+                            swprintf(etaStr, 32, L"%llds", etaSeconds);
+                        }
+                        progress->eta = SAFE_WCSDUP(etaStr);
+                    }
+                }
+                break;
+            }
+        }
+        token = wcstok(NULL, L"|", &context);
+        tokenIndex++;
+    }
+
+    SAFE_FREE(lineCopy);
+
+    // Calculate percentage ourselves from the raw data
+    if (totalBytes > 0 && downloadedBytes >= 0) {
+        progress->percentage = (int)((downloadedBytes * 100) / totalBytes);
+        if (progress->percentage > 100) progress->percentage = 100;
+    } else {
+        // No total size available - use marquee mode (indicated by -1)
+        progress->percentage = -1;
+    }
+
+    // Build comprehensive status message
+    wchar_t statusMsg[256];
+    if (downloadedBytes > 0 && totalBytes > 0) {
+        // Convert bytes to human-readable format
+        wchar_t downloadedStr[32], totalStr[32];
+
+        if (totalBytes >= 1024 * 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+            swprintf(totalStr, 32, L"%.1f GB", totalBytes / (1024.0 * 1024.0 * 1024.0));
+        } else if (totalBytes >= 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
+            swprintf(totalStr, 32, L"%.1f MB", totalBytes / (1024.0 * 1024.0));
+        } else if (totalBytes >= 1024) {
+            swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
+            swprintf(totalStr, 32, L"%.1f KB", totalBytes / 1024.0);
+        } else {
+            swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
+            swprintf(totalStr, 32, L"%lld B", totalBytes);
+        }
+
+        if (progress->speed && progress->eta) {
+            swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls (ETA: %ls)",
+                    downloadedStr, totalStr, progress->speed, progress->eta);
+        } else if (progress->speed) {
+            swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls",
+                    downloadedStr, totalStr, progress->speed);
+        } else {
+            swprintf(statusMsg, 256, L"Downloading %ls of %ls (%d%%)", downloadedStr, totalStr, progress->percentage);
+        }
+    } else if (downloadedBytes > 0) {
+        // We have downloaded bytes but no total - show downloaded amount with speed if available
+        wchar_t downloadedStr[32];
+        if (downloadedBytes >= 1024 * 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+        } else if (downloadedBytes >= 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
+        } else if (downloadedBytes >= 1024) {
+            swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
+        } else {
+            swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
+        }
+
+        if (progress->speed) {
+            swprintf(statusMsg, 256, L"Downloaded %ls at %ls", downloadedStr, progress->speed);
+        } else {
+            swprintf(statusMsg, 256, L"Downloaded %ls", downloadedStr);
+        }
+    } else if (progress->speed) {
+        swprintf(statusMsg, 256, L"Downloading at %ls", progress->speed);
+    } else {
+        wcscpy(statusMsg, L"Downloading");
+    }
+
+    progress->status = SAFE_WCSDUP(statusMsg);
+
+    // Check for completion
+    if (progress->percentage >= 100 || (totalBytes > 0 && downloadedBytes >= totalBytes)) {
+        progress->isComplete = TRUE;
+        if (progress->status) {
+            SAFE_FREE(progress->status);
+            progress->status = SAFE_WCSDUP(L"Download complete");
+        }
+    }
+
+    return TRUE;
+}
+
+static BOOL ParseLegacyProgress(const wchar_t* line, ProgressInfo* progress) {
     if (wcsstr(line, L"[download]") == NULL) {
         return FALSE;
     }
@@ -1718,7 +1710,6 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
     // Look for percentage in format like "50.0%"
     const wchar_t* percentPos = wcsstr(line, L"%");
     if (percentPos) {
-        // Go backwards to find the start of the number
         const wchar_t* start = percentPos - 1;
         while (start > line && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
             start--;
@@ -1728,61 +1719,27 @@ BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
         if (start < percentPos) {
             double percent = wcstod(start, NULL);
             progress->percentage = (int)percent;
+            if (progress->percentage >= 100) progress->isComplete = TRUE;
+            return TRUE;
         }
     }
+    return FALSE;
+}
 
-    // Look for speed (pattern like "at 1.23MiB/s")
-    const wchar_t* atPos = wcsstr(line, L" at ");
-    if (atPos) {
-        const wchar_t* speedStart = atPos + 4; // Skip " at "
-        const wchar_t* speedEnd = wcsstr(speedStart, L" ETA");
-        if (!speedEnd) speedEnd = speedStart + wcslen(speedStart);
+BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
+    if (!line || !progress) return FALSE;
 
-        if (speedEnd > speedStart) {
-            size_t speedLen = speedEnd - speedStart;
-            progress->speed = (wchar_t*)SAFE_MALLOC((speedLen + 1) * sizeof(wchar_t));
-            if (progress->speed) {
-                wcsncpy(progress->speed, speedStart, speedLen);
-                progress->speed[speedLen] = L'\0';
-            }
-        }
+    // Initialize progress info
+    memset(progress, 0, sizeof(ProgressInfo));
+
+    // Check for pipe-delimited progress format (downloaded|total|speed|eta)
+    const wchar_t* firstPipe = wcschr(line, L'|');
+    if (firstPipe) {
+        return ParsePipeDelimitedProgress(line, progress);
     }
 
-    // Look for ETA (pattern like "ETA 01:17")
-    const wchar_t* etaPos = wcsstr(line, L" ETA ");
-    if (etaPos) {
-        const wchar_t* etaStart = etaPos + 5; // Skip " ETA "
-        const wchar_t* etaEnd = etaStart;
-        while (*etaEnd && *etaEnd != L' ' && *etaEnd != L'\n' && *etaEnd != L'\r') {
-            etaEnd++;
-        }
-
-        if (etaEnd > etaStart) {
-            size_t etaLen = etaEnd - etaStart;
-            progress->eta = (wchar_t*)SAFE_MALLOC((etaLen + 1) * sizeof(wchar_t));
-            if (progress->eta) {
-                wcsncpy(progress->eta, etaStart, etaLen);
-                progress->eta[etaLen] = L'\0';
-            }
-        }
-    }
-
-    // Set status
-    progress->status = SAFE_WCSDUP(L"Downloading");
-
-    // Check for completion
-    if (wcsstr(line, L"100%") || wcsstr(line, L"has already been downloaded")) {
-        progress->percentage = 100;
-        progress->isComplete = TRUE;
-        if (progress->status) {
-            SAFE_FREE(progress->status);
-            progress->status = SAFE_WCSDUP(L"Download complete");
-        }
-    } else {
-        progress->isComplete = (progress->percentage >= 100);
-    }
-
-    return TRUE;
+    // Fallback: Look for old format [download] lines for compatibility
+    return ParseLegacyProgress(line, progress);
 }
 
 // VideoInfoThread moved to ytdlp.h

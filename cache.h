@@ -18,11 +18,15 @@ typedef struct CacheEntry {
     FILETIME downloadTime;      // When the video was downloaded
     DWORD fileSize;             // Total size of all files
     struct CacheEntry* next;    // Linked list pointer
+    struct CacheEntry* hashNext;// Hash bucket linked list pointer
 } CacheEntry;
+
+#define CACHE_HASH_BUCKETS 1024
 
 // Cache management structure
 typedef struct {
     CacheEntry* entries;        // Linked list of cache entries
+    CacheEntry* hashBuckets[CACHE_HASH_BUCKETS]; // Hash map for O(1) lookups
     int totalEntries;           // Total number of cached videos
     wchar_t cacheFilePath[MAX_EXTENDED_PATH]; // Path to cache index file
     CRITICAL_SECTION lock;      // Thread safety
