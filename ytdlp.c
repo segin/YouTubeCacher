@@ -1,4 +1,20 @@
 #include "YouTubeCacher.h"
+#include <bcrypt.h>
+
+// Helper function to generate a cryptographically secure random unique name
+static void GenerateSecureUniqueTempName(wchar_t* buffer, size_t bufferSize) {
+    unsigned long long randomVal = 0;
+    // Attempt to use BCryptGenRandom for cryptographically secure random numbers (CNG API)
+    // We use BCRYPT_USE_SYSTEM_PREFERRED_RNG with NULL for the algorithm handle
+    if (BCryptGenRandom(NULL, (BYTE*)&randomVal, sizeof(randomVal), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0) {
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%016llX", randomVal);
+    } else {
+        // Fallback to GetTickCount only if BCryptGenRandom fails (should not happen on Windows 10+)
+        // We add ProcessId to increase entropy in the fallback case
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%lu_%lu", GetTickCount(), GetCurrentProcessId());
+    }
+}
+
 
 // Function to install yt-dlp using winget
 void InstallYtDlpWithWinget(HWND hParent) {
@@ -283,7 +299,7 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
 
     // Append unique subdirectory name
     wchar_t uniqueName[64];
-    swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+    GenerateSecureUniqueTempName(uniqueName, 64);
 
     if (wcslen(tempDir) + wcslen(uniqueName) + 2 >= tempDirSize) {
         return FALSE;
@@ -310,7 +326,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
     if (SUCCEEDED(hr) && localAppDataW) {
         wchar_t uniqueName[64];
-        swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+        GenerateSecureUniqueTempName(uniqueName, 64);
         swprintf(tempPath, pathSize, L"%ls\\YouTubeCacher\\Temp\\%ls", localAppDataW, uniqueName);
         CoTaskMemFree(localAppDataW);
 
@@ -345,7 +361,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
             wcsstr(tempPath, L"\\SysWOW64\\") == NULL) {
 
             wchar_t uniqueName[64];
-            swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+            GenerateSecureUniqueTempName(uniqueName, 64);
 
             if (wcslen(tempPath) + wcslen(uniqueName) + 1 < pathSize) {
                 wcscat(tempPath, uniqueName);
@@ -364,9 +380,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
 BOOL CleanupTempDirectory(const wchar_t* tempDir) {
     if (!tempDir || wcslen(tempDir) == 0) return FALSE;
 
-    wchar_t logMsg[512];
-    swprintf(logMsg, 512, L"Cleaning up temporary directory: %ls", tempDir);
-    WriteToLogfile(logMsg);
+    ThreadSafeDebugOutputF(L"Cleaning up temporary directory: %ls", tempDir);
 
     // Find and delete all files in the temp directory
     wchar_t searchPattern[MAX_EXTENDED_PATH];
@@ -391,22 +405,16 @@ BOOL CleanupTempDirectory(const wchar_t* tempDir) {
             if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
                 // Skip subdirectories for now (could be enhanced to recurse)
                 filesSkipped++;
-                wchar_t skipMsg[512];
-                swprintf(skipMsg, 512, L"Skipped subdirectory during temp cleanup: %ls", fullPath);
-                WriteToLogfile(skipMsg);
+                ThreadSafeDebugOutputF(L"Skipped subdirectory during temp cleanup: %ls", fullPath);
             } else {
                 // Delete file
                 if (DeleteFileW(fullPath)) {
                     filesDeleted++;
-                    wchar_t deleteMsg[512];
-                    swprintf(deleteMsg, 512, L"Deleted temporary file: %ls", fullPath);
-                    WriteToLogfile(deleteMsg);
+                    ThreadSafeDebugOutputF(L"Deleted temporary file: %ls", fullPath);
                 } else {
                     DWORD error = GetLastError();
                     filesSkipped++;
-                    wchar_t errorMsg[512];
-                    swprintf(errorMsg, 512, L"Failed to delete temporary file: %ls (Error: %lu)", fullPath, error);
-                    WriteToLogfile(errorMsg);
+                    ThreadSafeDebugOutputF(L"Failed to delete temporary file: %ls (Error: %lu)", fullPath, error);
                 }
             }
         } while (FindNextFileW(hFind, &findData));
@@ -417,16 +425,10 @@ BOOL CleanupTempDirectory(const wchar_t* tempDir) {
     // Try to remove the directory itself
     BOOL dirRemoved = RemoveDirectoryW(tempDir);
     if (dirRemoved) {
-        wchar_t successMsg[512];
-        swprintf(successMsg, 512, L"Temporary directory cleanup completed: %ls (%d files deleted, %d skipped)",
-                tempDir, filesDeleted, filesSkipped);
-        WriteToLogfile(successMsg);
+        ThreadSafeDebugOutputF(L"Temporary directory cleanup completed: %ls (%d files deleted, %d skipped)", tempDir, filesDeleted, filesSkipped);
     } else {
         DWORD error = GetLastError();
-        wchar_t errorMsg[512];
-        swprintf(errorMsg, 512, L"Failed to remove temporary directory: %ls (Error: %lu, %d files deleted, %d skipped)",
-                tempDir, error, filesDeleted, filesSkipped);
-        WriteToLogfile(errorMsg);
+        ThreadSafeDebugOutputF(L"Failed to remove temporary directory: %ls (Error: %lu, %d files deleted, %d skipped)", tempDir, error, filesDeleted, filesSkipped);
     }
 
     return dirRemoved;
@@ -522,10 +524,10 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
 
     while (line) {
         // Trim leading/trailing whitespace
-        while (*line == L' ' || *line == L'	') line++;
+        while (*line == L' ' || *line == L'\t') line++;
 
         size_t len = wcslen(line);
-        while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'	')) {
+        while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'\t')) {
             line[--len] = L'\0';
         }
 
@@ -581,9 +583,9 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
 
     while (line) {
         // Trim and check if line has meaningful content
-        while (*line == L' ' || *line == L'	') line++;
+        while (*line == L' ' || *line == L'\t') line++;
         size_t len = wcslen(line);
-        while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'	')) {
+        while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'\t')) {
             line[--len] = L'\0';
         }
 
@@ -869,6 +871,11 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
     return TRUE;
 }
 
+/**
+ * Escapes a command line argument according to Windows rules.
+ * Wraps the argument in double quotes and escapes existing quotes.
+ * Returns an allocated wide string that must be freed by the caller.
+ */
 wchar_t* EscapeCommandLineArgument(const wchar_t* arg) {
     if (!arg) return NULL;
 
@@ -921,9 +928,8 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
 
     wchar_t* escapedUrl = NULL;
     wchar_t* escapedOutputPath = NULL;
-    BOOL success = FALSE;
 
-    if (url) {
+    if (url && wcslen(url) > 0) {
         escapedUrl = EscapeCommandLineArgument(url);
         if (!escapedUrl) goto cleanup;
     }
@@ -982,10 +988,6 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
         case YTDLP_OP_DOWNLOAD:
             if (escapedUrl && escapedOutputPath) {
                 // Machine-parseable progress format with pipe delimiters and raw numeric values
-                // Use proper yt-dlp template syntax with single % for template variables
-                // Double %% is only needed in C format strings, not in the actual command
-                // Note: yt-dlp progress dict fields are: downloaded_bytes, total_bytes, speed, eta
-                // REMOVED --print-json because it outputs massive JSON blob that breaks parsing
                 swprintf(operationArgs, 4096,
                     L"--newline --no-colors --force-overwrites "
                     L"--write-info-json "
@@ -1016,8 +1018,6 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
         case YTDLP_OP_DOWNLOAD_PLAYLIST:
             if (escapedUrl && escapedOutputPath) {
                 // Playlist download - same as regular download but with --ignore-errors
-                // so we continue if individual videos fail
-                // Keep the same progress template format as single video for consistent parsing
                 swprintf(operationArgs, 4096,
                     L"--newline --no-colors --force-overwrites --ignore-errors "
                     L"--write-info-json "
@@ -1040,13 +1040,17 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
 
     wcscpy(args, baseArgs);
     wcscat(args, operationArgs);
-    success = TRUE;
+
+    if (escapedUrl) SAFE_FREE(escapedUrl);
+    if (escapedOutputPath) SAFE_FREE(escapedOutputPath);
+    return TRUE;
 
 cleanup:
     if (escapedUrl) SAFE_FREE(escapedUrl);
     if (escapedOutputPath) SAFE_FREE(escapedOutputPath);
-    return success;
+    return FALSE;
 }
+
 
 // Video metadata extraction functions
 
@@ -2223,10 +2227,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
         ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Invalid parameters");
         return FALSE;
     }
-
-    wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: StartUnifiedDownload - URL: %ls\n", url);
-    OutputDebugStringW(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: StartUnifiedDownload - URL: %ls", url);
 
     // Initialize configuration
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Initializing config");
@@ -2238,75 +2239,73 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config initialized successfully");
 
     // Validate configuration
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Validating config\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Validating config");
     ValidationInfo validationInfo = {0};
     if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Config validation failed\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config validation failed");
         FreeValidationInfo(&validationInfo);
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
     FreeValidationInfo(&validationInfo);
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Config validated successfully\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config validated successfully");
 
     // Get download path
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Getting download path\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Getting download path");
     wchar_t downloadPath[MAX_EXTENDED_PATH];
     if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Using default download path\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Using default download path");
         GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
     }
-    swprintf(debugMsg, 512, L"YouTubeCacher: StartUnifiedDownload - Download path: %ls\n", downloadPath);
-    OutputDebugStringW(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: StartUnifiedDownload - Download path: %ls", downloadPath);
 
     // Create download directory
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating download directory\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating download directory");
     if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create download directory\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create download directory");
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Download directory ready\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Download directory ready");
 
     // Detect if this is a playlist URL
     BOOL isPlaylist = IsYouTubePlaylistURL(url);
     YtDlpOperation operation = isPlaylist ? YTDLP_OP_DOWNLOAD_PLAYLIST : YTDLP_OP_DOWNLOAD;
 
     if (isPlaylist) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Detected playlist URL, using YTDLP_OP_DOWNLOAD_PLAYLIST\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Detected playlist URL, using YTDLP_OP_DOWNLOAD_PLAYLIST");
     }
 
     // Create request with appropriate operation
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating YtDlp request\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating YtDlp request");
     YtDlpRequest* request = CreateYtDlpRequest(operation, url, downloadPath);
     if (!request) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create YtDlp request\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create YtDlp request");
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - YtDlp request created successfully\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - YtDlp request created successfully");
 
     // Create temp directory
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating temp directory\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating temp directory");
     wchar_t tempDir[MAX_EXTENDED_PATH];
     if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Primary temp dir failed, trying fallback\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Primary temp dir failed, trying fallback");
         if (!CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH)) {
-            OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Fallback temp dir also failed\n");
+            ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Fallback temp dir also failed");
             FreeYtDlpRequest(request);
             CleanupYtDlpConfig(&config);
             return FALSE;
         }
     }
     request->tempDir = SAFE_WCSDUP(tempDir);
-    swprintf(debugMsg, 512, L"YouTubeCacher: StartUnifiedDownload - Temp dir: %ls\n", tempDir);
-    OutputDebugStringW(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: StartUnifiedDownload - Temp dir: %ls", tempDir);
 
     // Create context
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating context\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating context");
     UnifiedDownloadContext* context = (UnifiedDownloadContext*)SAFE_MALLOC(sizeof(UnifiedDownloadContext));
     if (!context) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to allocate context\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to allocate context");
         FreeYtDlpRequest(request);
         CleanupYtDlpConfig(&config);
         return FALSE;
@@ -2317,7 +2316,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     context->config = config; // Copy config
     context->request = request;
     wcscpy(context->tempDir, tempDir);
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Context created successfully\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Context created successfully");
 
     // Show progress and disable UI
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Setting up UI");
@@ -2335,12 +2334,12 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     SetDownloadUIState(hDlg, TRUE);
 
     // Start worker thread using new error handling macro
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Starting worker thread\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Starting worker thread");
     HANDLE hThread = CreateThread(NULL, 0, UnifiedDownloadWorkerThread, context, 0, NULL);
     if (!hThread) {
         REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create unified download worker thread (Error: %lu)", GetLastError());
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create worker thread\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create worker thread");
         SAFE_FREE(context);
         FreeYtDlpRequest(request);
         CleanupYtDlpConfig(&config);
@@ -2354,11 +2353,11 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
 
 // Thread function for non-blocking download
 DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
-    OutputDebugStringW(L"YouTubeCacher: NonBlockingDownloadThread started\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: NonBlockingDownloadThread started");
 
     NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lpParam;
     if (!downloadContext) {
-        OutputDebugStringW(L"YouTubeCacher: Invalid downloadContext\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: Invalid downloadContext");
         return 1;
     }
 
@@ -2695,25 +2694,22 @@ DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
 
 // Unified download worker thread - simplified version that delegates to subprocess worker
 DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread started\n");
-    DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting download execution");
+    ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread started");
+    ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting download execution");
 
     UnifiedDownloadContext* context = (UnifiedDownloadContext*)lpParam;
     if (!context) {
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Invalid context\n");
-        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - FAILED: Invalid context");
+        ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Invalid context");
+        ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - FAILED: Invalid context");
         return 1;
     }
 
-    wchar_t logBuffer[512];
-    swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Executing download for URL: %ls",
-            context->request->url ? context->request->url : L"NULL");
-    DebugOutput(logBuffer);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: UnifiedDownloadWorkerThread - Executing download for URL: %ls", context->request->url ? context->request->url : L"NULL");
 
     // Execute the download using the enhanced method for real-time progress
     // Use the existing StartNonBlockingDownload which already uses enhanced execution
     if (!StartNonBlockingDownload(&context->config, context->request, context->hDialog)) {
-        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
+        ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
         PostMessageW(context->hDialog, WM_DOWNLOAD_COMPLETE, (WPARAM)NULL, (LPARAM)NULL);
         SAFE_FREE(context);
         return 1;
@@ -2722,7 +2718,7 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     // The enhanced execution is now running asynchronously
     // The completion will be handled by the existing WM_DOWNLOAD_COMPLETE message system
     // No need to wait here - just clean up and exit
-    DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Enhanced download started, delegating to async system");
+    ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Enhanced download started, delegating to async system");
 
     SAFE_FREE(context);
     return 0;
@@ -2796,9 +2792,8 @@ pipe_cleanup:
 
 cleanup:
     return FALSE;
-}
-
-BOOL ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo) {
+}BOOL
+ ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo) {
     if (!config || !validationInfo) return FALSE;
 
     // Initialize validation info
@@ -2887,9 +2882,8 @@ BOOL MigrateYtDlpConfiguration(YtDlpConfig* config) {
     }
 
     return TRUE;
-}
-
-BOOL SetupDefaultYtDlpConfiguration(YtDlpConfig* config) {
+}BOOL
+SetupDefaultYtDlpConfiguration(YtDlpConfig* config) {
     if (!config) return FALSE;
 
     // Initialize all fields to default values
@@ -2975,34 +2969,30 @@ void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInf
 
 // Get subprocess result (transfers ownership to caller)
 YtDlpResult* GetSubprocessResult(SubprocessContext* context) {
-    OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - ENTRY\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - ENTRY");
 
     if (!context) {
-        OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - NULL context, returning NULL\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - NULL context, returning NULL");
         return NULL;
     }
 
     if (!context->completed) {
-        OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Context not completed, returning NULL\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Context not completed, returning NULL");
         return NULL;
     }
 
-    OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Context is completed\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Context is completed");
 
     if (!context->result) {
-        OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Context result is NULL, returning NULL\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Context result is NULL, returning NULL");
         return NULL;
     }
-
-    wchar_t debugMsg[256];
-    swprintf(debugMsg, 256, L"YouTubeCacher: GetSubprocessResult - Transferring result: success=%d, exitCode=%d\n",
-            context->result->success, context->result->exitCode);
-    OutputDebugStringW(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: GetSubprocessResult - Transferring result: success=%d, exitCode=%d", context->result->success, context->result->exitCode);
 
     YtDlpResult* result = context->result;
     context->result = NULL; // Transfer ownership
 
-    OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Result transferred successfully\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Result transferred successfully");
     return result;
 }
 
