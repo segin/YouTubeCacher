@@ -35,9 +35,6 @@ static const size_t MAX_FREED_MEMORY_TRACKING = 1000; // Limit to prevent excess
 static BOOL AddAllocationRecord(void* address, size_t size, const char* file, int line);
 static void ExpandAllocationTable(void);
 static BOOL RemoveAllocationRecord(void* address, size_t* outSize);
-// Simplified allocation tracking - remove complex hash table
-
-static void CleanupHashTable(AllocationHashTable* table);
 
 // Internal error handling function declarations
 static void InitializeErrorSystem(void);
@@ -55,8 +52,6 @@ static void CaptureStackTrace(void** stackTrace, int* stackDepth);
 #define INITIAL_ALLOCATION_TABLE_SIZE 1024
 #define ALLOCATION_TABLE_GROWTH_FACTOR 2
 
-// Hash table configuration
-#define INITIAL_HASH_TABLE_SIZE 1024
 
 BOOL InitializeMemoryManager(void)
 {
@@ -76,9 +71,6 @@ BOOL InitializeMemoryManager(void)
         return FALSE;
     }
 
-    // Initialize hash table structure (but don't use it for now)
-    g_memoryManager.hashTable.buckets = NULL;
-    g_memoryManager.hashTable.bucketCount = 0;
 
     // Initialize memory manager state
     g_memoryManager.allocationCapacity = INITIAL_ALLOCATION_TABLE_SIZE;
@@ -94,7 +86,6 @@ BOOL InitializeMemoryManager(void)
     // Initialize memory pools
     if (!InitializeMemoryPools()) {
         // Cleanup on failure
-        CleanupHashTable(&g_memoryManager.hashTable);
         free(g_memoryManager.allocations);
         DeleteCriticalSection(&g_memoryManager.lock);
         g_memoryManager.initialized = FALSE;
@@ -118,10 +109,6 @@ void CleanupMemoryManager(void)
     // Cleanup memory pools first
     CleanupMemoryPools();
 
-    // Cleanup hash table (if it was initialized)
-    if (g_memoryManager.hashTable.buckets) {
-        CleanupHashTable(&g_memoryManager.hashTable);
-    }
 
     // Free the allocation tracking table
     if (g_memoryManager.allocations) {
@@ -394,7 +381,6 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
 
-        // Use hash table for fast lookup and removal
         if (RemoveAllocationRecord(ptr, &oldSize)) {
             wasTracked = TRUE;
         }
@@ -667,8 +653,6 @@ static BOOL AddAllocationRecord(void* address, size_t size, const char* file, in
     alloc->threadId = GetCurrentThreadId();
     GetSystemTime(&alloc->allocTime);
 
-    // Skip hash table for now - use linear search only for reliability
-    // TODO: Implement a more robust hash table later
 
     g_memoryManager.allocationCount++;
     return TRUE;
@@ -676,7 +660,6 @@ static BOOL AddAllocationRecord(void* address, size_t size, const char* file, in
 
 static BOOL RemoveAllocationRecord(void* address, size_t* outSize)
 {
-    // Use linear search only - hash table is too complex and error-prone
     for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
         if (g_memoryManager.allocations[i].address == address) {
             // Store size for caller
@@ -716,160 +699,6 @@ static void ExpandAllocationTable(void)
     }
 }
 
-/* Unused function - commented out to fix compilation warnings
-// Hash table implementation functions
-static BOOL InitializeHashTable(AllocationHashTable* table, size_t bucketCount)
-{
-    if (!table || bucketCount == 0) {
-        return FALSE;
-    }
-
-    table->buckets = (HashEntry**)calloc(bucketCount, sizeof(HashEntry*));
-    if (!table->buckets) {
-        return FALSE;
-    }
-
-    table->bucketCount = bucketCount;
-    return TRUE;
-}
-*/
-
-static void CleanupHashTable(AllocationHashTable* table)
-{
-    if (!table || !table->buckets) {
-        return;
-    }
-
-    // Free all hash entries
-    for (size_t i = 0; i < table->bucketCount; i++) {
-        HashEntry* entry = table->buckets[i];
-        while (entry) {
-            HashEntry* next = entry->next;
-            free(entry);
-            entry = next;
-        }
-    }
-
-    free(table->buckets);
-    table->buckets = NULL;
-    table->bucketCount = 0;
-}
-
-/* Unused function - commented out to fix compilation warnings
-static size_t HashAddress(void* address, size_t bucketCount)
-{
-    // Simple hash function for pointer addresses
-    uintptr_t addr = (uintptr_t)address;
-
-    // Use a simple but effective hash for pointers
-    // Mix the bits to get better distribution
-    addr ^= addr >> 16;
-    addr ^= addr >> 8;
-
-    return addr % bucketCount;
-}
-*/
-
-/* Unused function - commented out to fix compilation warnings
-static BOOL AddToHashTable(AllocationHashTable* table, AllocationInfo* allocation)
-{
-    if (!table || !table->buckets || !allocation) {
-        return FALSE;
-    }
-
-    size_t bucket = HashAddress(allocation->address, table->bucketCount);
-
-    // Create new hash entry
-    HashEntry* entry = (HashEntry*)malloc(sizeof(HashEntry));
-    if (!entry) {
-        return FALSE;
-    }
-
-    entry->allocation = allocation;
-    entry->next = table->buckets[bucket];
-    table->buckets[bucket] = entry;
-
-    return TRUE;
-}
-*/
-
-/* Unused function - commented out to fix compilation warnings
-static AllocationInfo* FindInHashTable(AllocationHashTable* table, void* address)
-{
-    if (!table || !table->buckets || !address) {
-        return NULL;
-    }
-
-    size_t bucket = HashAddress(address, table->bucketCount);
-    HashEntry* entry = table->buckets[bucket];
-
-    while (entry) {
-        if (entry->allocation && entry->allocation->address == address) {
-            return entry->allocation;
-        }
-        entry = entry->next;
-    }
-
-    return NULL;
-}
-*/
-
-/* Unused function - commented out to fix compilation warnings
-static BOOL RemoveFromHashTable(AllocationHashTable* table, void* address)
-{
-    if (!table || !table->buckets || !address) {
-        return FALSE;
-    }
-
-    size_t bucket = HashAddress(address, table->bucketCount);
-    HashEntry* entry = table->buckets[bucket];
-    HashEntry* prev = NULL;
-
-    while (entry) {
-        if (entry->allocation && entry->allocation->address == address) {
-            // Remove entry from linked list
-            if (prev) {
-                prev->next = entry->next;
-            } else {
-                table->buckets[bucket] = entry->next;
-            }
-
-            free(entry);
-            return TRUE;
-        }
-        prev = entry;
-        entry = entry->next;
-    }
-
-    return FALSE;
-}
-*/
-
-/* Unused function - commented out to fix compilation warnings
-// Rebuild hash table from current allocation array
-static void RebuildHashTable(void)
-{
-    if (!g_memoryManager.initialized) {
-        return;
-    }
-
-    // Clear existing hash table
-    CleanupHashTable(&g_memoryManager.hashTable);
-
-    // Reinitialize hash table
-    if (!InitializeHashTable(&g_memoryManager.hashTable, INITIAL_HASH_TABLE_SIZE)) {
-        // If we can't rebuild the hash table, disable it
-        g_memoryManager.hashTable.buckets = NULL;
-        g_memoryManager.hashTable.bucketCount = 0;
-        return;
-    }
-
-    // Re-add all current allocations to hash table
-    for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
-        AddToHashTable(&g_memoryManager.hashTable, &g_memoryManager.allocations[i]);
-    }
-}
-*/
 
 // Safe string management function implementations
 wchar_t* SafeWcsDup(const wchar_t* str, const char* file, int line)
