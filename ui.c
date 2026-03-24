@@ -100,7 +100,9 @@ void UpdateVideoInfoUI(HWND hDlg, const wchar_t* title, const wchar_t* duration)
 
         // Debug: Log individual characters
         ThreadSafeDebugOutput(L"YouTubeCacher: Title character codes: ");
-        for (size_t i = 0; i < min(wcslen(title), 20); i++) {
+        size_t title_len = wcslen(title);
+        size_t limit = min(title_len, 20);
+        for (size_t i = 0; i < limit; i++) {
             ThreadSafeDebugOutputF(L"U+%04X ", (unsigned int)title[i]);
         }
         ThreadSafeDebugOutput(L"");
