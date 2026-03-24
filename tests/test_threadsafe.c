@@ -216,8 +216,41 @@ int test_set_executable() {
     return 0;
 }
 
+int test_debug_output() {
+    printf("Starting ThreadSafeDebugOutput tests...\n");
+
+    // Initialize thread safety
+    InitializeThreadSafety();
+
+    // Test ThreadSafeDebugOutput with NULL message
+    printf("Testing ThreadSafeDebugOutput(NULL)... ");
+    ThreadSafeDebugOutput(NULL);
+    printf("Passed.\n");
+
+    // Test ThreadSafeDebugOutputF with NULL format
+    printf("Testing ThreadSafeDebugOutputF(NULL)... ");
+    ThreadSafeDebugOutputF(NULL);
+    printf("Passed.\n");
+
+    // Test with actual message to ensure it still works
+    printf("Testing ThreadSafeDebugOutput(L\"Test message\")... ");
+    ThreadSafeDebugOutput(L"Test message");
+    printf("Passed.\n");
+
+    printf("Testing ThreadSafeDebugOutputF(L\"Test format %%d\", 42)... ");
+    ThreadSafeDebugOutputF(L"Test format %d", 42);
+    printf("Passed.\n");
+
+    // Cleanup
+    CleanupThreadSafety();
+
+    printf("All ThreadSafeDebugOutput tests passed successfully!\n");
+    return 0;
+}
+
 int main() {
     if (test_initialization() != 0) return 1;
     if (test_set_executable() != 0) return 1;
+    if (test_debug_output() != 0) return 1;
     return 0;
 }
