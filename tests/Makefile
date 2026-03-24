@@ -1,8 +1,8 @@
 CC = /mingw64/bin/gcc.exe
-CFLAGS = -Wall -Wextra -I.
+CFLAGS = -Wall -Wextra -I. -DTEST_BUILD
 RM = /usr/bin/rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_base64
+all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe
 
 test_cache_duration: test_cache_duration.o cache_duration.o
 	$(CC) $(CFLAGS) $^ -o $@
@@ -43,11 +43,16 @@ test_base64: export PATH := /mingw64/bin:/usr/bin:$(PATH)
 test_base64: test_base64.c
 	$(CC) $(CFLAGS) -I. test_base64.c -o $@
 
+test_threadsafe: export PATH := /mingw64/bin:/usr/bin:$(PATH)
+test_threadsafe: test_threadsafe.c mock_windows.h ../threadsafe.c
+	$(CC) $(CFLAGS) test_threadsafe.c -o $@
+
 run: all
 	./test_cache_duration
 	./test_parser_classify
 	./test_uri
 	./test_base64
+	./test_threadsafe
 
 clean:
-	$(RM) -f *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe
