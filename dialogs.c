@@ -1648,6 +1648,50 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
 
 
+// Helper to format Windows error messages
+static void FormatWindowsError(DWORD errorCode, wchar_t* buffer, size_t bufferSize) {
+    LPWSTR errorText = NULL;
+    if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                      NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
+        swprintf(buffer, bufferSize, L"Windows Error: %ls", errorText);
+        LocalFree(errorText);
+    } else {
+        swprintf(buffer, bufferSize, L"Windows Error Code: %lu", errorCode);
+    }
+}
+
+// Helper to log and show unified error dialogs
+static INT_PTR ShowUnifiedErrorHelper(HWND parent,
+                                     const wchar_t* category,
+                                     const wchar_t* title,
+                                     const wchar_t* message,
+                                     const wchar_t* logDetails,
+                                     const wchar_t* dialogDetails,
+                                     const wchar_t* tab1Name,
+                                     const wchar_t* tab2Content,
+                                     const wchar_t* tab2Name,
+                                     const wchar_t* tab3Content,
+                                     const wchar_t* tab3Name) {
+
+    // Log the error
+    LogError(category, message, logDetails ? logDetails : (dialogDetails ? dialogDetails : L"No details available"));
+
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = dialogDetails ? dialogDetails : L"No detailed error information available";
+    config.tab1_name = tab1Name ? tab1Name : L"Details";
+    config.tab2_content = tab2Content;
+    config.tab2_name = tab2Name;
+    config.tab3_content = tab3Content;
+    config.tab3_name = tab3Name;
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
+
+    return ShowUnifiedDialog(parent, &config);
+}
+
 // Convenience function for yt-dlp errors
 INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpRequest* request) {
     if (!result) return IDCANCEL;
@@ -1678,23 +1722,13 @@ INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpReques
         swprintf(solutions, _countof(solutions), L"%ls", analysis->solution);
     }
     
-    // Log the error
-    LogError(L"YtDlp", message, result->output ? result->output : L"No output available");
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = result->output ? result->output : L"No detailed output available";
-    config.tab1_name = L"Output";
-    config.tab2_content = result->diagnostics ? result->diagnostics : L"No diagnostic information available";
-    config.tab2_name = L"Diagnostics";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result_code = ShowUnifiedDialog(parent, &config);
+    INT_PTR result_code = ShowUnifiedErrorHelper(parent, L"YtDlp", title, message,
+                                               result->output ? result->output : L"No output available",
+                                               result->output ? result->output : L"No detailed output available",
+                                               L"Output",
+                                               result->diagnostics ? result->diagnostics : L"No diagnostic information available",
+                                               L"Diagnostics",
+                                               solutions, L"Solutions");
     
     if (analysis) {
         FreeErrorAnalysis(analysis);
@@ -1743,25 +1777,13 @@ INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo) {
                  L"4. Update the path in Settings if yt-dlp was moved");
     }
     
-    // Log the error
-    LogError(L"Validation", message, validationInfo->errorDetails ? validationInfo->errorDetails : L"No details available");
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = validationInfo->errorDetails ? validationInfo->errorDetails : L"No detailed error information available";
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Validation performed comprehensive checks on the yt-dlp executable and its dependencies.";
-    config.tab2_name = L"Validation Info";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"Validation", title, message,
+                                validationInfo->errorDetails ? validationInfo->errorDetails : L"No details available",
+                                validationInfo->errorDetails ? validationInfo->errorDetails : L"No detailed error information available",
+                                L"Details",
+                                L"Validation performed comprehensive checks on the yt-dlp executable and its dependencies.",
+                                L"Validation Info",
+                                solutions, L"Solutions");
 }
 
 // Convenience function for process errors
@@ -1774,41 +1796,20 @@ INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation)
               operation ? operation : L"execute operation", errorCode);
     
     wchar_t details[1024];
-    LPWSTR errorText = NULL;
-    if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-                      NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
-        swprintf(details, _countof(details), L"Windows Error: %ls", errorText);
-        LocalFree(errorText);
-    } else {
-        swprintf(details, _countof(details), L"Windows Error Code: %lu", errorCode);
-    }
-    
+    FormatWindowsError(errorCode, details, _countof(details));
+
     wchar_t solutions[1024];
     wcscpy(solutions,
              L"1. Check if the executable path is correct\r\n"
              L"2. Verify you have permission to run the program\r\n"
              L"3. Ensure the executable is not blocked by antivirus\r\n"
              L"4. Try running the application as administrator");
-    
-    // Log the error
-    LogError(L"Process", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Process creation or execution failed at the Windows API level.";
-    config.tab2_name = L"Technical Info";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+
+    return ShowUnifiedErrorHelper(parent, L"Process", title, message,
+                                details, details, L"Details",
+                                L"Process creation or execution failed at the Windows API level.",
+                                L"Technical Info",
+                                solutions, L"Solutions");
 }
 
 // Convenience function for temporary directory errors
@@ -1821,19 +1822,11 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode) {
               tempDir ? tempDir : L"Unknown path");
     
     wchar_t details[1024];
-    LPWSTR errorText = NULL;
-    if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-                      NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
-        swprintf(details, _countof(details), 
-                   L"Path: %ls\r\nWindows Error: %ls", 
-                   tempDir ? tempDir : L"Unknown", errorText);
-        LocalFree(errorText);
-    } else {
-        swprintf(details, _countof(details), 
-                   L"Path: %ls\r\nError Code: %lu", 
-                   tempDir ? tempDir : L"Unknown", errorCode);
-    }
-    
+    wchar_t winError[512];
+    FormatWindowsError(errorCode, winError, _countof(winError));
+    swprintf(details, _countof(details), L"Path: %ls\r\n%ls",
+               tempDir ? tempDir : L"Unknown", winError);
+
     wchar_t solutions[1024];
     wcscpy(solutions,
              L"1. Check available disk space on the target drive\r\n"
@@ -1841,26 +1834,12 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode) {
              L"3. Try using a different temporary directory\r\n"
              L"4. Clear existing temporary files\r\n"
              L"5. Check if the path length exceeds Windows limits");
-    
-    // Log the error
-    LogError(L"TempDir", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Temporary directory creation failed. This may be due to permissions, disk space, or path length issues.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+
+    return ShowUnifiedErrorHelper(parent, L"TempDir", title, message,
+                                details, details, L"Details",
+                                L"Temporary directory creation failed. This may be due to permissions, disk space, or path length issues.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 // Additional convenience functions for common scenarios
@@ -1884,25 +1863,11 @@ INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation) {
              L"3. Restart your computer if the problem persists\r\n"
              L"4. Check available system memory");
     
-    // Log the error
-    LogError(L"Memory", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Memory allocation failed. This may indicate low system memory or memory fragmentation.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"Memory", title, message,
+                                details, details, L"Details",
+                                L"Memory allocation failed. This may indicate low system memory or memory fragmentation.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details) {
@@ -1919,25 +1884,13 @@ INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details) {
              L"3. Ensure all required files are accessible\r\n"
              L"4. Try resetting settings to defaults");
     
-    // Log the error
-    LogError(L"Configuration", message, details ? details : L"No details available");
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details ? details : L"Configuration initialization failed";
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Application configuration could not be loaded or initialized properly.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"Configuration", title, message,
+                                details ? details : L"No details available",
+                                details ? details : L"Configuration initialization failed",
+                                L"Details",
+                                L"Application configuration could not be loaded or initialized properly.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 INT_PTR ShowUIError(HWND parent, const wchar_t* operation) {
@@ -1960,25 +1913,11 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation) {
              L"3. Verify Windows is functioning properly\r\n"
              L"4. Try running as administrator");
     
-    // Log the error
-    LogError(L"UI", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"User interface component creation failed. This may indicate system resource issues.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"UI", title, message,
+                                details, details, L"Details",
+                                L"User interface component creation failed. This may indicate system resource issues.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 

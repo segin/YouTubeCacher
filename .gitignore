@@ -23,3 +23,6 @@ YouTubeCacher-log.txt
 
 # Error logs
 error.log
+# Test artifacts
+tests/uri_functions.c
+tests/test_runner
