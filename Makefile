@@ -27,7 +27,7 @@ COMMON_CFLAGS = -Wall -Wextra -Werror -std=c99 -DUNICODE -D_UNICODE -static-libg
 
 # Debug flags for memory tracking
 DEBUG_CFLAGS = -g -DMEMORY_DEBUG -DLEAK_DETECTION
-COMMON_LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -static
+COMMON_LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -lbcrypt -static
 
 # MinGW32 settings
 CC32 = /mingw32/bin/gcc.exe
@@ -166,6 +166,7 @@ cleanarm64:
 	rm -rf $(OBJARM64_DIR) $(TARGETARM64)
 
 clean: clean32 clean64 cleanarm64
+	$(MAKE) -C tests clean
 
 # Run the program
 run: debug32
@@ -210,8 +211,5 @@ $(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o $(OBJARM64_DIR)/YouTub
 # Phony targets
 .PHONY: all debug debug32 debug64 debugarm64 release release32 release64 releasearm64 clean clean32 clean64 cleanarm64 clean-objects run run32 run64 runarm64 test
 
-# Test target
 test:
-	gcc -I./tests -I. tests/test_base64.c -o tests/test_base64
-	./tests/test_base64
-	rm ./tests/test_base64
+	$(MAKE) -C tests run
