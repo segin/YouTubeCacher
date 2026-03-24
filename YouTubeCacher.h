@@ -340,6 +340,9 @@ typedef struct {
     HANDLE hOutputWrite;
     wchar_t* accumulatedOutput;
     size_t outputBufferSize;
+
+    // Thread-safe backend
+    ThreadSafeSubprocessContext* threadSafeContext;
 } SubprocessContext;
 
 // Legacy context adapter functions for thread-safe subprocess handling

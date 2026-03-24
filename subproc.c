@@ -201,8 +201,7 @@ BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext
     }
 
     // Store the thread-safe context in the legacy context for cleanup
-    // We'll use the accumulatedOutput field to store our context pointer (hack but works)
-    legacyContext->accumulatedOutput = (wchar_t*)threadSafeContext;
+    legacyContext->threadSafeContext = threadSafeContext;
 
     // Start execution
     BOOL success = ExecuteThreadSafeSubprocessWithOutput(threadSafeContext);
@@ -211,7 +210,7 @@ BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext
         ThreadSafeDebugOutput(L"StartThreadSafeSubprocessFromLegacyContext: Failed to start thread-safe execution");
         CleanupThreadSafeSubprocessContext(threadSafeContext);
         SAFE_FREE(threadSafeContext);
-        legacyContext->accumulatedOutput = NULL;
+        legacyContext->threadSafeContext = NULL;
         return FALSE;
     }
 
@@ -223,11 +222,11 @@ BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext
  * Check if legacy subprocess context is running (using thread-safe backend)
  */
 BOOL IsLegacySubprocessRunning(const SubprocessContext* legacyContext) {
-    if (!legacyContext || !legacyContext->accumulatedOutput) {
+    if (!legacyContext || !legacyContext->threadSafeContext) {
         return FALSE;
     }
 
-    ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
+    ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
     return IsThreadSafeSubprocessRunning(threadSafeContext);
 }
 
@@ -235,11 +234,11 @@ BOOL IsLegacySubprocessRunning(const SubprocessContext* legacyContext) {
  * Wait for legacy subprocess completion (using thread-safe backend)
  */
 BOOL WaitForLegacySubprocessCompletion(SubprocessContext* legacyContext, DWORD timeoutMs) {
-    if (!legacyContext || !legacyContext->accumulatedOutput) {
+    if (!legacyContext || !legacyContext->threadSafeContext) {
         return FALSE;
     }
 
-    ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
+    ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
     BOOL completed = WaitForThreadSafeSubprocessWithOutputCompletion(threadSafeContext, timeoutMs);
 
     if (completed) {
@@ -279,11 +278,11 @@ BOOL WaitForLegacySubprocessCompletion(SubprocessContext* legacyContext, DWORD t
  * Cancel legacy subprocess execution (using thread-safe backend)
  */
 BOOL CancelLegacySubprocessExecution(SubprocessContext* legacyContext) {
-    if (!legacyContext || !legacyContext->accumulatedOutput) {
+    if (!legacyContext || !legacyContext->threadSafeContext) {
         return FALSE;
     }
 
-    ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
+    ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
     return CancelThreadSafeSubprocess(threadSafeContext);
 }
 
@@ -296,8 +295,8 @@ void CleanupLegacySubprocessContext(SubprocessContext* legacyContext) {
     }
 
     // Cleanup thread-safe context if it exists
-    if (legacyContext->accumulatedOutput) {
-        ThreadSafeSubprocessContext* threadSafeContext = (ThreadSafeSubprocessContext*)legacyContext->accumulatedOutput;
+    if (legacyContext->threadSafeContext) {
+        ThreadSafeSubprocessContext* threadSafeContext = legacyContext->threadSafeContext;
 
         // Validate the context pointer before cleanup
         // Check if it looks like a valid context by checking if initialized flag is reasonable
@@ -306,7 +305,7 @@ void CleanupLegacySubprocessContext(SubprocessContext* legacyContext) {
             SAFE_FREE(threadSafeContext);
         }
 
-        legacyContext->accumulatedOutput = NULL;
+        legacyContext->threadSafeContext = NULL;
     }
 
     // Continue with normal legacy cleanup
