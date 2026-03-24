@@ -42,10 +42,12 @@ CFLAGS64 = $(COMMON_CFLAGS)
 LDFLAGS64 = $(COMMON_LDFLAGS)
 
 # ARM64 Cross-Compiler settings
-CCARM64 = aarch64-w64-mingw32-gcc
-RCARM64 = aarch64-w64-mingw32-windres
+CCARM64 = /opt/bin/aarch64-w64-mingw32-gcc
+RCARM64 = /opt/bin/aarch64-w64-mingw32-windres
 CFLAGSARM64 = $(COMMON_CFLAGS)
 LDFLAGSARM64 = $(COMMON_LDFLAGS)
+RM = /usr/bin/rm -f
+MKDIR = /usr/bin/mkdir -p
 
 # Release flags
 RELEASE_CFLAGS = -Os -DNDEBUG -DMEMORY_RELEASE -flto -s
@@ -72,7 +74,7 @@ debug64: LDFLAGS = $(LDFLAGS64)
 debug64: $(OBJ64_DIR) $(TARGET64)
 
 debugarm64: export MSYSTEM := CLANGARM64
-debugarm64: export PATH := /clangarm64/bin:$(PATH)
+debugarm64: export PATH := /clangarm64/bin:/opt/bin:/usr/bin:$(PATH)
 debugarm64: CC = $(CCARM64)
 debugarm64: RC = $(RCARM64)
 debugarm64: CFLAGS = $(CFLAGSARM64) $(DEBUG_CFLAGS)
@@ -110,13 +112,13 @@ release: release32 release64 releasearm64
 
 # Directory creation
 $(OBJ32_DIR):
-	mkdir -p $(OBJ32_DIR)
+	$(MKDIR) $(OBJ32_DIR)
 
 $(OBJ64_DIR):
-	mkdir -p $(OBJ64_DIR)
+	$(MKDIR) $(OBJ64_DIR)
 
 $(OBJARM64_DIR):
-	mkdir -p $(OBJARM64_DIR)
+	$(MKDIR) $(OBJARM64_DIR)
 
 # Build rules
 $(TARGET32): $(OBJECTS32) $(RC_OBJECT32)
@@ -154,16 +156,16 @@ $(OBJARM64_DIR)/%.o: %.rc
 
 # Cleaning targets
 clean-objects:
-	rm -rf $(OBJ32_DIR) $(OBJ64_DIR) $(OBJARM64_DIR)
+	$(RM) -rf $(OBJ32_DIR) $(OBJ64_DIR) $(OBJARM64_DIR)
 
 clean32:
-	rm -rf $(OBJ32_DIR) $(TARGET32)
+	$(RM) -rf $(OBJ32_DIR) $(TARGET32)
 
 clean64:
-	rm -rf $(OBJ64_DIR) $(TARGET64)
+	$(RM) -rf $(OBJ64_DIR) $(TARGET64)
 
 cleanarm64:
-	rm -rf $(OBJARM64_DIR) $(TARGETARM64)
+	$(RM) -rf $(OBJARM64_DIR) $(TARGETARM64)
 
 clean: clean32 clean64 cleanarm64
 	$(MAKE) -C tests clean

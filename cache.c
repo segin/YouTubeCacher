@@ -1,5 +1,9 @@
 #include "YouTubeCacher.h"
 
+// Forward declarations
+static DWORD WINAPI CacheSaveWorkerThread(LPVOID lpParam);
+static BOOL SaveCacheToFileInternal(CacheManager* manager);
+
 // Enhanced file operation error handling macro for cache operations
 #define CHECK_FILE_OPERATION_WITH_CONTEXT(call, operation_name, file_path, cleanup_label) \
     do { \
@@ -448,9 +452,8 @@ static BOOL SaveCacheToFileInternal(CacheManager* manager) {
             }
             FreeErrorContext(ctx);
         }
-        swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - ERROR: Failed to open file for writing (error %lu): %ls\r\n",
+        ThreadSafeDebugOutputF(L"YouTubeCacher: SaveCacheToFileInternal - ERROR: Failed to open file for writing (error %lu): %ls",
                 error, manager->cacheFilePath);
-        ThreadSafeDebugOutput(debugMsg);
         return FALSE;
     }
     
@@ -461,8 +464,7 @@ static BOOL SaveCacheToFileInternal(CacheManager* manager) {
     
     EnterCriticalSection(&manager->lock);
     
-    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - Writing %d entries", manager->totalEntries);
-    ThreadSafeDebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: SaveCacheToFileInternal - Writing %d entries", manager->totalEntries);
     
     // Write each cache entry
     CacheEntry* current = manager->entries;
@@ -470,9 +472,8 @@ static BOOL SaveCacheToFileInternal(CacheManager* manager) {
     while (current) {
         entryCount++;
         if (ValidateCacheEntry(current)) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - Writing entry %d: %ls",
+            ThreadSafeDebugOutputF(L"YouTubeCacher: SaveCacheToFileInternal - Writing entry %d: %ls",
                     entryCount, current->videoId ? current->videoId : L"NULL");
-            ThreadSafeDebugOutput(debugMsg);
             // Encode title as base64 to handle all Unicode characters safely
             wchar_t* encodedTitle = current->title ? Base64EncodeWide(current->title) : NULL;
             
@@ -496,9 +497,8 @@ static BOOL SaveCacheToFileInternal(CacheManager* manager) {
             
             fwprintf(file, L"\n");
         } else {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - Skipping invalid entry %d: %ls",
+            ThreadSafeDebugOutputF(L"YouTubeCacher: SaveCacheToFileInternal - Skipping invalid entry %d: %ls",
                     entryCount, current->videoId ? current->videoId : L"NULL");
-            ThreadSafeDebugOutput(debugMsg);
         }
         current = current->next;
     }

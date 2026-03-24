@@ -874,48 +874,73 @@ BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
 /**
  * Escapes a command line argument according to Windows rules.
  * Wraps the argument in double quotes and escapes existing quotes.
+ * Returns an allocated wide string that must be freed by the caller.
  */
-static void EscapeCommandLineArgument(const wchar_t* arg, wchar_t* escaped, size_t escapedSize) {
-    if (!arg || !escaped || escapedSize == 0) return;
+wchar_t* EscapeCommandLineArgument(const wchar_t* arg) {
+    if (!arg) return NULL;
+
+    size_t len = wcslen(arg);
+    // Rough estimate for escaped length: 2x original + quotes
+    size_t escapedCapacity = (len * 2) + 3;
+    wchar_t* escaped = (wchar_t*)SAFE_MALLOC(escapedCapacity * sizeof(wchar_t));
+    if (!escaped) return NULL;
 
     size_t j = 0;
-    if (j < escapedSize - 1) escaped[j++] = L'\"';
+    escaped[j++] = L'\"';
 
-    for (size_t i = 0; arg[i] != L'\0'; i++) {
+    for (size_t i = 0; i < len; i++) {
         size_t backslashes = 0;
-        const wchar_t* start = &arg[i];
-        while (arg[i] == L'\\') {
+        while (i < len && arg[i] == L'\\') {
             backslashes++;
             i++;
         }
 
-        if (arg[i] == L'\0') {
-            // Backslashes at the end of the string
+        if (i == len) {
+            // End of string, escape all backslashes
             for (size_t k = 0; k < backslashes * 2; k++) {
-                if (j < escapedSize - 1) escaped[j++] = L'\\';
+                escaped[j++] = L'\\';
             }
             break;
         } else if (arg[i] == L'\"') {
-            // Backslashes followed by a double quote
+            // Escape backslashes and the quote
             for (size_t k = 0; k < backslashes * 2 + 1; k++) {
-                if (j < escapedSize - 1) escaped[j++] = L'\\';
+                escaped[j++] = L'\\';
             }
-            if (j < escapedSize - 1) escaped[j++] = L'\"';
+            escaped[j++] = L'\"';
         } else {
-            // Backslashes followed by anything else
-            // Just copy the backslashes and the character
-            i = start - arg; // Reset i to start of backslashes
-            if (j < escapedSize - 1) escaped[j++] = arg[i];
+            // Just the backslashes and the character
+            for (size_t k = 0; k < backslashes; k++) {
+                escaped[j++] = L'\\';
+            }
+            escaped[j++] = arg[i];
         }
     }
 
-    if (j < escapedSize - 1) escaped[j++] = L'\"';
+    escaped[j++] = L'\"';
     escaped[j] = L'\0';
+
+    return escaped;
 }
 
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath,
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
+
+    wchar_t* escapedUrl = NULL;
+    wchar_t* escapedOutputPath = NULL;
+
+    if (url && wcslen(url) > 0) {
+        escapedUrl = EscapeCommandLineArgument(url);
+        if (!escapedUrl) goto cleanup;
+    }
+
+    if (outputPath) {
+        // Construct the output template: "outputPath\%(id)s.%(ext)s"
+        wchar_t outputTemplate[MAX_EXTENDED_PATH];
+        swprintf(outputTemplate, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", outputPath);
+        escapedOutputPath = EscapeCommandLineArgument(outputTemplate);
+        if (!escapedOutputPath) goto cleanup;
+    }
 
     // Start with custom arguments if they exist
     wchar_t baseArgs[2048] = L"";
@@ -926,17 +951,9 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
 
     // Build operation-specific arguments
     wchar_t operationArgs[4096];
-    wchar_t escapedUrl[2100] = L"";
-    wchar_t escapedPath[4096] = L"";
-
-    // Pre-escape URL if it exists
-    if (url && wcslen(url) > 0) {
-        EscapeCommandLineArgument(url, escapedUrl, 2100);
-    }
-
     switch (operation) {
         case YTDLP_OP_GET_INFO:
-            if (url && wcslen(url) > 0) {
+            if (escapedUrl) {
                 // Use JSON output for structured data extraction
                 swprintf(operationArgs, 4096, L"--dump-json --no-download --no-warnings %ls", escapedUrl);
             } else {
@@ -945,49 +962,40 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             break;
 
         case YTDLP_OP_GET_TITLE:
-            if (url && wcslen(url) > 0) {
+            if (escapedUrl) {
                 swprintf(operationArgs, 4096, L"--get-title --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
 
         case YTDLP_OP_GET_DURATION:
-            if (url && wcslen(url) > 0) {
+            if (escapedUrl) {
                 swprintf(operationArgs, 4096, L"--get-duration --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
 
         case YTDLP_OP_GET_TITLE_DURATION:
-            if (url && wcslen(url) > 0) {
+            if (escapedUrl) {
                 swprintf(operationArgs, 4096, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
 
         case YTDLP_OP_DOWNLOAD:
-            if (url && outputPath) {
-                wchar_t fullPath[MAX_EXTENDED_PATH];
-                swprintf(fullPath, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", outputPath);
-                EscapeCommandLineArgument(fullPath, escapedPath, 4096);
-
+            if (escapedUrl && escapedOutputPath) {
                 // Machine-parseable progress format with pipe delimiters and raw numeric values
-                // Format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-                // Use proper yt-dlp template syntax with single % for template variables
-                // Double %% is only needed in C format strings, not in the actual command
-                // Note: yt-dlp progress dict fields are: downloaded_bytes, total_bytes, speed, eta
-                // REMOVED --print-json because it outputs massive JSON blob that breaks parsing
                 swprintf(operationArgs, 4096,
                     L"--newline --no-colors --force-overwrites "
                     L"--write-info-json "
                     L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
                     L"--output %ls %ls",
-                    escapedPath, escapedUrl);
+                    escapedOutputPath, escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
 
@@ -996,51 +1004,53 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             break;
 
         case YTDLP_OP_GET_PLAYLIST_INFO:
-            if (url && wcslen(url) > 0) {
+            if (escapedUrl) {
                 // Fast playlist enumeration with flat-playlist (no full video extraction)
                 // Output format: id|title|duration (duration in seconds)
                 swprintf(operationArgs, 4096,
                     L"--flat-playlist --no-download --no-warnings --encoding utf-8 "
                     L"--print \"%%(id)s|%%(title)s|%%(duration)s\" %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
 
         case YTDLP_OP_DOWNLOAD_PLAYLIST:
-            if (url && outputPath) {
-                wchar_t fullPath[MAX_EXTENDED_PATH];
-                swprintf(fullPath, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", outputPath);
-                EscapeCommandLineArgument(fullPath, escapedPath, 4096);
-
+            if (escapedUrl && escapedOutputPath) {
                 // Playlist download - same as regular download but with --ignore-errors
-                // so we continue if individual videos fail
-                // Keep the same progress template format as single video for consistent parsing
                 swprintf(operationArgs, 4096,
                     L"--newline --no-colors --force-overwrites --ignore-errors "
                     L"--write-info-json "
                     L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
                     L"--output %ls %ls",
-                    escapedPath, escapedUrl);
+                    escapedOutputPath, escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
 
         default:
-            return FALSE;
+            goto cleanup;
     }
 
     // Combine custom arguments with operation-specific arguments
     if (wcslen(baseArgs) + wcslen(operationArgs) + 1 >= argsSize) {
-        return FALSE; // Not enough space
+        goto cleanup;
     }
 
     wcscpy(args, baseArgs);
     wcscat(args, operationArgs);
 
+    if (escapedUrl) SAFE_FREE(escapedUrl);
+    if (escapedOutputPath) SAFE_FREE(escapedOutputPath);
     return TRUE;
+
+cleanup:
+    if (escapedUrl) SAFE_FREE(escapedUrl);
+    if (escapedOutputPath) SAFE_FREE(escapedOutputPath);
+    return FALSE;
 }
+
 
 // Video metadata extraction functions
 
@@ -2694,7 +2704,6 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
         return 1;
     }
 
-    wchar_t logBuffer[512];
     ThreadSafeDebugOutputF(L"YouTubeCacher: UnifiedDownloadWorkerThread - Executing download for URL: %ls", context->request->url ? context->request->url : L"NULL");
 
     // Execute the download using the enhanced method for real-time progress
