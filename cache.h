@@ -26,6 +26,10 @@ typedef struct {
     int totalEntries;           // Total number of cached videos
     wchar_t cacheFilePath[MAX_EXTENDED_PATH]; // Path to cache index file
     CRITICAL_SECTION lock;      // Thread safety
+    HANDLE hSaveEvent;          // Event to signal background save
+    HANDLE hSaveThread;         // Background save thread
+    volatile BOOL bShuttingDown; // Flag to stop background thread
+    volatile BOOL bDirty;        // Flag indicating unsaved changes
 } CacheManager;
 
 // Cache file constants
@@ -51,6 +55,7 @@ BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath);
 void CleanupCacheManager(CacheManager* manager);
 BOOL LoadCacheFromFile(CacheManager* manager);
 BOOL SaveCacheToFile(CacheManager* manager);
+BOOL SaveCacheToFileSync(CacheManager* manager);
 BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t* title, 
                    const wchar_t* duration, const wchar_t* mainVideoFile, 
                    wchar_t** subtitleFiles, int subtitleCount);
