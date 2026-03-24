@@ -70,7 +70,7 @@ BOOL InitializeMemoryManager(void)
     // Allocate initial allocation tracking table
     g_memoryManager.allocations = (AllocationInfo*)malloc(
         INITIAL_ALLOCATION_TABLE_SIZE * sizeof(AllocationInfo));
-    
+
     if (!g_memoryManager.allocations) {
         DeleteCriticalSection(&g_memoryManager.lock);
         return FALSE;
@@ -130,10 +130,10 @@ void CleanupMemoryManager(void)
     }
 
     g_memoryManager.initialized = FALSE;
-    
+
     LeaveCriticalSection(&g_memoryManager.lock);
     DeleteCriticalSection(&g_memoryManager.lock);
-    
+
     // Cleanup error handling system
     CleanupErrorSystem();
 }
@@ -155,50 +155,50 @@ void* SafeMalloc(size_t size, const char* file, int line)
     if (g_bufferOverrunDetectionEnabled) {
         totalSize = size + (2 * GUARD_SIZE); // Guard before and after
     }
-    
+
     void* rawPtr = malloc(totalSize);
     if (!rawPtr) {
         // Use standardized error reporting system
         wchar_t errorMsg[512];
         swprintf(errorMsg, 512, L"Memory allocation failed: requested %zu bytes\r\n", size);
-        
+
         // Convert file path to wide string for error reporting
         wchar_t wideFile[512];
         MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
-        
+
         // Convert function name (use file name as approximation)
         const char* fileName = strrchr(file, '\\');
         if (!fileName) fileName = strrchr(file, '/');
         if (!fileName) fileName = file;
         else fileName++; // Skip the slash
-        
+
         wchar_t wideFunction[128];
         MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
-        
+
         // Report error using standardized system
-        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION,
                    wideFunction, wideFile, line, errorMsg);
-        
+
         // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, size, file, line,
                          L"malloc() failed to allocate requested memory");
         return NULL;
     }
-    
+
     void* userPtr = rawPtr;
     if (g_bufferOverrunDetectionEnabled) {
         // Set up guard patterns
         char* guardBefore = (char*)rawPtr;
         char* userArea = guardBefore + GUARD_SIZE;
         char* guardAfter = userArea + size;
-        
+
         // Fill guard areas with pattern
         FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
         FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
-        
+
         // Fill user area with uninitialized pattern
         FillMemoryPattern(userArea, size, UNINITIALIZED_PATTERN);
-        
+
         userPtr = userArea;
     } else {
         // Fill with uninitialized pattern even without guards
@@ -211,24 +211,24 @@ void* SafeMalloc(size_t size, const char* file, int line)
         // Use standardized error reporting system
         wchar_t errorMsg[512];
         swprintf(errorMsg, 512, L"Memory allocation failed: requested %zu bytes\r\n", size);
-        
+
         // Convert file path to wide string for error reporting
         wchar_t wideFile[512];
         MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
-        
+
         // Convert function name (use file name as approximation)
         const char* fileName = strrchr(file, '\\');
         if (!fileName) fileName = strrchr(file, '/');
         if (!fileName) fileName = file;
         else fileName++; // Skip the slash
-        
+
         wchar_t wideFunction[128];
         MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
-        
+
         // Report error using standardized system
-        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION,
                    wideFunction, wideFile, line, errorMsg);
-        
+
         // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, size, file, line,
                          L"malloc() failed to allocate requested memory");
@@ -239,16 +239,16 @@ void* SafeMalloc(size_t size, const char* file, int line)
 
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
-        
+
         // Record the user pointer, not the raw pointer
         AddAllocationRecord(userPtr, size, file, line);
         g_memoryManager.totalAllocated += size;
         g_memoryManager.currentUsage += size;
-        
+
         if (g_memoryManager.currentUsage > g_memoryManager.peakUsage) {
             g_memoryManager.peakUsage = g_memoryManager.currentUsage;
         }
-        
+
         LeaveCriticalSection(&g_memoryManager.lock);
     }
 
@@ -281,47 +281,47 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
     if (g_bufferOverrunDetectionEnabled) {
         allocSize = totalSize + (2 * GUARD_SIZE); // Guard before and after
     }
-    
+
     void* rawPtr = calloc(1, allocSize); // Use calloc(1, allocSize) to zero entire block
     if (!rawPtr) {
         // Use standardized error reporting system
         wchar_t errorMsg[512];
         swprintf(errorMsg, 512, L"Memory allocation (calloc) failed: requested %zu bytes\r\n", totalSize);
-        
+
         // Convert file path to wide string for error reporting
         wchar_t wideFile[512];
         MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
-        
+
         // Convert function name (use file name as approximation)
         const char* fileName = strrchr(file, '\\');
         if (!fileName) fileName = strrchr(file, '/');
         if (!fileName) fileName = file;
         else fileName++; // Skip the slash
-        
+
         wchar_t wideFunction[128];
         MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
-        
+
         // Report error using standardized system
-        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION,
                    wideFunction, wideFile, line, errorMsg);
-        
+
         // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, totalSize, file, line,
                          L"calloc() failed to allocate requested memory");
         return NULL;
     }
-    
+
     void* userPtr = rawPtr;
     if (g_bufferOverrunDetectionEnabled) {
         // Set up guard patterns (calloc already zeroed everything)
         char* guardBefore = (char*)rawPtr;
         char* userArea = guardBefore + GUARD_SIZE;
         char* guardAfter = userArea + totalSize;
-        
+
         // Fill guard areas with pattern (overwriting the zeros)
         FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
         FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
-        
+
         // User area remains zeroed from calloc
         userPtr = userArea;
     }
@@ -332,24 +332,24 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
         // Use standardized error reporting system
         wchar_t errorMsg[512];
         swprintf(errorMsg, 512, L"Memory allocation (calloc) failed: requested %zu bytes\r\n", totalSize);
-        
+
         // Convert file path to wide string for error reporting
         wchar_t wideFile[512];
         MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
-        
+
         // Convert function name (use file name as approximation)
         const char* fileName = strrchr(file, '\\');
         if (!fileName) fileName = strrchr(file, '/');
         if (!fileName) fileName = file;
         else fileName++; // Skip the slash
-        
+
         wchar_t wideFunction[128];
         MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
-        
+
         // Report error using standardized system
-        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION,
                    wideFunction, wideFile, line, errorMsg);
-        
+
         // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_ALLOCATION_FAILED, NULL, totalSize, file, line,
                          L"calloc() failed to allocate requested memory");
@@ -360,16 +360,16 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
 
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
-        
+
         // Record the user pointer, not the raw pointer
         AddAllocationRecord(userPtr, totalSize, file, line);
         g_memoryManager.totalAllocated += totalSize;
         g_memoryManager.currentUsage += totalSize;
-        
+
         if (g_memoryManager.currentUsage > g_memoryManager.peakUsage) {
             g_memoryManager.peakUsage = g_memoryManager.currentUsage;
         }
-        
+
         LeaveCriticalSection(&g_memoryManager.lock);
     }
 
@@ -389,16 +389,16 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
 
     size_t oldSize = 0;
     BOOL wasTracked = FALSE;
-    
+
     // Get old size and remove record before realloc if tracking is enabled
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
-        
+
         // Use hash table for fast lookup and removal
         if (RemoveAllocationRecord(ptr, &oldSize)) {
             wasTracked = TRUE;
         }
-        
+
         LeaveCriticalSection(&g_memoryManager.lock);
     }
 
@@ -406,14 +406,14 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
     // Handle buffer overrun detection - need to adjust pointers and sizes
     void* rawPtr = ptr;
     size_t totalSize = size;
-    
+
     if (g_bufferOverrunDetectionEnabled && wasTracked) {
         // Convert user pointer back to raw pointer
         rawPtr = (char*)ptr - GUARD_SIZE;
         // Add space for guard patterns
         totalSize = size + (2 * GUARD_SIZE);
     }
-    
+
     void* newRawPtr = realloc(rawPtr, totalSize);
     if (!newRawPtr) {
         // Realloc failed, need to restore the old allocation record
@@ -424,23 +424,23 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
         }
         return NULL;
     }
-    
+
     void* newPtr = newRawPtr;
     if (g_bufferOverrunDetectionEnabled && wasTracked) {
         // Set up guard patterns in the new allocation
         char* guardBefore = (char*)newRawPtr;
         char* userArea = guardBefore + GUARD_SIZE;
         char* guardAfter = userArea + size;
-        
+
         // Fill guard areas with pattern
         FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
         FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
-        
+
         // If we're expanding, fill new area with uninitialized pattern
         if (size > oldSize) {
             FillMemoryPattern(userArea + oldSize, size - oldSize, UNINITIALIZED_PATTERN);
         }
-        
+
         newPtr = userArea;
     } else if (size > oldSize) {
         // Fill expanded area with uninitialized pattern
@@ -461,18 +461,18 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
 
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
-        
+
         // Add new allocation record
         AddAllocationRecord(newPtr, size, file, line);
-        
+
         // Update statistics
         g_memoryManager.totalAllocated += size;
         g_memoryManager.currentUsage = g_memoryManager.currentUsage - oldSize + size;
-        
+
         if (g_memoryManager.peakUsage < g_memoryManager.currentUsage) {
             g_memoryManager.peakUsage = g_memoryManager.currentUsage;
         }
-        
+
         LeaveCriticalSection(&g_memoryManager.lock);
     }
 
@@ -495,24 +495,24 @@ void SafeFree(void* ptr, const char* file, int line)
         // Use standardized error reporting system
         wchar_t errorMsg[512];
         swprintf(errorMsg, 512, L"Double-free detected: attempt to free already freed memory at address %p\r\n", ptr);
-        
+
         // Convert file path to wide string for error reporting
         wchar_t wideFile[512];
         MultiByteToWideChar(CP_UTF8, 0, file, -1, wideFile, 512);
-        
+
         // Convert function name (use file name as approximation)
         const char* fileName = strrchr(file, '\\');
         if (!fileName) fileName = strrchr(file, '/');
         if (!fileName) fileName = file;
         else fileName++; // Skip the slash
-        
+
         wchar_t wideFunction[128];
         MultiByteToWideChar(CP_UTF8, 0, fileName, -1, wideFunction, 128);
-        
+
         // Report error using standardized system
-        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION, 
+        ReportError(YTC_SEVERITY_ERROR, YTC_ERROR_MEMORY_ALLOCATION,
                    wideFunction, wideFile, line, errorMsg);
-        
+
         // Also report to memory error system for compatibility
         ReportMemoryError(MEMORY_ERROR_DOUBLE_FREE, ptr, 0, file, line,
                          L"Attempt to free already freed memory");
@@ -521,10 +521,10 @@ void SafeFree(void* ptr, const char* file, int line)
 
     size_t freedSize = 0;
     BOOL wasTracked = FALSE;
-    
+
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
-        
+
         // First check if this allocation is tracked
         BOOL found = FALSE;
         for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
@@ -534,10 +534,10 @@ void SafeFree(void* ptr, const char* file, int line)
                 break;
             }
         }
-        
+
         if (found) {
             wasTracked = TRUE;
-            
+
             // Validate allocation integrity BEFORE removing from tracking table
             LeaveCriticalSection(&g_memoryManager.lock);
             if (!ValidateAllocationIntegrity(ptr)) {
@@ -545,14 +545,14 @@ void SafeFree(void* ptr, const char* file, int line)
                 return; // Don't free corrupted memory
             }
             EnterCriticalSection(&g_memoryManager.lock);
-            
+
             // Now remove from tracking table
             if (RemoveAllocationRecord(ptr, &freedSize)) {
                 g_memoryManager.totalFreed += freedSize;
                 g_memoryManager.currentUsage -= freedSize;
             }
         }
-        
+
         LeaveCriticalSection(&g_memoryManager.lock);
     }
 
@@ -584,7 +584,7 @@ BOOL EnableLeakDetection(BOOL enable)
     EnterCriticalSection(&g_memoryManager.lock);
     g_memoryManager.leakDetectionEnabled = enable;
     LeaveCriticalSection(&g_memoryManager.lock);
-    
+
     return TRUE;
 }
 
@@ -595,29 +595,29 @@ void DumpMemoryLeaks(void)
     }
 
     EnterCriticalSection(&g_memoryManager.lock);
-    
+
     if (g_memoryManager.allocationCount > 0) {
         printf("=== MEMORY LEAKS DETECTED ===\n");
         printf("Total leaked allocations: %zu\n", g_memoryManager.allocationCount);
-        
+
         size_t totalLeakedBytes = 0;
         for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
             AllocationInfo* alloc = &g_memoryManager.allocations[i];
             printf("Leak #%zu: %zu bytes at %p\n", i + 1, alloc->size, alloc->address);
             printf("  Allocated at: %s:%d\n", alloc->file ? alloc->file : "unknown", alloc->line);
             printf("  Thread ID: %u\n", (unsigned int)alloc->threadId);
-            printf("  Time: %02d:%02d:%02d.%03d\n", 
-                   alloc->allocTime.wHour, alloc->allocTime.wMinute, 
+            printf("  Time: %02d:%02d:%02d.%03d\n",
+                   alloc->allocTime.wHour, alloc->allocTime.wMinute,
                    alloc->allocTime.wSecond, alloc->allocTime.wMilliseconds);
             totalLeakedBytes += alloc->size;
         }
-        
+
         printf("Total leaked bytes: %zu\n", totalLeakedBytes);
         printf("=============================\n");
     } else {
         printf("No memory leaks detected.\n");
     }
-    
+
     LeaveCriticalSection(&g_memoryManager.lock);
 }
 
@@ -630,7 +630,7 @@ size_t GetCurrentMemoryUsage(void)
     EnterCriticalSection(&g_memoryManager.lock);
     size_t usage = g_memoryManager.currentUsage;
     LeaveCriticalSection(&g_memoryManager.lock);
-    
+
     return usage;
 }
 
@@ -643,7 +643,7 @@ int GetActiveAllocationCount(void)
     EnterCriticalSection(&g_memoryManager.lock);
     int count = (int)g_memoryManager.allocationCount;
     LeaveCriticalSection(&g_memoryManager.lock);
-    
+
     return count;
 }
 
@@ -666,10 +666,10 @@ static BOOL AddAllocationRecord(void* address, size_t size, const char* file, in
     alloc->line = line;
     alloc->threadId = GetCurrentThreadId();
     GetSystemTime(&alloc->allocTime);
-    
+
     // Skip hash table for now - use linear search only for reliability
     // TODO: Implement a more robust hash table later
-    
+
     g_memoryManager.allocationCount++;
     return TRUE;
 }
@@ -683,13 +683,13 @@ static BOOL RemoveAllocationRecord(void* address, size_t* outSize)
             if (outSize) {
                 *outSize = g_memoryManager.allocations[i].size;
             }
-            
+
             // Move last element to this position if not already the last
             if (i < g_memoryManager.allocationCount - 1) {
-                g_memoryManager.allocations[i] = 
+                g_memoryManager.allocations[i] =
                     g_memoryManager.allocations[g_memoryManager.allocationCount - 1];
             }
-            
+
             g_memoryManager.allocationCount--;
             return TRUE;
         }
@@ -707,9 +707,9 @@ static void ExpandAllocationTable(void)
 {
     size_t newCapacity = g_memoryManager.allocationCapacity * ALLOCATION_TABLE_GROWTH_FACTOR;
     AllocationInfo* newTable = (AllocationInfo*)realloc(
-        g_memoryManager.allocations, 
+        g_memoryManager.allocations,
         newCapacity * sizeof(AllocationInfo));
-    
+
     if (newTable) {
         g_memoryManager.allocations = newTable;
         g_memoryManager.allocationCapacity = newCapacity;
@@ -760,12 +760,12 @@ static size_t HashAddress(void* address, size_t bucketCount)
 {
     // Simple hash function for pointer addresses
     uintptr_t addr = (uintptr_t)address;
-    
+
     // Use a simple but effective hash for pointers
     // Mix the bits to get better distribution
     addr ^= addr >> 16;
     addr ^= addr >> 8;
-    
+
     return addr % bucketCount;
 }
 */
@@ -778,7 +778,7 @@ static BOOL AddToHashTable(AllocationHashTable* table, AllocationInfo* allocatio
     }
 
     size_t bucket = HashAddress(allocation->address, table->bucketCount);
-    
+
     // Create new hash entry
     HashEntry* entry = (HashEntry*)malloc(sizeof(HashEntry));
     if (!entry) {
@@ -833,7 +833,7 @@ static BOOL RemoveFromHashTable(AllocationHashTable* table, void* address)
             } else {
                 table->buckets[bucket] = entry->next;
             }
-            
+
             free(entry);
             return TRUE;
         }
@@ -855,7 +855,7 @@ static void RebuildHashTable(void)
 
     // Clear existing hash table
     CleanupHashTable(&g_memoryManager.hashTable);
-    
+
     // Reinitialize hash table
     if (!InitializeHashTable(&g_memoryManager.hashTable, INITIAL_HASH_TABLE_SIZE)) {
         // If we can't rebuild the hash table, disable it
@@ -863,7 +863,7 @@ static void RebuildHashTable(void)
         g_memoryManager.hashTable.bucketCount = 0;
         return;
     }
-    
+
     // Re-add all current allocations to hash table
     for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
         AddToHashTable(&g_memoryManager.hashTable, &g_memoryManager.allocations[i]);
@@ -880,7 +880,7 @@ wchar_t* SafeWcsDup(const wchar_t* str, const char* file, int line)
 
     size_t len = wcslen(str);
     size_t size = (len + 1) * sizeof(wchar_t);
-    
+
     wchar_t* duplicate = (wchar_t*)SafeMalloc(size, file, line);
     if (!duplicate) {
         return NULL;
@@ -903,7 +903,7 @@ wchar_t* SafeWcsNDup(const wchar_t* str, size_t maxLen, const char* file, int li
     }
 
     size_t size = (len + 1) * sizeof(wchar_t);
-    
+
     wchar_t* duplicate = (wchar_t*)SafeMalloc(size, file, line);
     if (!duplicate) {
         return NULL;
@@ -1006,7 +1006,7 @@ BOOL AppendToStringBuilder(StringBuilder* sb, const wchar_t* str)
             newCapacity *= 2;
         }
 
-        wchar_t* newBuffer = (wchar_t*)SafeRealloc(sb->buffer, 
+        wchar_t* newBuffer = (wchar_t*)SafeRealloc(sb->buffer,
             newCapacity * sizeof(wchar_t), sb->file, sb->line);
         if (!newBuffer) {
             return FALSE;
@@ -1051,7 +1051,7 @@ BOOL AppendFormatToStringBuilder(StringBuilder* sb, const wchar_t* format, ...)
 
     // Append the formatted string to the StringBuilder
     BOOL result = AppendToStringBuilder(sb, formatBuffer);
-    
+
     SafeFree(formatBuffer, sb->file, sb->line);
     return result;
 }
@@ -1210,7 +1210,7 @@ AutoCacheEntry* CreateAutoCacheEntry(void* entry)
 
 // Global memory pools
 MemoryPool* g_stringPool = NULL;        // For small strings (< 256 chars)
-MemoryPool* g_cacheEntryPool = NULL;    // For CacheEntry structures  
+MemoryPool* g_cacheEntryPool = NULL;    // For CacheEntry structures
 MemoryPool* g_requestPool = NULL;       // For YtDlpRequest structures
 
 // Pool configuration constants
@@ -1275,13 +1275,13 @@ void* AllocateFromPool(MemoryPool* pool)
     EnterCriticalSection(&pool->lock);
 
     void* object = NULL;
-    
+
     if (pool->freeCount > 0) {
         // Get object from free list (stack-like behavior - LIFO)
         pool->freeCount--;
         object = pool->freeList[pool->freeCount];
         pool->allocatedCount++;
-        
+
         // Clear the memory for safety
         memset(object, 0, pool->objectSize);
     }
@@ -1313,7 +1313,7 @@ void ReturnToPool(MemoryPool* pool, void* object)
                 pool->freeList[pool->freeCount] = object;
                 pool->freeCount++;
                 pool->allocatedCount--;
-                
+
                 // Clear the memory for security
                 memset(object, 0, pool->objectSize);
             }
@@ -1366,7 +1366,7 @@ BOOL InitializeMemoryPools(void)
         return FALSE;
     }
 
-    // Create request pool  
+    // Create request pool
     g_requestPool = CreateMemoryPool(sizeof(YtDlpRequest), REQUEST_POOL_INITIAL_COUNT, "RequestPool");
     if (!g_requestPool) {
         DestroyMemoryPool(g_stringPool);
@@ -1437,14 +1437,14 @@ PoolStatistics GetPoolStatistics(void)
 void DumpPoolStatistics(void)
 {
     PoolStatistics stats = GetPoolStatistics();
-    
+
     printf("=== MEMORY POOL STATISTICS ===\n");
     printf("Total Pools: %zu\n", stats.totalPools);
     printf("Total Allocated Objects: %zu\n", stats.totalAllocatedObjects);
     printf("Total Free Objects: %zu\n", stats.totalFreeObjects);
     printf("Total Memory Used: %zu bytes\n", stats.totalMemoryUsed);
     printf("Total Memory Allocated: %zu bytes\n", stats.totalMemoryAllocated);
-    
+
     if (stats.totalMemoryAllocated > 0) {
         double efficiency = (double)stats.totalMemoryUsed / stats.totalMemoryAllocated * 100.0;
         printf("Memory Efficiency: %.1f%%\n", efficiency);
@@ -1506,7 +1506,7 @@ MemoryErrorCallback GetMemoryErrorCallback(void)
     EnterCriticalSection(&g_errorLock);
     MemoryErrorCallback callback = g_errorCallback;
     LeaveCriticalSection(&g_errorLock);
-    
+
     return callback;
 }
 
@@ -1521,7 +1521,7 @@ void ClearMemoryErrorCallback(void)
     LeaveCriticalSection(&g_errorLock);
 }
 
-void ReportMemoryError(MemoryErrorType type, void* address, size_t size, 
+void ReportMemoryError(MemoryErrorType type, void* address, size_t size,
                       const char* file, int line, const wchar_t* description)
 {
     if (!g_errorSystemInitialized) {
@@ -1537,10 +1537,10 @@ void ReportMemoryError(MemoryErrorType type, void* address, size_t size,
     error.line = line;
     error.threadId = GetCurrentThreadId();
     GetSystemTime(&error.errorTime);
-    
+
     // Capture stack trace
     CaptureStackTrace(error.stackTrace, &error.stackDepth);
-    
+
     // Duplicate description string for safety
     if (description) {
         size_t descLen = wcslen(description);
@@ -1559,9 +1559,9 @@ void ReportMemoryError(MemoryErrorType type, void* address, size_t size,
         callback(&error);
     } else {
         // Default error handling - output to debug console and log
-        printf("MEMORY ERROR [%s:%d]: ", 
+        printf("MEMORY ERROR [%s:%d]: ",
                file ? file : "unknown", line);
-        
+
         switch (type) {
             case MEMORY_ERROR_ALLOCATION_FAILED:
                 printf("Allocation failed for %zu bytes\n", size);
@@ -1585,11 +1585,11 @@ void ReportMemoryError(MemoryErrorType type, void* address, size_t size,
                 printf("Memory corruption detected at address %p\n", address);
                 break;
         }
-        
+
         if (description) {
             wprintf(L"Description: %ls\n", description);
         }
-        
+
         printf("Thread ID: %u, Time: %02d:%02d:%02d.%03d\n",
                (unsigned int)error.threadId,
                error.errorTime.wHour, error.errorTime.wMinute,
@@ -1611,7 +1611,7 @@ BOOL EnableDoubleFreDetection(BOOL enable)
     EnterCriticalSection(&g_errorLock);
     g_doubleFreDetectionEnabled = enable;
     LeaveCriticalSection(&g_errorLock);
-    
+
     return TRUE;
 }
 
@@ -1624,7 +1624,7 @@ BOOL EnableUseAfterFreeDetection(BOOL enable)
     EnterCriticalSection(&g_errorLock);
     g_useAfterFreeDetectionEnabled = enable;
     LeaveCriticalSection(&g_errorLock);
-    
+
     return TRUE;
 }
 
@@ -1637,7 +1637,7 @@ BOOL EnableBufferOverrunDetection(BOOL enable)
     EnterCriticalSection(&g_errorLock);
     g_bufferOverrunDetectionEnabled = enable;
     LeaveCriticalSection(&g_errorLock);
-    
+
     return TRUE;
 }
 
@@ -1650,7 +1650,7 @@ BOOL IsDoubleFreDetectionEnabled(void)
     EnterCriticalSection(&g_errorLock);
     BOOL enabled = g_doubleFreDetectionEnabled;
     LeaveCriticalSection(&g_errorLock);
-    
+
     return enabled;
 }
 
@@ -1663,7 +1663,7 @@ BOOL IsUseAfterFreeDetectionEnabled(void)
     EnterCriticalSection(&g_errorLock);
     BOOL enabled = g_useAfterFreeDetectionEnabled;
     LeaveCriticalSection(&g_errorLock);
-    
+
     return enabled;
 }
 
@@ -1676,7 +1676,7 @@ BOOL IsBufferOverrunDetectionEnabled(void)
     EnterCriticalSection(&g_errorLock);
     BOOL enabled = g_bufferOverrunDetectionEnabled;
     LeaveCriticalSection(&g_errorLock);
-    
+
     return enabled;
 }
 
@@ -1693,14 +1693,14 @@ BOOL ValidateMemoryAddress(void* address)
 
     // Check if it's a freed memory address
     if (g_useAfterFreeDetectionEnabled && IsFreedMemory(address)) {
-        ReportMemoryError(MEMORY_ERROR_USE_AFTER_FREE, address, 0, 
+        ReportMemoryError(MEMORY_ERROR_USE_AFTER_FREE, address, 0,
                          __FILE__, __LINE__, L"Access to freed memory detected");
         return FALSE;
     }
 
     // Check if it's a valid allocation using linear search
     EnterCriticalSection(&g_memoryManager.lock);
-    
+
     BOOL found = FALSE;
     for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
         if (g_memoryManager.allocations[i].address == address) {
@@ -1708,9 +1708,9 @@ BOOL ValidateMemoryAddress(void* address)
             break;
         }
     }
-    
+
     LeaveCriticalSection(&g_memoryManager.lock);
-    
+
     if (!found) {
         ReportMemoryError(MEMORY_ERROR_INVALID_ADDRESS, address, 0,
                          __FILE__, __LINE__, L"Address not found in allocation table");
@@ -1729,7 +1729,7 @@ BOOL ValidateAllocationIntegrity(void* address)
 #ifdef MEMORY_DEBUG
     if (g_bufferOverrunDetectionEnabled && g_memoryManager.initialized) {
         EnterCriticalSection(&g_memoryManager.lock);
-        
+
         AllocationInfo* alloc = NULL;
         // Find allocation using linear search
         for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
@@ -1738,24 +1738,24 @@ BOOL ValidateAllocationIntegrity(void* address)
                 break;
             }
         }
-        
+
         if (alloc) {
             // Check guard patterns before and after the allocation
             char* allocStart = (char*)alloc->address;
             char* guardBefore = allocStart - GUARD_SIZE;
             char* guardAfter = allocStart + alloc->size;
-            
+
             // Check if guard patterns are intact
             if (!CheckMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN) ||
                 !CheckMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN)) {
-                
+
                 LeaveCriticalSection(&g_memoryManager.lock);
                 ReportMemoryError(MEMORY_ERROR_BUFFER_OVERRUN, address, alloc->size,
                                  alloc->file, alloc->line, L"Buffer overrun detected via guard pattern");
                 return FALSE;
             }
         }
-        
+
         LeaveCriticalSection(&g_memoryManager.lock);
     }
 #endif
@@ -1770,17 +1770,17 @@ void CheckForMemoryCorruption(void)
     }
 
     EnterCriticalSection(&g_memoryManager.lock);
-    
+
     // Check all active allocations for corruption
     for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
         AllocationInfo* alloc = &g_memoryManager.allocations[i];
-        
+
         if (!ValidateAllocationIntegrity(alloc->address)) {
             // Error already reported by ValidateAllocationIntegrity
             continue;
         }
     }
-    
+
     LeaveCriticalSection(&g_memoryManager.lock);
 }
 
@@ -1808,13 +1808,13 @@ static void CleanupErrorSystem(void)
     }
 
     EnterCriticalSection(&g_errorLock);
-    
+
     // Clean up freed memory tracking list
     CleanupFreedMemoryList();
-    
+
     g_errorCallback = NULL;
     g_errorSystemInitialized = FALSE;
-    
+
     LeaveCriticalSection(&g_errorLock);
     DeleteCriticalSection(&g_errorLock);
 }
@@ -1831,20 +1831,20 @@ static void AddFreedMemoryRecord(void* address, size_t size, const char* file, i
         if (g_freedMemoryList) {
             FreedMemoryInfo* oldest = g_freedMemoryList;
             FreedMemoryInfo* prev = NULL;
-            
+
             // Find the last item (oldest)
             while (oldest->next) {
                 prev = oldest;
                 oldest = oldest->next;
             }
-            
+
             // Remove it
             if (prev) {
                 prev->next = NULL;
             } else {
                 g_freedMemoryList = NULL;
             }
-            
+
             free(oldest);
             g_freedMemoryCount--;
         }
@@ -1861,7 +1861,7 @@ static void AddFreedMemoryRecord(void* address, size_t size, const char* file, i
         info->next = g_freedMemoryList;
         g_freedMemoryList = info;
         g_freedMemoryCount++;
-        
+
         // Fill freed memory with pattern for detection
 #ifdef MEMORY_DEBUG
         FillMemoryPattern(address, size, FREED_MEMORY_PATTERN);
@@ -1882,7 +1882,7 @@ static BOOL IsFreedMemory(void* address)
         }
         current = current->next;
     }
-    
+
     return FALSE;
 }
 
@@ -1894,7 +1894,7 @@ static void CleanupFreedMemoryList(void)
         free(current);
         current = next;
     }
-    
+
     g_freedMemoryList = NULL;
     g_freedMemoryCount = 0;
 }
@@ -1908,18 +1908,18 @@ static void FillMemoryPattern(void* ptr, size_t size, DWORD pattern)
 
     DWORD* dwordPtr = (DWORD*)ptr;
     size_t dwordCount = size / sizeof(DWORD);
-    
+
     // Fill complete DWORD values
     for (size_t i = 0; i < dwordCount; i++) {
         dwordPtr[i] = pattern;
     }
-    
+
     // Fill remaining bytes
     size_t remainingBytes = size % sizeof(DWORD);
     if (remainingBytes > 0) {
         char* bytePtr = (char*)ptr + (dwordCount * sizeof(DWORD));
         char* patternBytes = (char*)&pattern;
-        
+
         for (size_t i = 0; i < remainingBytes; i++) {
             bytePtr[i] = patternBytes[i % sizeof(DWORD)];
         }
@@ -1934,27 +1934,27 @@ static BOOL CheckMemoryPattern(void* ptr, size_t size, DWORD pattern)
 
     DWORD* dwordPtr = (DWORD*)ptr;
     size_t dwordCount = size / sizeof(DWORD);
-    
+
     // Check complete DWORD values
     for (size_t i = 0; i < dwordCount; i++) {
         if (dwordPtr[i] != pattern) {
             return FALSE;
         }
     }
-    
+
     // Check remaining bytes
     size_t remainingBytes = size % sizeof(DWORD);
     if (remainingBytes > 0) {
         char* bytePtr = (char*)ptr + (dwordCount * sizeof(DWORD));
         char* patternBytes = (char*)&pattern;
-        
+
         for (size_t i = 0; i < remainingBytes; i++) {
             if (bytePtr[i] != patternBytes[i % sizeof(DWORD)]) {
                 return FALSE;
             }
         }
     }
-    
+
     return TRUE;
 }
 #endif // MEMORY_DEBUG
@@ -1963,7 +1963,7 @@ static void CaptureStackTrace(void** stackTrace, int* stackDepth)
 {
     // Initialize output parameters
     *stackDepth = 0;
-    
+
     if (!stackTrace) {
         return;
     }
@@ -1976,14 +1976,14 @@ static void CaptureStackTrace(void** stackTrace, int* stackDepth)
 #ifdef _WIN32
     // Use Windows API to capture stack trace
     HANDLE process = GetCurrentProcess();
-    
+
     // Initialize symbol handler (this should ideally be done once at startup)
     static BOOL symbolsInitialized = FALSE;
     if (!symbolsInitialized) {
         SymInitialize(process, NULL, TRUE);
         symbolsInitialized = TRUE;
     }
-    
+
     // Capture the stack trace
     *stackDepth = CaptureStackBackTrace(1, 16, stackTrace, NULL);
 #else
@@ -1997,7 +1997,7 @@ static void CaptureStackTrace(void** stackTrace, int* stackDepth)
 BOOL TestMemoryPools(void)
 {
     printf("=== TESTING MEMORY POOLS ===\n");
-    
+
     if (!g_stringPool || !g_cacheEntryPool || !g_requestPool) {
         printf("ERROR: Memory pools not initialized\n");
         return FALSE;
@@ -2007,7 +2007,7 @@ BOOL TestMemoryPools(void)
     printf("Testing String Pool...\n");
     wchar_t* str1 = (wchar_t*)AllocateFromPool(g_stringPool);
     wchar_t* str2 = (wchar_t*)AllocateFromPool(g_stringPool);
-    
+
     if (!str1 || !str2) {
         printf("ERROR: Failed to allocate from string pool\n");
         return FALSE;
@@ -2027,7 +2027,7 @@ BOOL TestMemoryPools(void)
     printf("Testing Cache Entry Pool...\n");
     CacheEntry* entry1 = (CacheEntry*)AllocateFromPool(g_cacheEntryPool);
     CacheEntry* entry2 = (CacheEntry*)AllocateFromPool(g_cacheEntryPool);
-    
+
     if (!entry1 || !entry2) {
         printf("ERROR: Failed to allocate from cache entry pool\n");
         return FALSE;
@@ -2044,7 +2044,7 @@ BOOL TestMemoryPools(void)
     printf("Testing Request Pool...\n");
     YtDlpRequest* req1 = (YtDlpRequest*)AllocateFromPool(g_requestPool);
     YtDlpRequest* req2 = (YtDlpRequest*)AllocateFromPool(g_requestPool);
-    
+
     if (!req1 || !req2) {
         printf("ERROR: Failed to allocate from request pool\n");
         return FALSE;
@@ -2075,11 +2075,11 @@ AllocationSet* CreateAllocationSet(const char* file, int line)
 {
     AllocationSet* set = NULL;
     void** allocations = NULL;
-    
+
     // Use SAFE_ALLOC pattern for consistent error handling
     SAFE_ALLOC(set, sizeof(AllocationSet), cleanup);
     SAFE_ALLOC(allocations, INITIAL_ALLOCATION_SET_CAPACITY * sizeof(void*), cleanup);
-    
+
     set->allocations = allocations;
     set->count = 0;
     set->capacity = INITIAL_ALLOCATION_SET_CAPACITY;
@@ -2103,9 +2103,9 @@ BOOL AddToAllocationSet(AllocationSet* set, void* ptr)
     // Expand capacity if needed
     if (set->count >= set->capacity) {
         size_t newCapacity = set->capacity * ALLOCATION_SET_GROWTH_FACTOR;
-        void** newAllocations = (void**)SafeRealloc(set->allocations, 
+        void** newAllocations = (void**)SafeRealloc(set->allocations,
             newCapacity * sizeof(void*), set->file, set->line);
-        
+
         if (!newAllocations) {
             return FALSE; // Failed to expand, allocation not added
         }
@@ -2177,11 +2177,11 @@ BulkCleanup* CreateBulkCleanup(size_t initialCapacity)
 
     BulkCleanup* cleanup = NULL;
     void** pointers = NULL;
-    
+
     // Use SAFE_ALLOC pattern for consistent error handling
     SAFE_ALLOC(cleanup, sizeof(BulkCleanup), cleanup_error);
     SAFE_ALLOC(pointers, initialCapacity * sizeof(void*), cleanup_error);
-    
+
     cleanup->pointers = pointers;
     cleanup->count = 0;
     cleanup->capacity = initialCapacity;
@@ -2203,9 +2203,9 @@ BOOL AddToBulkCleanup(BulkCleanup* cleanup, void* ptr)
     // Expand capacity if needed
     if (cleanup->count >= cleanup->capacity) {
         size_t newCapacity = cleanup->capacity * ALLOCATION_SET_GROWTH_FACTOR;
-        void** newPointers = (void**)SAFE_REALLOC(cleanup->pointers, 
+        void** newPointers = (void**)SAFE_REALLOC(cleanup->pointers,
             newCapacity * sizeof(void*));
-        
+
         if (!newPointers) {
             return FALSE; // Failed to expand
         }
@@ -2265,7 +2265,7 @@ BOOL TestErrorSafeAllocationPatterns(void)
 
     // Test AllocationSet functionality
     printf("Testing AllocationSet...\n");
-    
+
     AllocationSet* set = CREATE_ALLOCATION_SET();
     if (!set) {
         printf("ERROR: Failed to create AllocationSet\n");
@@ -2285,7 +2285,7 @@ BOOL TestErrorSafeAllocationPatterns(void)
     }
 
     printf("Successfully allocated %zu items in set\n", set->count);
-    
+
     // Test commit (transfers ownership)
     CommitAllocationSet(set);
     printf("Committed allocation set (count now: %zu)\n", set->count);
@@ -2299,7 +2299,7 @@ BOOL TestErrorSafeAllocationPatterns(void)
     printf("Testing rollback functionality...\n");
     wchar_t* str3 = SAFE_WCSDUP_AND_ADD(set, L"Test String 3");
     wchar_t* str4 = SAFE_WCSDUP_AND_ADD(set, L"Test String 4");
-    
+
     if (!str3 || !str4) {
         printf("ERROR: Failed to allocate for rollback test\n");
         FreeAllocationSet(set);
@@ -2307,7 +2307,7 @@ BOOL TestErrorSafeAllocationPatterns(void)
     }
 
     printf("Allocated %zu items for rollback test\n", set->count);
-    
+
     // Rollback should free all allocations
     RollbackAllocationSet(set);
     printf("Rolled back allocation set (count now: %zu)\n", set->count);
@@ -2317,7 +2317,7 @@ BOOL TestErrorSafeAllocationPatterns(void)
 
     // Test BulkCleanup functionality
     printf("Testing BulkCleanup...\n");
-    
+
     BulkCleanup* cleanup = CreateBulkCleanup(0); // Use default capacity
     if (!cleanup) {
         printf("ERROR: Failed to create BulkCleanup\n");
@@ -2359,7 +2359,7 @@ static void TestErrorCallback(const MemoryError* error)
 {
     g_testErrorCount++;
     g_lastErrorType = error->type;
-    printf("Test callback received error type %d at address %p\n", 
+    printf("Test callback received error type %d at address %p\n",
            error->type, error->address);
 }
 
@@ -2367,24 +2367,22 @@ static void TestErrorCallback(const MemoryError* error)
 static BOOL RecoverFromMemoryAllocationFailure(const void* context) {
     // Cast context to size_t to get the requested allocation size
     size_t requestedSize = context ? *((const size_t*)context) : 0;
-    
+
     // Strategy 1: Try to free some cached data if available
     // This would need to be implemented based on the application's cache system
-    
+
     // Strategy 2: Force garbage collection if memory pools are available
     if (g_memoryManager.initialized) {
         // Try to compact memory pools or free unused pool memory
         // This is a placeholder for actual pool compaction logic
     }
-    
+
     // Strategy 3: Reduce memory usage by clearing non-essential buffers
     // This would need application-specific implementation
-    
+
     // For now, just log the recovery attempt
-    wchar_t recoveryMsg[256];
-    swprintf(recoveryMsg, 256, L"Attempted memory recovery for %zu bytes", requestedSize);
-    DebugOutput(recoveryMsg);
-    
+    ThreadSafeDebugOutputF(L"Attempted memory recovery for %zu bytes", requestedSize);
+
     // Return FALSE to indicate recovery was attempted but may not have succeeded
     // The caller should still handle the allocation failure gracefully
     return FALSE;
@@ -2397,10 +2395,10 @@ void InitializeMemoryRecoveryStrategies(void) {
     if (!g_ErrorHandler.initialized) {
         return;
     }
-    
+
     // Add recovery strategies for common memory errors
-    AddRecoveryStrategy(&g_ErrorHandler, YTC_ERROR_MEMORY_ALLOCATION, 
-                       RecoverFromMemoryAllocationFailure, 
+    AddRecoveryStrategy(&g_ErrorHandler, YTC_ERROR_MEMORY_ALLOCATION,
+                       RecoverFromMemoryAllocationFailure,
                        L"Attempt to free cached data and retry allocation");
 }
 
@@ -2411,73 +2409,73 @@ BOOL TestMemoryAllocationFailureScenarios(void)
 
     // Test 1: Test normal allocation and free with error reporting
     printf("Testing normal allocation with error reporting...\n");
-    
+
     void* testPtr = SAFE_MALLOC(1024);
     if (!testPtr) {
         printf("ERROR: Normal allocation failed unexpectedly\n");
         return FALSE;
     }
-    
+
     printf("Successfully allocated 1024 bytes at %p\n", testPtr);
     SAFE_FREE(testPtr);
     printf("Successfully freed memory\n");
 
     // Test 2: Test allocation with cleanup pattern
     printf("Testing allocation with cleanup pattern...\n");
-    
+
     void* ptr1 = NULL;
     void* ptr2 = NULL;
     void* ptr3 = NULL;
     BOOL success = FALSE;
-    
+
     SAFE_MALLOC_OR_CLEANUP(ptr1, 512, cleanup);
     SAFE_MALLOC_OR_CLEANUP(ptr2, 1024, cleanup);
     SAFE_MALLOC_OR_CLEANUP(ptr3, 2048, cleanup);
-    
+
     printf("Successfully allocated three memory blocks using cleanup pattern\n");
     success = TRUE;
-    
+
 cleanup:
     if (ptr1) SAFE_FREE(ptr1);
     if (ptr2) SAFE_FREE(ptr2);
     if (ptr3) SAFE_FREE(ptr3);
-    
+
     if (!success) {
         printf("ERROR: Cleanup pattern allocation failed\n");
         return FALSE;
     }
-    
+
     printf("Successfully cleaned up all allocations\n");
 
     // Test 3: Test calloc with error reporting
     printf("Testing calloc with error reporting...\n");
-    
+
     void* callocPtr = SAFE_CALLOC(100, sizeof(int));
     if (!callocPtr) {
         printf("ERROR: Calloc allocation failed unexpectedly\n");
         return FALSE;
     }
-    
+
     printf("Successfully allocated zeroed memory for 100 integers\n");
     SAFE_FREE(callocPtr);
     printf("Successfully freed calloc memory\n");
 
     // Test 4: Test realloc with error reporting
     printf("Testing realloc with error reporting...\n");
-    
+
     void* reallocPtr = SAFE_MALLOC(256);
     if (!reallocPtr) {
         printf("ERROR: Initial allocation for realloc test failed\n");
         return FALSE;
     }
-    
+
     void* newPtr = SAFE_REALLOC(reallocPtr, 512);
     if (!newPtr) {
         printf("ERROR: Realloc failed unexpectedly\n");
         SAFE_FREE(reallocPtr);
         return FALSE;
     }
-    
+
     printf("Successfully reallocated memory from 256 to 512 bytes\n");
     SAFE_FREE(newPtr);
     printf("Successfully freed reallocated memory\n");
@@ -2493,129 +2491,129 @@ BOOL TestMemoryErrorHandling(void)
 
     // Test error callback system
     printf("Testing error callback system...\n");
-    
+
     // Reset test counters
     g_testErrorCount = 0;
     g_lastErrorType = MEMORY_ERROR_ALLOCATION_FAILED;
-    
+
     SetMemoryErrorCallback(TestErrorCallback);
-    
+
     // Test double-free detection
     printf("Testing double-free detection...\n");
     EnableDoubleFreDetection(TRUE);
-    
+
     void* testPtr = SAFE_MALLOC(100);
     if (!testPtr) {
         printf("ERROR: Failed to allocate test memory\n");
         return FALSE;
     }
-    
+
     SAFE_FREE(testPtr);  // First free - should be OK
-    
+
     int oldErrorCount = g_testErrorCount;
     SAFE_FREE(testPtr);  // Second free - should trigger error
-    
+
     if (g_testErrorCount <= oldErrorCount) {
         printf("ERROR: Double-free detection failed\n");
         return FALSE;
     }
-    
+
     if (g_lastErrorType != MEMORY_ERROR_DOUBLE_FREE) {
         printf("ERROR: Wrong error type for double-free (got %d, expected %d)\n",
                g_lastErrorType, MEMORY_ERROR_DOUBLE_FREE);
         return FALSE;
     }
-    
+
     printf("Double-free detection working correctly\n");
 
     // Test use-after-free detection
     printf("Testing use-after-free detection...\n");
     EnableUseAfterFreeDetection(TRUE);
-    
+
     void* testPtr2 = SAFE_MALLOC(200);
     if (!testPtr2) {
         printf("ERROR: Failed to allocate test memory for use-after-free test\n");
         return FALSE;
     }
-    
+
     SAFE_FREE(testPtr2);
-    
+
     oldErrorCount = g_testErrorCount;
     BOOL isValid = ValidateMemoryAddress(testPtr2); // Should detect use-after-free
-    
+
     if (isValid) {
         printf("ERROR: Use-after-free detection failed\n");
         return FALSE;
     }
-    
+
     if (g_testErrorCount <= oldErrorCount) {
         printf("ERROR: Use-after-free error not reported\n");
         return FALSE;
     }
-    
+
     printf("Use-after-free detection working correctly\n");
 
 #ifdef MEMORY_DEBUG
     // Test buffer overrun detection
     printf("Testing buffer overrun detection...\n");
     EnableBufferOverrunDetection(TRUE);
-    
+
     void* testPtr3 = SAFE_MALLOC(50);
     if (!testPtr3) {
         printf("ERROR: Failed to allocate test memory for buffer overrun test\n");
         return FALSE;
     }
-    
+
     // Simulate buffer overrun by corrupting guard pattern
     char* guardAfter = (char*)testPtr3 + 50;
     *guardAfter = 0xFF; // Corrupt the guard pattern
-    
+
     oldErrorCount = g_testErrorCount;
     BOOL isIntact = ValidateAllocationIntegrity(testPtr3);
-    
+
     if (isIntact) {
         printf("ERROR: Buffer overrun detection failed\n");
         SAFE_FREE(testPtr3);
         return FALSE;
     }
-    
+
     if (g_testErrorCount <= oldErrorCount) {
         printf("ERROR: Buffer overrun error not reported\n");
         SAFE_FREE(testPtr3);
         return FALSE;
     }
-    
+
     printf("Buffer overrun detection working correctly\n");
-    
+
     // Don't free testPtr3 as it's corrupted and would cause issues
 #endif
 
     // Test error configuration functions
     printf("Testing error configuration functions...\n");
-    
+
     EnableDoubleFreDetection(FALSE);
     if (IsDoubleFreDetectionEnabled()) {
         printf("ERROR: Double-free detection disable failed\n");
         return FALSE;
     }
-    
+
     EnableUseAfterFreeDetection(FALSE);
     if (IsUseAfterFreeDetectionEnabled()) {
         printf("ERROR: Use-after-free detection disable failed\n");
         return FALSE;
     }
-    
+
     EnableBufferOverrunDetection(FALSE);
     if (IsBufferOverrunDetectionEnabled()) {
         printf("ERROR: Buffer overrun detection disable failed\n");
         return FALSE;
     }
-    
+
     // Re-enable for cleanup
     EnableDoubleFreDetection(TRUE);
     EnableUseAfterFreeDetection(TRUE);
     EnableBufferOverrunDetection(TRUE);
-    
+
     printf("Error configuration functions working correctly\n");
 
     // Test memory corruption check
@@ -2625,7 +2623,7 @@ BOOL TestMemoryErrorHandling(void)
 
     // Clear the test callback
     ClearMemoryErrorCallback();
-    
+
     printf("=== MEMORY ERROR HANDLING TESTS PASSED ===\n");
     return TRUE;
 }

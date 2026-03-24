@@ -1,0 +1,46 @@
+clangarm64/mingw-w64-clang-aarch64-gdbm 1.19-5
+    GNU database library (mingw-w64)
+clangarm64/mingw-w64-clang-aarch64-perl 5.38.5-1
+    A highly capable, feature-rich programming language (mingw-w64)
+mingw32/mingw-w64-i686-gdb 17.1-3 (mingw-w64-i686-toolchain)
+    GNU Debugger (mingw-w64)
+mingw32/mingw-w64-i686-gdb-multiarch 17.1-3 (mingw-w64-i686-toolchain)
+    GNU Debugger (supports all targets)
+mingw32/mingw-w64-i686-gdbm 1.19-5
+    GNU database library (mingw-w64)
+mingw64/mingw-w64-x86_64-gdb 17.1-3 (mingw-w64-x86_64-toolchain)
+    GNU Debugger (mingw-w64)
+mingw64/mingw-w64-x86_64-gdb-multiarch 17.1-3 (mingw-w64-x86_64-toolchain)
+    GNU Debugger (supports all targets)
+mingw64/mingw-w64-x86_64-gdbm 1.19-5
+    GNU database library (mingw-w64)
+mingw64/mingw-w64-x86_64-perl 5.38.5-1
+    A highly capable, feature-rich programming language (mingw-w64)
+ucrt64/mingw-w64-ucrt-x86_64-gdb 17.1-3 (mingw-w64-ucrt-x86_64-toolchain)
+    GNU Debugger (mingw-w64)
+ucrt64/mingw-w64-ucrt-x86_64-gdb-multiarch 17.1-3 (mingw-w64-ucrt-x86_64-toolchain)
+    GNU Debugger (supports all targets)
+ucrt64/mingw-w64-ucrt-x86_64-gdbm 1.19-5
+    GNU database library (mingw-w64)
+ucrt64/mingw-w64-ucrt-x86_64-perl 5.38.5-1
+    A highly capable, feature-rich programming language (mingw-w64)
+clang64/mingw-w64-clang-x86_64-gdb 17.1-3
+    GNU Debugger (mingw-w64)
+clang64/mingw-w64-clang-x86_64-gdb-multiarch 17.1-3
+    GNU Debugger (supports all targets)
+clang64/mingw-w64-clang-x86_64-gdbm 1.19-5
+    GNU database library (mingw-w64)
+clang64/mingw-w64-clang-x86_64-perl 5.38.5-1
+    A highly capable, feature-rich programming language (mingw-w64)
+msys/cgdb 0.8.0-2
+    Curses-based interface to the GNU Debugger
+msys/gdb 17.1-2
+    GNU Debugger (MSYS2 version)
+msys/gdb-multiarch 17.1-2
+    GNU Debugger (supports all targets)
+msys/gdbm 1.26-1 (Database) [installed]
+    GNU database library
+msys/libgdbm 1.26-1 (libraries) [installed]
+    GNU database library
+msys/libgdbm-devel 1.26-1 (development)
+    libgdbm headers and libraries

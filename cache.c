@@ -91,6 +91,14 @@ BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) 
     ThreadSafeDebugOutput(L"YouTubeCacher: InitializeCacheManager - Loading cache from file");
     LoadCacheFromFile(manager);
     
+    // Initialize async save support
+    manager->bShuttingDown = FALSE;
+    manager->bDirty = FALSE;
+    manager->hSaveEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+    manager->hSaveThread = CreateThread(NULL, 0, CacheSaveWorkerThread, manager, 0, NULL);
+
+    ThreadSafeDebugOutput(L"YouTubeCacher: InitializeCacheManager - Async save thread started");
+
     ThreadSafeDebugOutputF(L"YouTubeCacher: InitializeCacheManager - SUCCESS, loaded %d entries", manager->totalEntries);
     
     return TRUE;
@@ -100,9 +108,28 @@ BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath) 
 void CleanupCacheManager(CacheManager* manager) {
     if (!manager) return;
     
-    // Save cache to disk before cleanup
-    DebugOutput(L"YouTubeCacher: CleanupCacheManager - Saving cache before cleanup");
-    SaveCacheToFile(manager);
+    // Stop the background saving thread
+    ThreadSafeDebugOutput(L"YouTubeCacher: CleanupCacheManager - Stopping async save thread");
+    manager->bShuttingDown = TRUE;
+    if (manager->hSaveEvent) {
+        SetEvent(manager->hSaveEvent);
+    }
+
+    if (manager->hSaveThread) {
+        // Wait for the thread to finish (max 5 seconds)
+        WaitForSingleObject(manager->hSaveThread, 5000);
+        CloseHandle(manager->hSaveThread);
+        manager->hSaveThread = NULL;
+    }
+
+    if (manager->hSaveEvent) {
+        CloseHandle(manager->hSaveEvent);
+        manager->hSaveEvent = NULL;
+    }
+
+    // Perform final synchronous save to ensure all changes are committed
+    ThreadSafeDebugOutput(L"YouTubeCacher: CleanupCacheManager - Final synchronous save");
+    SaveCacheToFileSync(manager);
     
     EnterCriticalSection(&manager->lock);
     
@@ -120,7 +147,7 @@ void CleanupCacheManager(CacheManager* manager) {
     LeaveCriticalSection(&manager->lock);
     DeleteCriticalSection(&manager->lock);
     
-    DebugOutput(L"YouTubeCacher: CleanupCacheManager - Cleanup complete");
+    ThreadSafeDebugOutput(L"YouTubeCacher: CleanupCacheManager - Cleanup complete");
 }
 
 // Free a single cache entry
@@ -148,8 +175,7 @@ void FreeCacheEntry(CacheEntry* entry) {
 BOOL LoadCacheFromFile(CacheManager* manager) {
     if (!manager) return FALSE;
     
-    wchar_t debugMsg[1024];
-    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ENTRY (optimized version)");
+    ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ENTRY (optimized version)");
     
     // Step 1: Use Windows API to get file size (equivalent to stat())
     HANDLE hFile = CreateFileW(manager->cacheFilePath, GENERIC_READ, FILE_SHARE_READ, NULL, 
@@ -157,41 +183,39 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     if (hFile == INVALID_HANDLE_VALUE) {
         DWORD error = GetLastError();
         if (error == ERROR_FILE_NOT_FOUND) {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - Cache file does not exist, starting with empty cache");
+            ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - Cache file does not exist, starting with empty cache");
             return TRUE; // Not an error - just no cache file yet
         }
-        swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot open file (error %lu)", error);
-        DebugOutput(debugMsg);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot open file (error %lu)", error);
         return FALSE;
     }
     
     LARGE_INTEGER fileSize;
     if (!GetFileSizeEx(hFile, &fileSize)) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot get file size");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot get file size");
         CloseHandle(hFile);
         return FALSE;
     }
     
     if (fileSize.QuadPart == 0) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File is empty, starting with empty cache");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - File is empty, starting with empty cache");
         CloseHandle(hFile);
         return TRUE;
     }
     
     if (fileSize.QuadPart > 50 * 1024 * 1024) { // 50MB limit for safety
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: File too large for in-memory processing");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: File too large for in-memory processing");
         CloseHandle(hFile);
         return FALSE;
     }
     
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - File size: %lld bytes", fileSize.QuadPart);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: LoadCacheFromFile - File size: %lld bytes", fileSize.QuadPart);
     
     // Step 2: Allocate buffer to load entire file (use ANSI for simplicity, convert to wide later)
     DWORD fileSizeBytes = (DWORD)fileSize.QuadPart;
     char* fileBuffer = (char*)SAFE_MALLOC(fileSizeBytes + 1); // +1 for null terminator
     if (!fileBuffer) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot allocate file buffer");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot allocate file buffer");
         CloseHandle(hFile);
         return FALSE;
     }
@@ -202,7 +226,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         DWORD chunkSize = min(4096, fileSizeBytes - totalBytesRead);
         DWORD bytesRead;
         if (!ReadFile(hFile, fileBuffer + totalBytesRead, chunkSize, &bytesRead, NULL) || bytesRead == 0) {
-            DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to read file");
+            ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Failed to read file");
             SAFE_FREE(fileBuffer);
             CloseHandle(hFile);
             return FALSE;
@@ -213,7 +237,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     CloseHandle(hFile);
     fileBuffer[fileSizeBytes] = '\0'; // Null terminate
     
-    DebugOutput(L"YouTubeCacher: LoadCacheFromFile - File loaded into memory successfully");
+    ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - File loaded into memory successfully");
     
     // Step 3: Scan for newlines and count them
     int newlineCount = 0;
@@ -223,11 +247,10 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         }
     }
     
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Found %d lines", newlineCount);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: LoadCacheFromFile - Found %d lines", newlineCount);
     
     if (newlineCount == 0) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - No lines found in file");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - No lines found in file");
         SAFE_FREE(fileBuffer);
         return TRUE;
     }
@@ -235,7 +258,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     // Step 4: Allocate pointer array (2 more than newline count for safety)
     char** lines = (char**)SAFE_MALLOC((newlineCount + 2) * sizeof(char*));
     if (!lines) {
-        DebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot allocate line pointer array");
+        ThreadSafeDebugOutput(L"YouTubeCacher: LoadCacheFromFile - ERROR: Cannot allocate line pointer array");
         SAFE_FREE(fileBuffer);
         return FALSE;
     }
@@ -265,8 +288,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     }
     
     int totalLines = lineIndex;
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - Processed into %d lines", totalLines);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: LoadCacheFromFile - Processed into %d lines", totalLines);
     
     // Step 6: Process cache entries in-place
     EnterCriticalSection(&manager->lock);
@@ -296,8 +318,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         if (!versionValidated && wcsncmp(wideLine, L"CACHE_VERSION=", 14) == 0) {
             const wchar_t* version = wideLine + 14;
             if (wcscmp(version, CACHE_VERSION) != 0) {
-                swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - WARNING: Version mismatch. File: '%ls', Expected: '%ls'", version, CACHE_VERSION);
-                DebugOutput(debugMsg);
+                ThreadSafeDebugOutputF(L"YouTubeCacher: LoadCacheFromFile - WARNING: Version mismatch. File: '%ls', Expected: '%ls'", version, CACHE_VERSION);
             }
             versionValidated = TRUE;
             SAFE_FREE(wideLine);
@@ -387,24 +408,21 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     SAFE_FREE(lines);
     SAFE_FREE(fileBuffer);
     
-    swprintf(debugMsg, 1024, L"YouTubeCacher: LoadCacheFromFile - COMPLETE: Loaded %d valid entries, %d invalid entries", validEntries, invalidEntries);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: LoadCacheFromFile - COMPLETE: Loaded %d valid entries, %d invalid entries", validEntries, invalidEntries);
     
     return TRUE;
 }
 
-// Save cache to file
-BOOL SaveCacheToFile(CacheManager* manager) {
-    DebugOutput(L"YouTubeCacher: SaveCacheToFile - ENTRY");
+// Internal function to perform synchronous cache saving
+static BOOL SaveCacheToFileInternal(CacheManager* manager) {
+    ThreadSafeDebugOutput(L"YouTubeCacher: SaveCacheToFileInternal - ENTRY");
     
     if (!manager) {
-        DebugOutput(L"YouTubeCacher: SaveCacheToFile - ERROR: NULL manager");
+        ThreadSafeDebugOutput(L"YouTubeCacher: SaveCacheToFileInternal - ERROR: NULL manager");
         return FALSE;
     }
     
-    wchar_t debugMsg[1024];
-    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Attempting to save to: %ls", manager->cacheFilePath);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: SaveCacheToFileInternal - Attempting to save to: %ls", manager->cacheFilePath);
     
     FILE* file = _wfopen(manager->cacheFilePath, L"w,ccs=UTF-8");
     if (!file) {
@@ -430,21 +448,21 @@ BOOL SaveCacheToFile(CacheManager* manager) {
             }
             FreeErrorContext(ctx);
         }
-        swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - ERROR: Failed to open file for writing (error %lu): %ls\r\n", 
+        swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - ERROR: Failed to open file for writing (error %lu): %ls\r\n",
                 error, manager->cacheFilePath);
-        DebugOutput(debugMsg);
+        ThreadSafeDebugOutput(debugMsg);
         return FALSE;
     }
     
-    DebugOutput(L"YouTubeCacher: SaveCacheToFile - File opened for writing");
+    ThreadSafeDebugOutput(L"YouTubeCacher: SaveCacheToFileInternal - File opened for writing");
     
     // Write version header
     fwprintf(file, L"CACHE_VERSION=%ls\n", CACHE_VERSION);
     
     EnterCriticalSection(&manager->lock);
     
-    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Writing %d entries", manager->totalEntries);
-    DebugOutput(debugMsg);
+    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - Writing %d entries", manager->totalEntries);
+    ThreadSafeDebugOutput(debugMsg);
     
     // Write each cache entry
     CacheEntry* current = manager->entries;
@@ -452,9 +470,9 @@ BOOL SaveCacheToFile(CacheManager* manager) {
     while (current) {
         entryCount++;
         if (ValidateCacheEntry(current)) {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Writing entry %d: %ls", 
+            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - Writing entry %d: %ls",
                     entryCount, current->videoId ? current->videoId : L"NULL");
-            DebugOutput(debugMsg);
+            ThreadSafeDebugOutput(debugMsg);
             // Encode title as base64 to handle all Unicode characters safely
             wchar_t* encodedTitle = current->title ? Base64EncodeWide(current->title) : NULL;
             
@@ -478,9 +496,9 @@ BOOL SaveCacheToFile(CacheManager* manager) {
             
             fwprintf(file, L"\n");
         } else {
-            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - Skipping invalid entry %d: %ls", 
+            swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFileInternal - Skipping invalid entry %d: %ls",
                     entryCount, current->videoId ? current->videoId : L"NULL");
-            DebugOutput(debugMsg);
+            ThreadSafeDebugOutput(debugMsg);
         }
         current = current->next;
     }
@@ -491,10 +509,59 @@ BOOL SaveCacheToFile(CacheManager* manager) {
     fflush(file);
     fclose(file);
     
-    swprintf(debugMsg, 1024, L"YouTubeCacher: SaveCacheToFile - COMPLETE: Wrote %d entries to file", entryCount);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: SaveCacheToFileInternal - COMPLETE: Wrote %d entries to file", entryCount);
     
     return TRUE;
+}
+
+// Background thread function for asynchronous cache saving
+static DWORD WINAPI CacheSaveWorkerThread(LPVOID lpParam) {
+    CacheManager* manager = (CacheManager*)lpParam;
+    if (!manager) return 1;
+
+    ThreadSafeDebugOutput(L"YouTubeCacher: CacheSaveWorkerThread - Started");
+
+    while (!manager->bShuttingDown) {
+        // Wait for a save request or shutdown
+        DWORD waitResult = WaitForSingleObject(manager->hSaveEvent, INFINITE);
+
+        if (manager->bShuttingDown) break;
+
+        if (waitResult == WAIT_OBJECT_0) {
+            // Debounce: wait a short period to batch multiple rapid changes
+            Sleep(500);
+
+            if (manager->bShuttingDown) break;
+
+            if (manager->bDirty) {
+                // Clear dirty flag before saving so we can detect changes made DURING save
+                manager->bDirty = FALSE;
+                SaveCacheToFileInternal(manager);
+            }
+        }
+    }
+
+    ThreadSafeDebugOutput(L"YouTubeCacher: CacheSaveWorkerThread - Exiting");
+    return 0;
+}
+
+// Asynchronous cache saving - signals the background thread
+BOOL SaveCacheToFile(CacheManager* manager) {
+    if (!manager) return FALSE;
+
+    manager->bDirty = TRUE;
+    if (manager->hSaveEvent) {
+        SetEvent(manager->hSaveEvent);
+        return TRUE;
+    }
+
+    // Fallback to synchronous save if background thread isn't initialized
+    return SaveCacheToFileInternal(manager);
+}
+
+// Synchronous cache saving wrapper
+BOOL SaveCacheToFileSync(CacheManager* manager) {
+    return SaveCacheToFileInternal(manager);
 }
 
 // Add a new cache entry
@@ -504,11 +571,9 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     if (!manager || !videoId || !mainVideoFile) return FALSE;
     
     // Debug logging
-    DebugOutput(L"YouTubeCacher: AddCacheEntry - Starting");
+    ThreadSafeDebugOutput(L"YouTubeCacher: AddCacheEntry - Starting");
     if (title) {
-        wchar_t debugMsg[1024];
-        swprintf(debugMsg, 1024, L"YouTubeCacher: AddCacheEntry - Title: %ls (length: %zu)", title, wcslen(title));
-        DebugOutput(debugMsg);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: AddCacheEntry - Title: %ls (length: %zu)", title, wcslen(title));
     }
     
     EnterCriticalSection(&manager->lock);
@@ -555,15 +620,15 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
     
     LeaveCriticalSection(&manager->lock);
     
-    DebugOutput(L"YouTubeCacher: AddCacheEntry - Entry added to memory, saving to file");
+    ThreadSafeDebugOutput(L"YouTubeCacher: AddCacheEntry - Entry added to memory, saving to file");
     
     // Save to file
     BOOL saveResult = SaveCacheToFile(manager);
     
     if (saveResult) {
-        DebugOutput(L"YouTubeCacher: AddCacheEntry - Successfully saved to file");
+        ThreadSafeDebugOutput(L"YouTubeCacher: AddCacheEntry - Successfully saved to file");
     } else {
-        DebugOutput(L"YouTubeCacher: AddCacheEntry - ERROR: Failed to save to file");
+        ThreadSafeDebugOutput(L"YouTubeCacher: AddCacheEntry - ERROR: Failed to save to file");
     }
     
     return TRUE;
@@ -1520,34 +1585,82 @@ static DWORD WINAPI UpdateFileSizesWorker(LPVOID param) {
     CacheManager* manager = data->manager;
     HWND hMainWindow = data->hMainWindow;
     
+    // Define a structure to hold pending updates
+    typedef struct {
+        wchar_t* videoId;
+        wchar_t* filePath;
+        DWORD fileSize;
+        FILETIME modTime;
+        BOOL success;
+    } PendingUpdate;
+
+    PendingUpdate* updates = NULL;
+    int pendingCount = 0;
+    int totalCapacity = 0;
+
+    // Step 1: Collect entries that need updates while holding the lock briefly
     EnterCriticalSection(&manager->lock);
-    CacheEntry* current = manager->entries;
+    totalCapacity = manager->totalEntries;
+    if (totalCapacity > 0) {
+        updates = (PendingUpdate*)SAFE_MALLOC(totalCapacity * sizeof(PendingUpdate));
+        if (updates) {
+            CacheEntry* current = manager->entries;
+            while (current && pendingCount < totalCapacity) {
+                // Only collect if fileSize is 0 (not yet populated)
+                if (current->fileSize == 0 && current->mainVideoFile && current->videoId) {
+                    wchar_t* vId = SAFE_WCSDUP(current->videoId);
+                    wchar_t* fPath = SAFE_WCSDUP(current->mainVideoFile);
+
+                    if (vId && fPath) {
+                        updates[pendingCount].videoId = vId;
+                        updates[pendingCount].filePath = fPath;
+                        updates[pendingCount].success = FALSE;
+                        pendingCount++;
+                    } else {
+                        // Memory allocation failure for strings
+                        if (vId) SAFE_FREE(vId);
+                        if (fPath) SAFE_FREE(fPath);
+                    }
+                }
+                current = current->next;
+            }
+        }
+    }
     LeaveCriticalSection(&manager->lock);
     
-    // Iterate through entries and update file sizes
-    while (current) {
-        // Only update if fileSize is 0 (not yet populated)
-        if (current->fileSize == 0 && current->mainVideoFile) {
-            DWORD fileSize = 0;
-            FILETIME modTime = {0};
-            
-            // Get file info (this is the blocking I/O operation)
-            if (GetVideoFileInfo(current->mainVideoFile, &fileSize, &modTime)) {
-                // Update the entry
-                EnterCriticalSection(&manager->lock);
-                current->fileSize = fileSize;
-                current->downloadTime = modTime;
-                LeaveCriticalSection(&manager->lock);
-                
-                // Notify the main window to update the display
-                PostMessage(hMainWindow, WM_CACHE_SIZE_UPDATE, 0, 0);
+    // Step 2: Perform blocking I/O operations without holding any locks
+    if (updates) {
+        for (int i = 0; i < pendingCount; i++) {
+            if (GetVideoFileInfo(updates[i].filePath, &updates[i].fileSize, &updates[i].modTime)) {
+                updates[i].success = TRUE;
             }
         }
         
-        // Move to next entry (need to lock to safely traverse)
+        // Step 3: Update the cache entries while holding the lock briefly
+        BOOL anyUpdated = FALSE;
         EnterCriticalSection(&manager->lock);
-        current = current->next;
+        for (int i = 0; i < pendingCount; i++) {
+            if (updates[i].success) {
+                // Re-find the entry as it might have moved or been removed
+                CacheEntry* entry = FindCacheEntry(manager, updates[i].videoId);
+                if (entry && entry->fileSize == 0) {
+                    entry->fileSize = updates[i].fileSize;
+                    entry->downloadTime = updates[i].modTime;
+                    anyUpdated = TRUE;
+                }
+            }
+            // Free temporary strings
+            SAFE_FREE(updates[i].videoId);
+            SAFE_FREE(updates[i].filePath);
+        }
         LeaveCriticalSection(&manager->lock);
+
+        SAFE_FREE(updates);
+
+        // Notify the main window to update the display if any changes were made
+        if (anyUpdated) {
+            PostMessage(hMainWindow, WM_CACHE_SIZE_UPDATE, 0, 0);
+        }
     }
     
     // Final update to ensure display is current
