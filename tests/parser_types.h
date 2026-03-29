@@ -30,38 +30,38 @@ typedef struct {
     int progressPercentage;
     wchar_t* statusMessage;
     wchar_t* currentOperation;
-    
+
     // File tracking
     TrackedFile** trackedFiles;
     int fileCount;
     int maxFiles;
-    
+
     // Video information
     wchar_t* videoId;
     wchar_t* videoTitle;
     wchar_t* videoDuration;
     wchar_t* videoFormat;
     wchar_t* finalVideoFile;
-    
+
     // UI communication
     HWND parentWindow;
-    
+
     // Download statistics
     long long downloadedBytes;
     long long totalBytes;
     double downloadSpeed;
     wchar_t* eta;
-    
+
     // Error information
     BOOL hasError;
     wchar_t* errorMessage;
     wchar_t* errorDetails;
-    
+
     // Pre-download messages
     wchar_t** preDownloadMessages;
     int messageCount;
     int maxMessages;
-    
+
     // Playlist progress tracking
     BOOL isPlaylist;
     int playlistCurrentVideo;

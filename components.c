@@ -340,7 +340,7 @@ BOOL ValidateFileBrowser(FileBrowserComponent* component, wchar_t* errorMsg, siz
         return FALSE;
     }
     
-    if (!component->currentPath || wcslen(component->currentPath) == 0) {
+    if (!component->currentPath || component->currentPath[0] == L'\0') {
         if (errorMsg && errorMsgSize > 0) {
             swprintf(errorMsg, errorMsgSize, L"%s is required", component->label);
         }
@@ -385,7 +385,7 @@ void SetFileBrowserPath(FileBrowserComponent* component, const wchar_t* path) {
     SAFE_FREE(component->currentPath);
     
     // Allocate and copy new path
-    if (path && wcslen(path) > 0) {
+    if (path && path[0] != L'\0') {
         size_t pathLen = wcslen(path) + 1;
         component->currentPath = (wchar_t*)SAFE_MALLOC(pathLen * sizeof(wchar_t));
         if (component->currentPath) {
@@ -613,7 +613,7 @@ BOOL ValidateFolderBrowser(FolderBrowserComponent* component, wchar_t* errorMsg,
         return FALSE;
     }
     
-    if (!component->currentPath || wcslen(component->currentPath) == 0) {
+    if (!component->currentPath || component->currentPath[0] == L'\0') {
         if (errorMsg && errorMsgSize > 0) {
             swprintf(errorMsg, errorMsgSize, L"%s is required", component->label);
         }
@@ -658,7 +658,7 @@ void SetFolderBrowserPath(FolderBrowserComponent* component, const wchar_t* path
     SAFE_FREE(component->currentPath);
     
     // Allocate and copy new path
-    if (path && wcslen(path) > 0) {
+    if (path && path[0] != L'\0') {
         size_t pathLen = wcslen(path) + 1;
         component->currentPath = (wchar_t*)SAFE_MALLOC(pathLen * sizeof(wchar_t));
         if (component->currentPath) {
@@ -783,7 +783,7 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
     GetWindowTextW(component->hwndEdit, value, MAX_BUFFER_SIZE);
     
     // Check if required and empty
-    if (component->isRequired && wcslen(value) == 0) {
+    if (component->isRequired && value[0] == L'\0') {
         if (errorMsg && errorMsgSize > 0) {
             swprintf(errorMsg, errorMsgSize, L"%s is required", component->label);
         }
@@ -804,7 +804,7 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
             
         case VALIDATION_NUMERIC:
             // Check if value is numeric
-            for (size_t i = 0; i < wcslen(value); i++) {
+            for (size_t i = 0; value[i] != L'\0'; i++) {
                 if (!iswdigit(value[i]) && value[i] != L'.' && value[i] != L'-') {
                     if (errorMsg && errorMsgSize > 0) {
                         swprintf(errorMsg, errorMsgSize, L"%s must be numeric", component->label);
@@ -818,7 +818,7 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
             
         case VALIDATION_PATH:
             // Check if path exists
-            if (wcslen(value) > 0) {
+            if (value[0] != L'\0') {
                 DWORD attrs = GetFileAttributesW(value);
                 if (attrs == INVALID_FILE_ATTRIBUTES) {
                     if (errorMsg && errorMsgSize > 0) {
@@ -833,7 +833,7 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
             
         case VALIDATION_URL:
             // Basic URL validation (starts with http:// or https://)
-            if (wcslen(value) > 0) {
+            if (value[0] != L'\0') {
                 if (wcsncmp(value, L"http://", 7) != 0 && wcsncmp(value, L"https://", 8) != 0) {
                     if (errorMsg && errorMsgSize > 0) {
                         swprintf(errorMsg, errorMsgSize, L"%s must be a valid URL", component->label);
@@ -1110,7 +1110,7 @@ void SetControlErrorMessage(HWND hwndError, const wchar_t* errorMsg) {
         return;
     }
     
-    if (errorMsg && wcslen(errorMsg) > 0) {
+    if (errorMsg && errorMsg[0] != L'\0') {
         SetWindowTextW(hwndError, errorMsg);
         ShowWindow(hwndError, SW_SHOW);
         

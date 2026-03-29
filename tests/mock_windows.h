@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <wchar.h>
+#include <wctype.h>
 #include <stdarg.h>
 
 #define WINAPI
@@ -243,3 +244,20 @@ static inline wchar_t* SAFE_WCSDUP(const wchar_t* str) {
 }
 
 #endif // MOCK_WINDOWS_H
+
+
+static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
+    if (n == 0) return 0;
+    while (n > 0) {
+        wchar_t c1 = towlower(*s1);
+        wchar_t c2 = towlower(*s2);
+        if (c1 != c2) {
+            return (int)c1 - (int)c2;
+        }
+        if (c1 == L'\0') break;
+        s1++;
+        s2++;
+        n--;
+    }
+    return 0;
+}
