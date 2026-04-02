@@ -5,7 +5,7 @@ CC = /mingw64/bin/gcc.exe
 CFLAGS = -Wall -Wextra -I. -DTEST_BUILD
 RM = /usr/bin/rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe
+all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe test_error
 
 test_cache_duration: test_cache_duration.c cache_duration.c
 	$(CC) $(CFLAGS) test_cache_duration.c cache_duration.c -o $@
@@ -38,14 +38,21 @@ test_base64: test_base64.c
 test_threadsafe: test_threadsafe.c mock_windows.h ../threadsafe.c
 	$(CC) $(CFLAGS) test_threadsafe.c -o $@
 
+test_error: test_error.c error_logic.c
+	$(CC) $(CFLAGS) test_error.c -o $@
+
+error_logic.c: ../error.c
+	/usr/bin/sed -n '/BOOL IsRecoverableError/,/^}/p' ../error.c > $@
+
 run: all
 	./test_cache_duration
 	./test_parser_classify
 	./test_uri
 	./test_base64
 	./test_threadsafe
+	./test_error
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe test_error error_logic.c
 
 .PHONY: all run clean
