@@ -1074,7 +1074,7 @@ ParameterValidationResult ValidateFilePath(const wchar_t* path, const wchar_t* p
             result.errorCode = YTC_ERROR_INVALID_PARAMETER;
             swprintf(result.errorMessage, 512, 
                 L"File path '%ls' contains invalid character '%lc'", 
-                result.fieldName, *invalid);
+                result.fieldName, (wint_t)*invalid);
             return result;
         }
     }

@@ -242,4 +242,9 @@ static inline wchar_t* SAFE_WCSDUP(const wchar_t* str) {
     return dup;
 }
 
+static inline int _wtoi(const wchar_t* str) {
+    if (!str) return 0;
+    return (int)wcstol(str, NULL, 10);
+}
+
 #endif // MOCK_WINDOWS_H
