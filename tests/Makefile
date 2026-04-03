@@ -48,6 +48,12 @@ test_base64: test_base64.c
 test_threadsafe: test_threadsafe.c mock_windows.h ../threadsafe.c
 	$(CC) $(CFLAGS) test_threadsafe.c -o $@
 
+test_error: test_error.c error_logic.c
+	$(CC) $(CFLAGS) test_error.c -o $@
+
+error_logic.c: ../error.c
+	/usr/bin/sed -n '/BOOL IsRecoverableError/,/^}/p' ../error.c > $@
+
 run: all
 	./test_cache_duration
 	./test_parser_classify

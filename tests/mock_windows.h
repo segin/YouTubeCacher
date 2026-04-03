@@ -23,6 +23,9 @@ typedef wchar_t WCHAR;
 typedef void* LPVOID;
 typedef void* LPWSTR;
 typedef const wchar_t* LPCWSTR;
+typedef intptr_t INT_PTR;
+
+#define MAX_PATH 260
 
 #ifndef TRUE
 #define TRUE 1
