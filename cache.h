@@ -18,14 +18,22 @@ typedef struct CacheEntry {
     FILETIME downloadTime;      // When the video was downloaded
     DWORD fileSize;             // Total size of all files
     struct CacheEntry* next;    // Linked list pointer
+    struct CacheEntry* hashNext;// Hash bucket linked list pointer
 } CacheEntry;
+
+#define CACHE_HASH_BUCKETS 1024
 
 // Cache management structure
 typedef struct {
     CacheEntry* entries;        // Linked list of cache entries
+    CacheEntry* hashBuckets[CACHE_HASH_BUCKETS]; // Hash map for O(1) lookups
     int totalEntries;           // Total number of cached videos
     wchar_t cacheFilePath[MAX_EXTENDED_PATH]; // Path to cache index file
     CRITICAL_SECTION lock;      // Thread safety
+    HANDLE hSaveEvent;          // Event to signal background save
+    HANDLE hSaveThread;         // Background save thread
+    volatile BOOL bShuttingDown; // Flag to stop background thread
+    volatile BOOL bDirty;        // Flag indicating unsaved changes
 } CacheManager;
 
 // Cache file constants
@@ -51,6 +59,7 @@ BOOL InitializeCacheManager(CacheManager* manager, const wchar_t* downloadPath);
 void CleanupCacheManager(CacheManager* manager);
 BOOL LoadCacheFromFile(CacheManager* manager);
 BOOL SaveCacheToFile(CacheManager* manager);
+BOOL SaveCacheToFileSync(CacheManager* manager);
 BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t* title, 
                    const wchar_t* duration, const wchar_t* mainVideoFile, 
                    wchar_t** subtitleFiles, int subtitleCount);
