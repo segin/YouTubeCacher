@@ -475,21 +475,6 @@ void RegisterStateChangeCallback(StateChangeCallback callback, void* userData) {
     g_callbackList = node;
 }
 
-void UnregisterStateChangeCallback(StateChangeCallback callback) {
-    if (!callback) return;
-
-    StateChangeCallbackNode** current = &g_callbackList;
-    while (*current) {
-        if ((*current)->callback == callback) {
-            StateChangeCallbackNode* toDelete = *current;
-            *current = (*current)->next;
-            SAFE_FREE(toDelete);
-            return;
-        }
-        current = &(*current)->next;
-    }
-}
-
 void NotifyStateChange(const char* stateType, void* newValue) {
     if (!stateType) return;
 
