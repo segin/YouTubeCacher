@@ -59,7 +59,18 @@ unsigned char* Base64Decode(const char* data, size_t* output_length) {
     // Validate all characters are valid base64
     for (size_t i = 0; i < input_length; i++) {
         unsigned char c = (unsigned char)data[i];
-        if (c == '=') continue; // Padding is valid
+        if (c == '=') {
+            padding_count++;
+            // Padding can only be at the end (last or second to last)
+            if (i < input_length - 2 || (i == input_length - 2 && data[i + 1] != '=')) {
+                return NULL;
+            }
+            continue;
+        }
+        if (padding_count > 0) {
+            // Character after padding is invalid
+            return NULL;
+        }
         if (c >= 128 || base64_decode_table[c] == -1) {
             // Invalid character found
             return NULL;

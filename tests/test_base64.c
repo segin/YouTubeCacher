@@ -53,6 +53,34 @@ void test_base64_decode_wide_invalid() {
     // Invalid characters
     assert(Base64DecodeWide(L"ABC$") == NULL);
 
+    // Invalid padding
+    assert(Base64DecodeWide(L"====") == NULL);
+    assert(Base64DecodeWide(L"A===") == NULL);
+
+    printf("Passed!\n");
+}
+
+void test_base64_decode_wide_padding() {
+    printf("Running test_base64_decode_wide_padding...\n");
+
+    // 1 byte "a" -> "YQ=="
+    wchar_t* out1 = Base64DecodeWide(L"YQ==");
+    assert(out1 != NULL);
+    assert(wcscmp(out1, L"a") == 0);
+    free(out1);
+
+    // 2 bytes "ab" -> "YWI="
+    wchar_t* out2 = Base64DecodeWide(L"YWI=");
+    assert(out2 != NULL);
+    assert(wcscmp(out2, L"ab") == 0);
+    free(out2);
+
+    // 3 bytes "abc" -> "YWJj"
+    wchar_t* out3 = Base64DecodeWide(L"YWJj");
+    assert(out3 != NULL);
+    assert(wcscmp(out3, L"abc") == 0);
+    free(out3);
+
     printf("Passed!\n");
 }
 
@@ -77,6 +105,7 @@ int main() {
     test_base64_decode_wide_null();
     test_base64_decode_wide_empty();
     test_base64_decode_wide_invalid();
+    test_base64_decode_wide_padding();
     test_base64_round_trip();
 
     printf("All Base64 tests passed!\n");
