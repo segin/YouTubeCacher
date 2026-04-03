@@ -970,19 +970,24 @@ BOOL SaveWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
     wchar_t valueName[256];
     BOOL success = TRUE;
     
-    swprintf(valueName, 256, L"%s_Left", keyName);
+    _snwprintf(valueName, 256, L"%ls_Left", keyName);
+    valueName[255] = L'\0';
     success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&left, sizeof(DWORD)) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_Top", keyName);
+    _snwprintf(valueName, 256, L"%ls_Top", keyName);
+    valueName[255] = L'\0';
     success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&top, sizeof(DWORD)) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_Right", keyName);
+    _snwprintf(valueName, 256, L"%ls_Right", keyName);
+    valueName[255] = L'\0';
     success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&right, sizeof(DWORD)) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_Bottom", keyName);
+    _snwprintf(valueName, 256, L"%ls_Bottom", keyName);
+    valueName[255] = L'\0';
     success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&bottom, sizeof(DWORD)) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_DPI", keyName);
+    _snwprintf(valueName, 256, L"%ls_DPI", keyName);
+    valueName[255] = L'\0';
     success &= (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (BYTE*)&baseDpi, sizeof(DWORD)) == ERROR_SUCCESS);
     
     RegCloseKey(hKey);
@@ -1011,19 +1016,24 @@ BOOL RestoreWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
     
     BOOL success = TRUE;
     
-    swprintf(valueName, 256, L"%s_Left", keyName);
+    _snwprintf(valueName, 256, L"%ls_Left", keyName);
+    valueName[255] = L'\0';
     success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&left, &size) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_Top", keyName);
+    _snwprintf(valueName, 256, L"%ls_Top", keyName);
+    valueName[255] = L'\0';
     success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&top, &size) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_Right", keyName);
+    _snwprintf(valueName, 256, L"%ls_Right", keyName);
+    valueName[255] = L'\0';
     success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&right, &size) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_Bottom", keyName);
+    _snwprintf(valueName, 256, L"%ls_Bottom", keyName);
+    valueName[255] = L'\0';
     success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&bottom, &size) == ERROR_SUCCESS);
     
-    swprintf(valueName, 256, L"%s_DPI", keyName);
+    _snwprintf(valueName, 256, L"%ls_DPI", keyName);
+    valueName[255] = L'\0';
     RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&savedDpi, &size);  // Optional, defaults to 96
     
     RegCloseKey(hKey);
