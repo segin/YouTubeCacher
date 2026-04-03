@@ -107,17 +107,6 @@
 
 // HandleDownloadCompletion moved to threading.c
 
-// VideoInfoThreadData moved to ytdlp.h
-
-// GetVideoInfoThread moved to ytdlp.c
-
-// VideoInfoThread moved to ytdlp.h
-
-// VideoInfoWorkerThread moved to ytdlp.c
-
-// GetVideoTitleAndDurationSync moved to ytdlp.c
-
-// GetVideoTitleAndDuration moved to ytdlp.c
 
 // UpdateVideoInfoUI moved to ui.c
 
