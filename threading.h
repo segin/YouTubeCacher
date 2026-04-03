@@ -247,7 +247,5 @@ ThreadSafeSubprocessContext* CreateThreadSafeSubprocessWithCallback(const YtDlpC
 // Thread-safe worker thread function
 DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam);
 
-// Forward declaration for download completion handling (defined in YouTubeCacher.h after type definitions)
-// void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 
 #endif // THREADING_H

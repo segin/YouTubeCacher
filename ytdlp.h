@@ -8,7 +8,6 @@
 #define WM_DOWNLOAD_COMPLETE (WM_USER + 102)
 #define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
 
-
 // YtDlp configuration and validation functions
 BOOL InitializeYtDlpConfig(YtDlpConfig* config);
 void CleanupYtDlpConfig(YtDlpConfig* config);
@@ -62,6 +61,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize);
 BOOL ValidateYtDlpArguments(const wchar_t* args);
 BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
+wchar_t* EscapeCommandLineArgument(const wchar_t* arg);
 
 // Context management
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
