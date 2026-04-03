@@ -8,27 +8,6 @@
 #define WM_DOWNLOAD_COMPLETE (WM_USER + 102)
 #define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
 
-// Structure for passing data to the video info thread
-typedef struct {
-    HWND hDlg;
-    wchar_t url[MAX_URL_LENGTH];
-    wchar_t title[512];
-    wchar_t duration[64];
-    BOOL success;
-    HANDLE hThread;
-    DWORD threadId;
-} VideoInfoThreadData;
-
-// Structure for concurrent video info retrieval
-typedef struct {
-    YtDlpConfig* config;
-    YtDlpRequest* request;
-    YtDlpResult* result;
-    HANDLE hThread;
-    DWORD threadId;
-    BOOL completed;
-} VideoInfoThread;
-
 // YtDlp configuration and validation functions
 BOOL InitializeYtDlpConfig(YtDlpConfig* config);
 void CleanupYtDlpConfig(YtDlpConfig* config);
@@ -37,8 +16,6 @@ BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info);
 void FreeValidationInfo(ValidationInfo* info);
 
 // YtDlp operations
-BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
-BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize);
 BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url);
 BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow);
 BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata);
@@ -138,8 +115,6 @@ BOOL InitializeYtDlpSystem(HWND hMainWindow);
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam);
 DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam);
 DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam);
-DWORD WINAPI GetVideoInfoThread(LPVOID lpParam);
-DWORD WINAPI VideoInfoWorkerThread(LPVOID lpParam);
 DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam);
 
 // Multithreaded execution

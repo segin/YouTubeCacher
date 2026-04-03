@@ -19,7 +19,6 @@ typedef enum {
     IPC_MSG_DOWNLOAD_COMPLETE = 7,
     IPC_MSG_DOWNLOAD_FAILED = 8,
     IPC_MSG_OPERATION_CANCELLED = 9,
-    IPC_MSG_VIDEO_INFO_COMPLETE = 10,
     IPC_MSG_METADATA_COMPLETE = 11
 } IPCMessageType;
 
@@ -248,7 +247,5 @@ ThreadSafeSubprocessContext* CreateThreadSafeSubprocessWithCallback(const YtDlpC
 // Thread-safe worker thread function
 DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam);
 
-// Forward declaration for download completion handling (defined in YouTubeCacher.h after type definitions)
-// void HandleDownloadCompletion(HWND hDlg, YtDlpResult* result, NonBlockingDownloadContext* downloadContext);
 
 #endif // THREADING_H

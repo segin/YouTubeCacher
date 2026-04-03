@@ -1648,6 +1648,50 @@ INT_PTR CALLBACK EnhancedErrorDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
 
 
+// Helper to format Windows error messages
+static void FormatWindowsError(DWORD errorCode, wchar_t* buffer, size_t bufferSize) {
+    LPWSTR errorText = NULL;
+    if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                      NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
+        swprintf(buffer, bufferSize, L"Windows Error: %ls", errorText);
+        LocalFree(errorText);
+    } else {
+        swprintf(buffer, bufferSize, L"Windows Error Code: %lu", errorCode);
+    }
+}
+
+// Helper to log and show unified error dialogs
+static INT_PTR ShowUnifiedErrorHelper(HWND parent,
+                                     const wchar_t* category,
+                                     const wchar_t* title,
+                                     const wchar_t* message,
+                                     const wchar_t* logDetails,
+                                     const wchar_t* dialogDetails,
+                                     const wchar_t* tab1Name,
+                                     const wchar_t* tab2Content,
+                                     const wchar_t* tab2Name,
+                                     const wchar_t* tab3Content,
+                                     const wchar_t* tab3Name) {
+
+    // Log the error
+    LogError(category, message, logDetails ? logDetails : (dialogDetails ? dialogDetails : L"No details available"));
+
+    UnifiedDialogConfig config = {0};
+    config.dialogType = UNIFIED_DIALOG_ERROR;
+    config.title = title;
+    config.message = message;
+    config.details = dialogDetails ? dialogDetails : L"No detailed error information available";
+    config.tab1_name = tab1Name ? tab1Name : L"Details";
+    config.tab2_content = tab2Content;
+    config.tab2_name = tab2Name;
+    config.tab3_content = tab3Content;
+    config.tab3_name = tab3Name;
+    config.showDetailsButton = TRUE;
+    config.showCopyButton = TRUE;
+
+    return ShowUnifiedDialog(parent, &config);
+}
+
 // Convenience function for yt-dlp errors
 INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpRequest* request) {
     if (!result) return IDCANCEL;
@@ -1678,23 +1722,13 @@ INT_PTR ShowYtDlpError(HWND parent, const YtDlpResult* result, const YtDlpReques
         swprintf(solutions, _countof(solutions), L"%ls", analysis->solution);
     }
     
-    // Log the error
-    LogError(L"YtDlp", message, result->output ? result->output : L"No output available");
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = result->output ? result->output : L"No detailed output available";
-    config.tab1_name = L"Output";
-    config.tab2_content = result->diagnostics ? result->diagnostics : L"No diagnostic information available";
-    config.tab2_name = L"Diagnostics";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result_code = ShowUnifiedDialog(parent, &config);
+    INT_PTR result_code = ShowUnifiedErrorHelper(parent, L"YtDlp", title, message,
+                                               result->output ? result->output : L"No output available",
+                                               result->output ? result->output : L"No detailed output available",
+                                               L"Output",
+                                               result->diagnostics ? result->diagnostics : L"No diagnostic information available",
+                                               L"Diagnostics",
+                                               solutions, L"Solutions");
     
     if (analysis) {
         FreeErrorAnalysis(analysis);
@@ -1743,25 +1777,13 @@ INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo) {
                  L"4. Update the path in Settings if yt-dlp was moved");
     }
     
-    // Log the error
-    LogError(L"Validation", message, validationInfo->errorDetails ? validationInfo->errorDetails : L"No details available");
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = validationInfo->errorDetails ? validationInfo->errorDetails : L"No detailed error information available";
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Validation performed comprehensive checks on the yt-dlp executable and its dependencies.";
-    config.tab2_name = L"Validation Info";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"Validation", title, message,
+                                validationInfo->errorDetails ? validationInfo->errorDetails : L"No details available",
+                                validationInfo->errorDetails ? validationInfo->errorDetails : L"No detailed error information available",
+                                L"Details",
+                                L"Validation performed comprehensive checks on the yt-dlp executable and its dependencies.",
+                                L"Validation Info",
+                                solutions, L"Solutions");
 }
 
 // Convenience function for process errors
@@ -1774,41 +1796,20 @@ INT_PTR ShowProcessError(HWND parent, DWORD errorCode, const wchar_t* operation)
               operation ? operation : L"execute operation", errorCode);
     
     wchar_t details[1024];
-    LPWSTR errorText = NULL;
-    if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-                      NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
-        swprintf(details, _countof(details), L"Windows Error: %ls", errorText);
-        LocalFree(errorText);
-    } else {
-        swprintf(details, _countof(details), L"Windows Error Code: %lu", errorCode);
-    }
-    
+    FormatWindowsError(errorCode, details, _countof(details));
+
     wchar_t solutions[1024];
     wcscpy(solutions,
              L"1. Check if the executable path is correct\r\n"
              L"2. Verify you have permission to run the program\r\n"
              L"3. Ensure the executable is not blocked by antivirus\r\n"
              L"4. Try running the application as administrator");
-    
-    // Log the error
-    LogError(L"Process", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Process creation or execution failed at the Windows API level.";
-    config.tab2_name = L"Technical Info";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+
+    return ShowUnifiedErrorHelper(parent, L"Process", title, message,
+                                details, details, L"Details",
+                                L"Process creation or execution failed at the Windows API level.",
+                                L"Technical Info",
+                                solutions, L"Solutions");
 }
 
 // Convenience function for temporary directory errors
@@ -1821,19 +1822,11 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode) {
               tempDir ? tempDir : L"Unknown path");
     
     wchar_t details[1024];
-    LPWSTR errorText = NULL;
-    if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-                      NULL, errorCode, 0, (LPWSTR)&errorText, 0, NULL)) {
-        swprintf(details, _countof(details), 
-                   L"Path: %ls\r\nWindows Error: %ls", 
-                   tempDir ? tempDir : L"Unknown", errorText);
-        LocalFree(errorText);
-    } else {
-        swprintf(details, _countof(details), 
-                   L"Path: %ls\r\nError Code: %lu", 
-                   tempDir ? tempDir : L"Unknown", errorCode);
-    }
-    
+    wchar_t winError[512];
+    FormatWindowsError(errorCode, winError, _countof(winError));
+    swprintf(details, _countof(details), L"Path: %ls\r\n%ls",
+               tempDir ? tempDir : L"Unknown", winError);
+
     wchar_t solutions[1024];
     wcscpy(solutions,
              L"1. Check available disk space on the target drive\r\n"
@@ -1841,26 +1834,12 @@ INT_PTR ShowTempDirError(HWND parent, const wchar_t* tempDir, DWORD errorCode) {
              L"3. Try using a different temporary directory\r\n"
              L"4. Clear existing temporary files\r\n"
              L"5. Check if the path length exceeds Windows limits");
-    
-    // Log the error
-    LogError(L"TempDir", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Temporary directory creation failed. This may be due to permissions, disk space, or path length issues.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+
+    return ShowUnifiedErrorHelper(parent, L"TempDir", title, message,
+                                details, details, L"Details",
+                                L"Temporary directory creation failed. This may be due to permissions, disk space, or path length issues.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 // Additional convenience functions for common scenarios
@@ -1884,25 +1863,11 @@ INT_PTR ShowMemoryError(HWND parent, const wchar_t* operation) {
              L"3. Restart your computer if the problem persists\r\n"
              L"4. Check available system memory");
     
-    // Log the error
-    LogError(L"Memory", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Memory allocation failed. This may indicate low system memory or memory fragmentation.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"Memory", title, message,
+                                details, details, L"Details",
+                                L"Memory allocation failed. This may indicate low system memory or memory fragmentation.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details) {
@@ -1919,25 +1884,13 @@ INT_PTR ShowConfigurationError(HWND parent, const wchar_t* details) {
              L"3. Ensure all required files are accessible\r\n"
              L"4. Try resetting settings to defaults");
     
-    // Log the error
-    LogError(L"Configuration", message, details ? details : L"No details available");
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details ? details : L"Configuration initialization failed";
-    config.tab1_name = L"Details";
-    config.tab2_content = L"Application configuration could not be loaded or initialized properly.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"Configuration", title, message,
+                                details ? details : L"No details available",
+                                details ? details : L"Configuration initialization failed",
+                                L"Details",
+                                L"Application configuration could not be loaded or initialized properly.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 INT_PTR ShowUIError(HWND parent, const wchar_t* operation) {
@@ -1960,25 +1913,11 @@ INT_PTR ShowUIError(HWND parent, const wchar_t* operation) {
              L"3. Verify Windows is functioning properly\r\n"
              L"4. Try running as administrator");
     
-    // Log the error
-    LogError(L"UI", message, details);
-    
-    UnifiedDialogConfig config = {0};
-    config.dialogType = UNIFIED_DIALOG_ERROR;
-    config.title = title;
-    config.message = message;
-    config.details = details;
-    config.tab1_name = L"Details";
-    config.tab2_content = L"User interface component creation failed. This may indicate system resource issues.";
-    config.tab2_name = L"Analysis";
-    config.tab3_content = solutions;
-    config.tab3_name = L"Solutions";
-    config.showDetailsButton = TRUE;
-    config.showCopyButton = TRUE;
-    
-    INT_PTR result = ShowUnifiedDialog(parent, &config);
-    
-    return result;
+    return ShowUnifiedErrorHelper(parent, L"UI", title, message,
+                                details, details, L"Details",
+                                L"User interface component creation failed. This may indicate system resource issues.",
+                                L"Analysis",
+                                solutions, L"Solutions");
 }
 
 
@@ -3068,119 +3007,656 @@ void ShowLogViewerDialog(HWND parent) {
     }
 }
 
+// ============================================================================
+// Multi-Download Dialog - Full Implementation with Background Threading
+// ============================================================================
+
+// Forward declarations for multi-download worker threads
+static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx);
+static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url);
+
+// Playlist resolver thread - runs --flat-playlist on background thread
+DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
+    MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)lpParam;
+    if (!workerCtx || !workerCtx->batchCtx) {
+        SAFE_FREE(workerCtx);
+        return 1;
+    }
+
+    MultiDownloadContext* ctx = workerCtx->batchCtx;
+    int itemIndex = workerCtx->itemIndex;
+
+    ThreadSafeDebugOutputF(L"MultiDlPlaylistResolverThread: Resolving playlist for item %d", itemIndex);
+
+    // Initialize config
+    YtDlpConfig config = {0};
+    if (!InitializeYtDlpConfig(&config)) {
+        ThreadSafeDebugOutput(L"MultiDlPlaylistResolverThread: Failed to init config");
+        SAFE_FREE(workerCtx);
+        return 1;
+    }
+
+    // Get URL from item
+    EnterCriticalSection(&ctx->itemLock);
+    wchar_t url[MAX_URL_LENGTH];
+    wcscpy(url, ctx->items[itemIndex].url);
+    LeaveCriticalSection(&ctx->itemLock);
+
+    // Create request for flat-playlist
+    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_PLAYLIST_INFO, url, NULL);
+    if (!request) {
+        CleanupYtDlpConfig(&config);
+        SAFE_FREE(workerCtx);
+        return 1;
+    }
+
+    // Execute on this worker thread (blocking is fine - we're not on UI thread)
+    YtDlpResult* result = ExecuteYtDlpRequestThreadSafe(&config, request);
+
+    if (result && result->success && result->output) {
+        // Parse the playlist output
+        PlaylistMetadata playlist = {0};
+        if (ParsePlaylistMetadataOutput(result->output, &playlist) && playlist.videoCount > 0) {
+            // Create result structure
+            MultiDlPlaylistResult* plResult = (MultiDlPlaylistResult*)SAFE_MALLOC(sizeof(MultiDlPlaylistResult));
+            if (plResult) {
+                int pi;
+                plResult->originalIndex = itemIndex;
+                plResult->urlCount = playlist.videoCount;
+                plResult->urls = (wchar_t**)SAFE_MALLOC(sizeof(wchar_t*) * playlist.videoCount);
+                plResult->titles = (wchar_t**)SAFE_MALLOC(sizeof(wchar_t*) * playlist.videoCount);
+
+                if (plResult->urls && plResult->titles) {
+                    for (pi = 0; pi < playlist.videoCount; pi++) {
+                        // Build full YouTube URL from video ID
+                        wchar_t fullUrl[MAX_URL_LENGTH];
+                        swprintf(fullUrl, MAX_URL_LENGTH, L"https://www.youtube.com/watch?v=%ls",
+                                playlist.videos[pi].videoId ? playlist.videos[pi].videoId : L"");
+                        plResult->urls[pi] = SAFE_WCSDUP(fullUrl);
+                        plResult->titles[pi] = SAFE_WCSDUP(
+                            playlist.videos[pi].title ? playlist.videos[pi].title : L"Unknown");
+                    }
+
+                    // Post result to dialog (UI thread will handle insertion)
+                    PostMessageW(ctx->hDialog, WM_MULTI_DL_PLAYLIST_RESOLVED, 0, (LPARAM)plResult);
+                } else {
+                    SAFE_FREE(plResult->urls);
+                    SAFE_FREE(plResult->titles);
+                    SAFE_FREE(plResult);
+                }
+            }
+        }
+        FreePlaylistMetadata(&playlist);
+    } else {
+        // Playlist resolution failed - mark item as failed
+        MultiDlItemResult* itemResult = (MultiDlItemResult*)SAFE_MALLOC(sizeof(MultiDlItemResult));
+        if (itemResult) {
+            memset(itemResult, 0, sizeof(MultiDlItemResult));
+            itemResult->itemIndex = itemIndex;
+            itemResult->success = FALSE;
+            wcscpy(itemResult->url, url);
+            wcscpy(itemResult->title, L"Playlist resolution failed");
+            PostMessageW(ctx->hDialog, WM_MULTI_DL_ITEM_DONE, 0, (LPARAM)itemResult);
+        }
+    }
+
+    if (result) FreeYtDlpResult(result);
+    FreeYtDlpRequest(request);
+    CleanupYtDlpConfig(&config);
+    SAFE_FREE(workerCtx);
+    return 0;
+}
+
+DWORD WINAPI MultiDlCoordinatorThread(LPVOID lpParam) {
+    MultiDownloadContext* ctx = (MultiDownloadContext*)lpParam;
+    int i;
+
+    if (!ctx) return 1;
+
+    ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: Starting");
+
+    // Phase 1: Resolve any playlist URLs first
+    for (i = 0; i < ctx->itemCount; i++) {
+        if (InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) break;
+
+        EnterCriticalSection(&ctx->itemLock);
+        {
+            BOOL isPlaylist = IsYouTubePlaylistURL(ctx->items[i].url);
+            if (isPlaylist) {
+                ctx->items[i].status = MULTI_DL_RESOLVING;
+            }
+            LeaveCriticalSection(&ctx->itemLock);
+
+            if (isPlaylist) {
+                wchar_t* statusMsg = SAFE_WCSDUP(L"Resolving playlist...");
+                if (statusMsg) {
+                    PostMessageW(ctx->hDialog, WM_MULTI_DL_STATUS, 0, (LPARAM)statusMsg);
+                }
+
+                {
+                    MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
+                    if (workerCtx) {
+                        HANDLE hThread;
+                        workerCtx->batchCtx = ctx;
+                        workerCtx->itemIndex = i;
+                        hThread = CreateThread(NULL, 0, MultiDlPlaylistResolverThread, workerCtx, 0, NULL);
+                        if (hThread) {
+                            WaitForSingleObject(hThread, INFINITE);
+                            CloseHandle(hThread);
+                        } else {
+                            SAFE_FREE(workerCtx);
+                        }
+                    }
+                }
+                Sleep(100);
+            }
+        }
+    }
+
+    ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: All done");
+    PostMessageW(ctx->hDialog, WM_MULTI_DL_ALL_DONE, 0, 0);
+    return 0;
+}
+
+// Helper: Update the status label with current counts
+static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx) {
+    LONG completed, failed;
+    int remaining;
+    wchar_t status[256];
+
+    if (!ctx) return;
+    completed = InterlockedCompareExchange(&ctx->completedCount, 0, 0);
+    failed = InterlockedCompareExchange(&ctx->failedCount, 0, 0);
+    remaining = ctx->itemCount - (int)completed - (int)failed;
+    if (remaining < 0) remaining = 0;
+
+    swprintf(status, 256, L"Status: %d completed, %d failed, %d remaining",
+             (int)completed, (int)failed, remaining);
+    SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, status);
+}
+
+// Helper: Remove a URL line from the edit control
+static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url) {
+    HWND hEdit = GetDlgItem(hDlg, IDC_MULTI_URL_EDIT);
+    int textLen;
+    wchar_t* text;
+    wchar_t* found;
+
+    if (!hEdit || !url) return;
+
+    textLen = GetWindowTextLengthW(hEdit);
+    if (textLen == 0) return;
+
+    text = (wchar_t*)SAFE_MALLOC((textLen + 2) * sizeof(wchar_t));
+    if (!text) return;
+
+    GetWindowTextW(hEdit, text, textLen + 1);
+
+    found = wcsstr(text, url);
+    if (found) {
+        wchar_t* lineStart = found;
+        wchar_t* lineEnd = found + wcslen(url);
+
+        while (lineStart > text && *(lineStart - 1) != L'\n') lineStart--;
+        while (*lineEnd && *lineEnd != L'\r' && *lineEnd != L'\n') lineEnd++;
+        while (*lineEnd == L'\r' || *lineEnd == L'\n') lineEnd++;
+
+        memmove(lineStart, lineEnd, (wcslen(lineEnd) + 1) * sizeof(wchar_t));
+        SetWindowTextW(hEdit, text);
+    }
+
+    SAFE_FREE(text);
+}
+
 // Multi-Download Dialog Procedure
 INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-    UNREFERENCED_PARAMETER(lParam);
-    
+    static const wchar_t* PROP_CTX = L"MultiDlCtx";
+
     switch (message) {
         case WM_INITDIALOG: {
             // Apply modern Windows theming to dialog and controls
             ApplyModernThemeToDialog(hDlg);
-            
+
             // Register dialog with DPI manager for font scaling
             if (g_dpiManager) {
                 RegisterWindowForDPI(g_dpiManager, hDlg);
-                
-                // Create default scalable font for dialog controls
-                ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
-                if (defaultFont) {
-                    DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
-                    if (context) {
-                        SetControlFont(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), defaultFont, context->currentDpi);
-                        SetControlFont(GetDlgItem(hDlg, IDC_MULTI_STATUS_LABEL), defaultFont, context->currentDpi);
-                        SetControlFont(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), defaultFont, context->currentDpi);
-                        SetControlFont(GetDlgItem(hDlg, IDCANCEL), defaultFont, context->currentDpi);
+
+                {
+                    ScalableFont* defaultFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 9, FW_NORMAL);
+                    if (defaultFont) {
+                        DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
+                        if (context) {
+                            SetControlFont(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), defaultFont, context->currentDpi);
+                            SetControlFont(GetDlgItem(hDlg, IDC_MULTI_STATUS_LABEL), defaultFont, context->currentDpi);
+                            SetControlFont(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), defaultFont, context->currentDpi);
+                            SetControlFont(GetDlgItem(hDlg, IDC_MULTI_CURRENT_LABEL), defaultFont, context->currentDpi);
+                            SetControlFont(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), defaultFont, context->currentDpi);
+                            SetControlFont(GetDlgItem(hDlg, IDC_MULTI_STOP_BTN), defaultFont, context->currentDpi);
+                            SetControlFont(GetDlgItem(hDlg, IDCANCEL), defaultFont, context->currentDpi);
+                        }
                     }
                 }
             }
-            
+
             // Set accessible names for controls
             SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), L"URL list", L"Enter YouTube URLs, one per line");
             SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_STATUS_LABEL), L"Status", L"Current status of the multi-download operation");
             SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), L"Download", L"Start downloading all entered URLs");
-            SetControlAccessibility(GetDlgItem(hDlg, IDCANCEL), L"Cancel", L"Close the multi-download dialog");
-            
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), L"Pause", L"Pause or resume downloads");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_STOP_BTN), L"Stop", L"Stop all downloads");
+            SetControlAccessibility(GetDlgItem(hDlg, IDCANCEL), L"Close", L"Close the multi-download dialog");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_CURRENT_LABEL), L"Current download", L"Currently downloading item");
+            SetControlAccessibility(GetDlgItem(hDlg, IDC_MULTI_REMOVE_FINISHED), L"Remove finished items", L"Automatically remove completed URLs from the list");
+
+            // Default: check the remove-finished checkbox
+            CheckDlgButton(hDlg, IDC_MULTI_REMOVE_FINISHED, BST_CHECKED);
+
             // Configure tab order
-            TabOrderConfig tabConfig;
-            TabOrderEntry entries[3];
-            
-            entries[0].controlId = IDC_MULTI_URL_EDIT;
-            entries[0].tabOrder = 0;
-            entries[0].isTabStop = TRUE;
-            
-            entries[1].controlId = IDC_MULTI_DOWNLOAD_BTN;
-            entries[1].tabOrder = 1;
-            entries[1].isTabStop = TRUE;
-            
-            entries[2].controlId = IDCANCEL;
-            entries[2].tabOrder = 2;
-            entries[2].isTabStop = TRUE;
-            
-            tabConfig.entries = entries;
-            tabConfig.count = 3;
-            SetDialogTabOrder(hDlg, &tabConfig);
-            
-            // Set initial focus to URL edit control
+            {
+                TabOrderConfig tabConfig;
+                TabOrderEntry entries[6];
+
+                entries[0].controlId = IDC_MULTI_URL_EDIT;
+                entries[0].tabOrder = 0;
+                entries[0].isTabStop = TRUE;
+
+                entries[1].controlId = IDC_MULTI_DOWNLOAD_BTN;
+                entries[1].tabOrder = 1;
+                entries[1].isTabStop = TRUE;
+
+                entries[2].controlId = IDC_MULTI_PAUSE_BTN;
+                entries[2].tabOrder = 2;
+                entries[2].isTabStop = TRUE;
+
+                entries[3].controlId = IDC_MULTI_STOP_BTN;
+                entries[3].tabOrder = 3;
+                entries[3].isTabStop = TRUE;
+
+                entries[4].controlId = IDC_MULTI_REMOVE_FINISHED;
+                entries[4].tabOrder = 4;
+                entries[4].isTabStop = TRUE;
+
+                entries[5].controlId = IDCANCEL;
+                entries[5].tabOrder = 5;
+                entries[5].isTabStop = TRUE;
+
+                tabConfig.entries = entries;
+                tabConfig.count = 6;
+                SetDialogTabOrder(hDlg, &tabConfig);
+            }
+
+            // Store main window handle as property
+            SetPropW(hDlg, L"MainWindow", (HANDLE)lParam);
+
             SetFocus(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT));
-            
-            return FALSE; // Return FALSE since we set focus manually
+            return FALSE;
         }
-        
+
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case IDC_MULTI_DOWNLOAD_BTN: {
-                    // Placeholder - show info dialog
-                    UnifiedDialogConfig config = {0};
-                    config.dialogType = UNIFIED_DIALOG_INFO;
-                    config.title = L"Not Implemented";
-                    config.message = L"Multi-download functionality is not yet implemented.";
-                    config.details = L"This is a placeholder UI for the multi-download feature. The actual download logic will be added in a future update.";
-                    config.tab1_name = L"Details";
-                    config.showDetailsButton = TRUE;
-                    config.showCopyButton = FALSE;
-                    
-                    ShowUnifiedDialog(hDlg, &config);
+                    int textLen = GetWindowTextLengthW(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT));
+                    wchar_t* allText;
+                    int capacity, count;
+                    MultiDlItem* items;
+                    wchar_t* tokCtx;
+                    wchar_t* line;
+                    MultiDownloadContext* ctx;
+
+                    if (textLen == 0) {
+                        UnifiedDialogConfig config = {0};
+                        config.dialogType = UNIFIED_DIALOG_INFO;
+                        config.title = L"No URLs";
+                        config.message = L"Please enter one or more YouTube URLs in the text area.";
+                        config.showDetailsButton = FALSE;
+                        config.showCopyButton = FALSE;
+                        ShowUnifiedDialog(hDlg, &config);
+                        return TRUE;
+                    }
+
+                    allText = (wchar_t*)SAFE_MALLOC((textLen + 2) * sizeof(wchar_t));
+                    if (!allText) return TRUE;
+                    GetWindowTextW(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), allText, textLen + 1);
+
+                    capacity = 32;
+                    items = (MultiDlItem*)SAFE_MALLOC(sizeof(MultiDlItem) * capacity);
+                    count = 0;
+
+                    if (!items) {
+                        SAFE_FREE(allText);
+                        return TRUE;
+                    }
+
+                    tokCtx = NULL;
+                    line = wcstok(allText, L"\r\n", &tokCtx);
+                    while (line) {
+                        size_t len;
+                        while (*line == L' ' || *line == L'\t') line++;
+                        len = wcslen(line);
+                        while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'\t')) {
+                            line[--len] = L'\0';
+                        }
+
+                        if (len > 0) {
+                            if (count >= capacity) {
+                                MultiDlItem* newItems;
+                                capacity *= 2;
+                                newItems = (MultiDlItem*)realloc(items, sizeof(MultiDlItem) * capacity);
+                                if (!newItems) break;
+                                items = newItems;
+                            }
+                            memset(&items[count], 0, sizeof(MultiDlItem));
+                            wcsncpy(items[count].url, line, MAX_URL_LENGTH - 1);
+                            items[count].status = MULTI_DL_PENDING;
+                            count++;
+                        }
+
+                        line = wcstok(NULL, L"\r\n", &tokCtx);
+                    }
+
+                    SAFE_FREE(allText);
+
+                    if (count == 0) {
+                        SAFE_FREE(items);
+                        return TRUE;
+                    }
+
+                    ctx = (MultiDownloadContext*)SAFE_MALLOC(sizeof(MultiDownloadContext));
+                    if (!ctx) {
+                        SAFE_FREE(items);
+                        return TRUE;
+                    }
+                    memset(ctx, 0, sizeof(MultiDownloadContext));
+
+                    ctx->hDialog = hDlg;
+                    ctx->hMainWindow = (HWND)GetPropW(hDlg, L"MainWindow");
+                    ctx->items = items;
+                    ctx->itemCount = count;
+                    ctx->itemCapacity = capacity;
+                    ctx->maxConcurrent = 3;
+                    ctx->stopRequested = 0;
+                    ctx->pauseRequested = 0;
+                    ctx->completedCount = 0;
+                    ctx->failedCount = 0;
+                    InitializeCriticalSection(&ctx->itemLock);
+                    ctx->hPauseEvent = CreateEventW(NULL, TRUE, TRUE, NULL);
+
+                    SetPropW(hDlg, PROP_CTX, (HANDLE)ctx);
+
+                    EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), FALSE);
+                    EnableWindow(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), TRUE);
+                    EnableWindow(GetDlgItem(hDlg, IDC_MULTI_STOP_BTN), TRUE);
+                    EnableWindow(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), FALSE);
+
+                    SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Starting downloads...");
+                    SetDlgItemTextW(hDlg, IDC_MULTI_CURRENT_LABEL, L"");
+
+                    SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETRANGE32, 0, count);
+                    SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETPOS, 0, 0);
+
+                    ctx->hCoordinatorThread = CreateThread(NULL, 0, MultiDlCoordinatorThread, ctx, 0, NULL);
+                    if (!ctx->hCoordinatorThread) {
+                        SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Failed to start downloads");
+                        EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), TRUE);
+                        EnableWindow(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), FALSE);
+                        EnableWindow(GetDlgItem(hDlg, IDC_MULTI_STOP_BTN), FALSE);
+                        EnableWindow(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), TRUE);
+                    }
+
                     return TRUE;
                 }
-                
-                case IDCANCEL:
+
+                case IDC_MULTI_PAUSE_BTN: {
+                    MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
+                    if (!ctx) return TRUE;
+
+                    if (InterlockedCompareExchange(&ctx->pauseRequested, 0, 0)) {
+                        InterlockedExchange(&ctx->pauseRequested, 0);
+                        SetEvent(ctx->hPauseEvent);
+                        SetDlgItemTextW(hDlg, IDC_MULTI_PAUSE_BTN, L"&Pause");
+                        SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Resumed");
+                    } else {
+                        InterlockedExchange(&ctx->pauseRequested, 1);
+                        ResetEvent(ctx->hPauseEvent);
+                        SetDlgItemTextW(hDlg, IDC_MULTI_PAUSE_BTN, L"&Resume");
+                        SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Paused (active downloads will finish)");
+                    }
+                    return TRUE;
+                }
+
+                case IDC_MULTI_STOP_BTN: {
+                    MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
+                    if (!ctx) return TRUE;
+
+                    InterlockedExchange(&ctx->stopRequested, 1);
+                    SetEvent(ctx->hPauseEvent);
+                    SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Stopping...");
+                    EnableWindow(GetDlgItem(hDlg, IDC_MULTI_STOP_BTN), FALSE);
+                    EnableWindow(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), FALSE);
+                    return TRUE;
+                }
+
+                case IDCANCEL: {
+                    MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
+                    if (ctx && ctx->hCoordinatorThread) {
+                        InterlockedExchange(&ctx->stopRequested, 1);
+                        SetEvent(ctx->hPauseEvent);
+                        WaitForSingleObject(ctx->hCoordinatorThread, 5000);
+                        CloseHandle(ctx->hCoordinatorThread);
+                        ctx->hCoordinatorThread = NULL;
+
+                        DeleteCriticalSection(&ctx->itemLock);
+                        if (ctx->hPauseEvent) CloseHandle(ctx->hPauseEvent);
+                        SAFE_FREE(ctx->items);
+                        SAFE_FREE(ctx);
+                        RemovePropW(hDlg, PROP_CTX);
+                    }
                     EndDialog(hDlg, IDCANCEL);
                     return TRUE;
+                }
             }
             break;
-            
+
+        case WM_MULTI_DL_PROGRESS: {
+            MultiDlProgressData* progData = (MultiDlProgressData*)lParam;
+            if (progData) {
+                MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
+                if (ctx) {
+                    wchar_t label[512];
+                    EnterCriticalSection(&ctx->itemLock);
+                    if (progData->itemIndex >= 0 && progData->itemIndex < ctx->itemCount) {
+                        swprintf(label, 512, L"Downloading: %ls (%d%%)",
+                                ctx->items[progData->itemIndex].url, progData->percentage);
+                        ctx->items[progData->itemIndex].progressPercent = progData->percentage;
+                    } else {
+                        swprintf(label, 512, L"%ls", progData->status);
+                    }
+                    LeaveCriticalSection(&ctx->itemLock);
+                    SetDlgItemTextW(hDlg, IDC_MULTI_CURRENT_LABEL, label);
+                }
+                SAFE_FREE(progData);
+            }
+            return TRUE;
+        }
+
+        case WM_MULTI_DL_ITEM_DONE: {
+            MultiDlItemResult* itemResult = (MultiDlItemResult*)lParam;
+            if (itemResult) {
+                MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
+                if (ctx) {
+                    LONG completed = InterlockedCompareExchange(&ctx->completedCount, 0, 0);
+                    LONG failed = InterlockedCompareExchange(&ctx->failedCount, 0, 0);
+                    SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETPOS, (WPARAM)(completed + failed), 0);
+
+                    if (itemResult->success &&
+                        IsDlgButtonChecked(hDlg, IDC_MULTI_REMOVE_FINISHED) == BST_CHECKED) {
+                        MultiDl_RemoveUrlLineFromEdit(hDlg, itemResult->url);
+                    }
+
+                    MultiDl_UpdateStatusLabel(hDlg, ctx);
+                }
+                SAFE_FREE(itemResult);
+            }
+            return TRUE;
+        }
+
+        case WM_MULTI_DL_ALL_DONE: {
+            MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
+            if (ctx) {
+                LONG completed, failed;
+                wchar_t summary[256];
+
+                MultiDl_UpdateStatusLabel(hDlg, ctx);
+
+                if (ctx->hCoordinatorThread) {
+                    CloseHandle(ctx->hCoordinatorThread);
+                    ctx->hCoordinatorThread = NULL;
+                }
+
+                completed = InterlockedCompareExchange(&ctx->completedCount, 0, 0);
+                failed = InterlockedCompareExchange(&ctx->failedCount, 0, 0);
+
+                swprintf(summary, 256, L"Batch complete: %d succeeded, %d failed",
+                         (int)completed, (int)failed);
+                SetDlgItemTextW(hDlg, IDC_MULTI_CURRENT_LABEL, summary);
+
+                DeleteCriticalSection(&ctx->itemLock);
+                if (ctx->hPauseEvent) CloseHandle(ctx->hPauseEvent);
+                SAFE_FREE(ctx->items);
+                SAFE_FREE(ctx);
+                RemovePropW(hDlg, PROP_CTX);
+            }
+
+            EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), TRUE);
+            EnableWindow(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_MULTI_STOP_BTN), FALSE);
+            EnableWindow(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), TRUE);
+            return TRUE;
+        }
+
+        case WM_MULTI_DL_PLAYLIST_RESOLVED: {
+            MultiDlPlaylistResult* plResult = (MultiDlPlaylistResult*)lParam;
+            if (plResult) {
+                MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
+                if (ctx && plResult->urlCount > 0) {
+                    wchar_t origUrl[MAX_URL_LENGTH] = {0};
+
+                    EnterCriticalSection(&ctx->itemLock);
+
+                    if (plResult->originalIndex >= 0 && plResult->originalIndex < ctx->itemCount) {
+                        wcscpy(origUrl, ctx->items[plResult->originalIndex].url);
+                        ctx->items[plResult->originalIndex].status = MULTI_DL_COMPLETE;
+                        InterlockedIncrement(&ctx->completedCount);
+                    }
+
+                    {
+                        int needed = ctx->itemCount + plResult->urlCount;
+                        if (needed > ctx->itemCapacity) {
+                            int newCap = needed * 2;
+                            MultiDlItem* newItems = (MultiDlItem*)realloc(ctx->items, sizeof(MultiDlItem) * newCap);
+                            if (newItems) {
+                                ctx->items = newItems;
+                                ctx->itemCapacity = newCap;
+                            }
+                        }
+
+                        if (ctx->itemCapacity >= needed) {
+                            int addIdx;
+                            for (addIdx = 0; addIdx < plResult->urlCount; addIdx++) {
+                                int idx = ctx->itemCount;
+                                memset(&ctx->items[idx], 0, sizeof(MultiDlItem));
+                                if (plResult->urls[addIdx]) {
+                                    wcsncpy(ctx->items[idx].url, plResult->urls[addIdx], MAX_URL_LENGTH - 1);
+                                }
+                                if (plResult->titles[addIdx]) {
+                                    wcsncpy(ctx->items[idx].title, plResult->titles[addIdx], 511);
+                                }
+                                ctx->items[idx].status = MULTI_DL_PENDING;
+                                ctx->itemCount++;
+                            }
+                            SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETRANGE32, 0, ctx->itemCount);
+                        }
+                    }
+
+                    LeaveCriticalSection(&ctx->itemLock);
+
+                    if (origUrl[0]) {
+                        MultiDl_RemoveUrlLineFromEdit(hDlg, origUrl);
+                    }
+
+                    {
+                        HWND hEdit = GetDlgItem(hDlg, IDC_MULTI_URL_EDIT);
+                        int addIdx;
+                        for (addIdx = 0; addIdx < plResult->urlCount; addIdx++) {
+                            if (plResult->urls[addIdx]) {
+                                int currentLen = GetWindowTextLengthW(hEdit);
+                                SendMessageW(hEdit, EM_SETSEL, currentLen, currentLen);
+                                if (currentLen > 0) {
+                                    SendMessageW(hEdit, EM_REPLACESEL, FALSE, (LPARAM)L"\r\n");
+                                }
+                                SendMessageW(hEdit, EM_REPLACESEL, FALSE, (LPARAM)plResult->urls[addIdx]);
+                            }
+                        }
+                    }
+
+                    MultiDl_UpdateStatusLabel(hDlg, ctx);
+                }
+
+                {
+                    int freeIdx;
+                    if (plResult->urls) {
+                        for (freeIdx = 0; freeIdx < plResult->urlCount; freeIdx++) {
+                            SAFE_FREE(plResult->urls[freeIdx]);
+                        }
+                        SAFE_FREE(plResult->urls);
+                    }
+                    if (plResult->titles) {
+                        for (freeIdx = 0; freeIdx < plResult->urlCount; freeIdx++) {
+                            SAFE_FREE(plResult->titles[freeIdx]);
+                        }
+                        SAFE_FREE(plResult->titles);
+                    }
+                }
+                SAFE_FREE(plResult);
+            }
+            return TRUE;
+        }
+
+        case WM_MULTI_DL_STATUS: {
+            wchar_t* statusMsg = (wchar_t*)lParam;
+            if (statusMsg) {
+                SetDlgItemTextW(hDlg, IDC_MULTI_CURRENT_LABEL, statusMsg);
+                SAFE_FREE(statusMsg);
+            }
+            return TRUE;
+        }
+
         case WM_DPICHANGED: {
-            // Handle DPI changes
             int newDpi = HIWORD(wParam);
             RECT* suggestedRect = (RECT*)lParam;
-            
+
             DPIContext* context = GetDPIContext(g_dpiManager, hDlg);
             if (context) {
                 context->currentDpi = newDpi;
                 context->scaleFactor = (double)newDpi / 96.0;
-                
-                // Rescale fonts
                 RescaleFontsForDPI(hDlg, newDpi);
-                
-                // Apply suggested window position and size
                 SetWindowPos(hDlg, NULL,
                             suggestedRect->left, suggestedRect->top,
                             suggestedRect->right - suggestedRect->left,
                             suggestedRect->bottom - suggestedRect->top,
                             SWP_NOZORDER | SWP_NOACTIVATE);
             }
-            
             return 0;
         }
-        
+
         case WM_SYSCOLORCHANGE:
             ApplyHighContrastColors(hDlg);
             return TRUE;
-        
+
         case WM_CLOSE:
-            EndDialog(hDlg, IDCANCEL);
+            SendMessageW(hDlg, WM_COMMAND, MAKEWPARAM(IDCANCEL, BN_CLICKED), 0);
             return TRUE;
     }
-    
+
     return FALSE;
 }

@@ -1,7 +1,7 @@
 #include "YouTubeCacher.h"
 
 // External debug output function from main.c
-extern void DebugOutput(const wchar_t* message);
+extern void ThreadSafeDebugOutput(const wchar_t* message);
 
 // Custom window messages (should match main.c)
 #define WM_UNIFIED_DOWNLOAD_UPDATE (WM_USER + 113)
@@ -82,9 +82,7 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
     if (!line || !progress) return FALSE;
 
     // Log the raw line for debugging
-    wchar_t debugMsg[1024];
-    swprintf(debugMsg, 1024, L"YouTubeCacher: ProcessYtDlpOutputLine: %ls", line);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: ProcessYtDlpOutputLine: %ls", line);
 
     // Classify the line type
     OutputLineType lineType = ClassifyOutputLine(line);
@@ -94,10 +92,7 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
         L"UNKNOWN", L"INFO_EXTRACTION", L"FORMAT_SELECTION", L"DOWNLOAD_PROGRESS",
         L"POST_PROCESSING", L"FILE_DESTINATION", L"ERROR", L"WARNING", L"DEBUG", L"COMPLETION"
     };
-    wchar_t debugMsg2[1024];
-    swprintf(debugMsg2, 1024, L"YouTubeCacher: ProcessYtDlpOutputLine - Line type: %ls for: %.100ls...",
-            lineTypeNames[lineType], line);
-    DebugOutput(debugMsg2);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: ProcessYtDlpOutputLine - Line type: %ls for: %.100ls...", lineTypeNames[lineType], line);
 
     // Check for playlist progress markers BEFORE the switch
     // These can appear on lines that have other classifications
@@ -109,9 +104,7 @@ BOOL ProcessYtDlpOutputLine(const wchar_t* line, EnhancedProgressInfo* progress)
         progress->playlistCurrentVideo = playlistCurrent;
         progress->playlistTotalVideos = playlistTotal;
 
-        wchar_t debugProgress[128];
-        swprintf(debugProgress, 128, L"YouTubeCacher: Playlist progress: %d of %d", playlistCurrent, playlistTotal);
-        DebugOutput(debugProgress);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: Playlist progress: %d of %d", playlistCurrent, playlistTotal);
 
         // Send playlist progress update to UI
         if (progress->parentWindow) {
@@ -589,9 +582,7 @@ BOOL ParseInfoExtractionLine(const wchar_t* line, EnhancedProgressInfo* progress
 
     // Check if this is a JSON metadata line (starts with '{' and contains video metadata)
     if (line[0] == L'{' && wcsstr(line, L"\"title\"")) {
-        wchar_t debugMsg[512];
-        swprintf(debugMsg, 512, L"YouTubeCacher: ParseInfoExtractionLine - Found JSON line with title: %.100ls...", line);
-        DebugOutput(debugMsg);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: ParseInfoExtractionLine - Found JSON line with title: %.100ls...", line);
         return ParseJsonMetadataLine(line, progress);
     }
 
@@ -692,11 +683,7 @@ BOOL AddTrackedFile(EnhancedProgressInfo* progress, const wchar_t* filePath, BOO
     }
 
     progress->trackedFiles[progress->fileCount++] = file;
-
-    wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: Added tracked file: %ls (main video: %s)",
-            filePath, isMainVideo ? L"yes" : L"no");
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: Added tracked file: %ls (main video: %s)", filePath, isMainVideo ? L"yes" : L"no");
 
     return TRUE;
 }
@@ -704,10 +691,7 @@ BOOL AddTrackedFile(EnhancedProgressInfo* progress, const wchar_t* filePath, BOO
 // Parse JSON metadata line to extract video title and duration
 BOOL ParseJsonMetadataLine(const wchar_t* line, EnhancedProgressInfo* progress) {
     if (!line || !progress) return FALSE;
-
-    wchar_t debugMsg[1024];
-    swprintf(debugMsg, 1024, L"YouTubeCacher: ParseJsonMetadataLine - Processing JSON: %.200ls...", line);
-    DebugOutput(debugMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: ParseJsonMetadataLine - Processing JSON: %.200ls...", line);
 
     // Simple JSON parsing for title and duration
     // Look for "title": "..." pattern
@@ -744,8 +728,7 @@ BOOL ParseJsonMetadataLine(const wchar_t* line, EnhancedProgressInfo* progress) 
 
                         if (unescaped) {
                             progress->videoTitle = unescaped;
-                            swprintf(debugMsg, 1024, L"YouTubeCacher: ParseJsonMetadataLine - Extracted title: %ls", progress->videoTitle);
-                            DebugOutput(debugMsg);
+                            ThreadSafeDebugOutputF(L"YouTubeCacher: ParseJsonMetadataLine - Extracted title: %ls", progress->videoTitle);
 
                             // Send title update to UI
                             IPCContext* ipc = GetGlobalIPCContext();
@@ -791,8 +774,7 @@ BOOL ParseJsonMetadataLine(const wchar_t* line, EnhancedProgressInfo* progress) 
                 }
 
                 progress->videoDuration = SAFE_WCSDUP(formattedDuration);
-                swprintf(debugMsg, 1024, L"YouTubeCacher: ParseJsonMetadataLine - Extracted duration: %ls", progress->videoDuration);
-                DebugOutput(debugMsg);
+                ThreadSafeDebugOutputF(L"YouTubeCacher: ParseJsonMetadataLine - Extracted duration: %ls", progress->videoDuration);
 
                 // Send duration update to UI
                 IPCContext* ipc = GetGlobalIPCContext();
@@ -861,11 +843,7 @@ void UpdateDownloadState(EnhancedProgressInfo* progress, DownloadState newState,
 
         if (progress->stateDescription) SAFE_FREE(progress->stateDescription);
         progress->stateDescription = description ? SAFE_WCSDUP(description) : NULL;
-
-        wchar_t debugMsg[256];
-        swprintf(debugMsg, 256, L"YouTubeCacher: Download state changed to: %d (%ls)",
-                newState, description ? description : L"no description");
-        DebugOutput(debugMsg);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: Download state changed to: %d (%ls)", newState, description ? description : L"no description");
 
         // Update the status message to reflect the new state
         if (progress->statusMessage) SAFE_FREE(progress->statusMessage);
@@ -969,17 +947,11 @@ wchar_t* ExtractFileExtension(const wchar_t* fileName) {
 // Log current progress state for debugging
 void LogProgressState(const EnhancedProgressInfo* progress) {
     if (!progress) return;
-
-    wchar_t debugMsg[1024];
-    swprintf(debugMsg, 1024,
-        L"YouTubeCacher: Progress State - State: %d, Progress: %d%%, Files: %d, Messages: %d\n",
-        progress->currentState, progress->progressPercentage,
+    ThreadSafeDebugOutputF(L"YouTubeCacher: Progress State - State: %d, Progress: %d%%, Files: %d, Messages: %d", progress->currentState, progress->progressPercentage,
         progress->fileCount, progress->messageCount);
-    DebugOutput(debugMsg);
 
     if (progress->finalVideoFile) {
-        swprintf(debugMsg, 1024, L"YouTubeCacher: Final video file: %ls", progress->finalVideoFile);
-        DebugOutput(debugMsg);
+        ThreadSafeDebugOutputF(L"YouTubeCacher: Final video file: %ls", progress->finalVideoFile);
     }
 }
 
@@ -1062,18 +1034,18 @@ BOOL StartEnhancedSubprocessExecution(EnhancedSubprocessContext* context) {
 
 // Enhanced subprocess worker thread
 DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
-    DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread started");
+    ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread started");
 
     EnhancedSubprocessContext* enhancedContext = (EnhancedSubprocessContext*)lpParam;
     if (!enhancedContext || !enhancedContext->baseContext) {
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - invalid context");
+        ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - invalid context");
         return 1;
     }
 
     SubprocessContext* context = enhancedContext->baseContext;
     EnhancedProgressInfo* progress = enhancedContext->enhancedProgress;
 
-    DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - context valid");
+    ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - context valid");
 
     // Mark thread as running
     EnterCriticalSection(&context->threadContext.criticalSection);
@@ -1083,7 +1055,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     // Initialize result structure
     context->result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
     if (!context->result) {
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Failed to allocate result structure");
+        ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Failed to allocate result structure");
         context->completed = TRUE;
         return 1;
     }
@@ -1099,7 +1071,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     wchar_t arguments[4096];
     if (!GetYtDlpArgsForOperation(context->request->operation, context->request->url,
                                  context->request->outputPath, context->config, arguments, 4096)) {
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to build yt-dlp arguments");
+        ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to build yt-dlp arguments");
         context->result->success = FALSE;
         context->result->exitCode = 1;
         context->result->errorMessage = SAFE_WCSDUP(L"Failed to build yt-dlp arguments");
@@ -1109,7 +1081,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
 
     // Check for cancellation before starting process
     if (IsCancellationRequested(&context->threadContext)) {
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Operation was cancelled");
+        ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Operation was cancelled");
         context->result->success = FALSE;
         context->result->errorMessage = SAFE_WCSDUP(L"Operation cancelled by user");
         context->completed = TRUE;
@@ -1120,7 +1092,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     if (!CreatePipe(&context->hOutputRead, &context->hOutputWrite, &sa, 0)) {
         DWORD error = GetLastError();
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create output pipe");
+        ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create output pipe");
         context->result->success = FALSE;
         context->result->exitCode = error;
         context->result->errorMessage = SAFE_WCSDUP(L"Failed to create output pipe");
@@ -1141,23 +1113,10 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     PROCESS_INFORMATION pi = {0};
 
     // Build command line
-    wchar_t* escapedYtDlpPath = EscapeCommandLineArgument(context->config->ytDlpPath);
-    if (!escapedYtDlpPath) {
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to escape yt-dlp path");
-        CloseHandle(context->hOutputRead);
-        CloseHandle(context->hOutputWrite);
-        context->result->success = FALSE;
-        context->result->exitCode = 1;
-        context->result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed for escaping");
-        context->completed = TRUE;
-        return 1;
-    }
-
-    size_t cmdLineLen = wcslen(escapedYtDlpPath) + wcslen(arguments) + 2;
+    size_t cmdLineLen = wcslen(context->config->ytDlpPath) + wcslen(arguments) + 10;
     wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
     if (!cmdLine) {
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to allocate command line memory");
-        SAFE_FREE(escapedYtDlpPath);
+        ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to allocate command line memory");
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
         context->result->success = FALSE;
@@ -1167,13 +1126,10 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         return 1;
     }
 
-    swprintf(cmdLine, cmdLineLen, L"%ls %ls", escapedYtDlpPath, arguments);
-    SAFE_FREE(escapedYtDlpPath);
+    swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->config->ytDlpPath, arguments);
 
     // Log the exact command being executed
-    wchar_t logMsg[8192];
-    swprintf(logMsg, 8192, L"YouTubeCacher: EnhancedSubprocessWorkerThread - Executing command: %ls", cmdLine);
-    DebugOutput(logMsg);
+    ThreadSafeDebugOutputF(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Executing command: %ls", cmdLine);
 
     // Update state to checking URL
     UpdateDownloadState(progress, DOWNLOAD_STATE_CHECKING_URL, L"Starting yt-dlp process");
@@ -1186,7 +1142,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
 
     if (!processCreated) {
         DWORD error = GetLastError();
-        DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create process");
+        ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create process");
         SAFE_FREE(cmdLine);
         CloseHandle(context->hOutputRead);
         CloseHandle(context->hOutputWrite);
@@ -1245,7 +1201,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
 
         // Check for cancellation
         if (IsCancellationRequested(&context->threadContext)) {
-            DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Cancellation requested");
+            ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Cancellation requested");
             TerminateProcess(pi.hProcess, 1);
             break;
         }
@@ -1254,9 +1210,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         DWORD currentTime = GetTickCount();
         DWORD elapsedTime = currentTime - startTime;
         if (elapsedTime > timeoutMs) {
-            wchar_t timeoutMsg[256];
-            swprintf(timeoutMsg, 256, L"YouTubeCacher: EnhancedSubprocessWorkerThread - Timeout after %lu seconds", timeoutMs / 1000);
-            DebugOutput(timeoutMsg);
+            ThreadSafeDebugOutputF(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Timeout after %lu seconds", timeoutMs / 1000);
             TerminateProcess(pi.hProcess, 1);
             UpdateDownloadState(progress, DOWNLOAD_STATE_FAILED, L"Download timed out");
             break;
@@ -1271,7 +1225,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         // Warn if no output for extended period (but process still running)
         DWORD timeSinceLastOutput = currentTime - lastOutputTime;
         if (processRunning && timeSinceLastOutput > NO_OUTPUT_WARNING_THRESHOLD && noOutputWarningTime == 0) {
-            DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - No output for 30+ seconds, but process still running");
+            ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - No output for 30+ seconds, but process still running");
             noOutputWarningTime = currentTime;
             UpdateDownloadState(progress, DOWNLOAD_STATE_DOWNLOADING, L"Download in progress (no progress info available)");
         }
@@ -1457,7 +1411,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     context->completed = TRUE;
     context->completionTime = GetTickCount();
 
-    DebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread completed");
+    ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread completed");
     return 0;
 }
 
