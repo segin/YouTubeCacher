@@ -215,17 +215,22 @@ BEGIN
     DEFPUSHBUTTON   "&OK", IDC_LOG_OK_BTN, 393, 275, 50, 18
 END
 
-// Multi-Download Dialog - Batch URL download interface
-// - Width: 350px = comfortable for URL entry
-// - Height: 250px = room for multiple URLs
-IDD_MULTI_DOWNLOAD DIALOGEX 0, 0, 350, 250
+// Multi-Download Dialog - Batch URL download interface with progress controls
+// - Width: 400px = comfortable for URL entry and status
+// - Height: 320px = room for URLs, progress, and buttons
+IDD_MULTI_DOWNLOAD DIALOGEX 0, 0, 400, 320
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Multi-Download"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT           "Enter YouTube URLs (one per line):", IDC_STATIC, 7, 7, 336, 12
-    EDITTEXT        IDC_MULTI_URL_EDIT, 7, 22, 336, 180, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_BORDER | WS_TABSTOP
-    LTEXT           "Status: Ready", IDC_MULTI_STATUS_LABEL, 7, 208, 200, 12
-    DEFPUSHBUTTON   "&Download", IDC_MULTI_DOWNLOAD_BTN, 230, 226, 55, 18
-    PUSHBUTTON      "Cancel", IDCANCEL, 290, 226, 50, 18
+    LTEXT           "Enter YouTube URLs (one per line):", IDC_STATIC, 7, 7, 386, 12
+    EDITTEXT        IDC_MULTI_URL_EDIT, 7, 22, 386, 180, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_BORDER | WS_TABSTOP
+    LTEXT           "", IDC_MULTI_CURRENT_LABEL, 7, 208, 386, 12, SS_PATHELLIPSIS
+    CONTROL         "", IDC_MULTI_PROGRESS_BAR, "msctls_progress32", WS_BORDER, 7, 222, 386, 14
+    LTEXT           "Status: Ready", IDC_MULTI_STATUS_LABEL, 7, 242, 250, 12
+    CONTROL         "Remove finished items", IDC_MULTI_REMOVE_FINISHED, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 7, 260, 100, 10
+    DEFPUSHBUTTON   "&Download", IDC_MULTI_DOWNLOAD_BTN, 178, 296, 55, 18
+    PUSHBUTTON      "&Pause", IDC_MULTI_PAUSE_BTN, 238, 296, 50, 18, WS_DISABLED
+    PUSHBUTTON      "&Stop", IDC_MULTI_STOP_BTN, 293, 296, 50, 18, WS_DISABLED
+    PUSHBUTTON      "Close", IDCANCEL, 348, 296, 45, 18
 END
