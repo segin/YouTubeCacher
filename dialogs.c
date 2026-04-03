@@ -1768,7 +1768,7 @@ INT_PTR ShowValidationError(HWND parent, const ValidationInfo* validationInfo) {
     
     wchar_t solutions[1024];
     if (validationInfo->suggestions) {
-        wcscpy(solutions, validationInfo->suggestions);
+        wcsncpy(solutions, validationInfo->suggestions, 1023); solutions[1023] = L'\0';
     } else {
         wcscpy(solutions, 
                  L"1. Download yt-dlp from https://github.com/yt-dlp/yt-dlp\r\n"
@@ -3039,7 +3039,7 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
     // Get URL from item
     EnterCriticalSection(&ctx->itemLock);
     wchar_t url[MAX_URL_LENGTH];
-    wcscpy(url, ctx->items[itemIndex].url);
+    wcsncpy(url, ctx->items[itemIndex].url, MAX_URL_LENGTH - 1); url[MAX_URL_LENGTH - 1] = L'\0';
     LeaveCriticalSection(&ctx->itemLock);
 
     // Create request for flat-playlist
@@ -3094,7 +3094,7 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
             memset(itemResult, 0, sizeof(MultiDlItemResult));
             itemResult->itemIndex = itemIndex;
             itemResult->success = FALSE;
-            wcscpy(itemResult->url, url);
+            wcsncpy(itemResult->url, url, MAX_URL_LENGTH - 1); itemResult->url[MAX_URL_LENGTH - 1] = L'\0';
             wcscpy(itemResult->title, L"Playlist resolution failed");
             PostMessageW(ctx->hDialog, WM_MULTI_DL_ITEM_DONE, 0, (LPARAM)itemResult);
         }
@@ -3544,7 +3544,7 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     EnterCriticalSection(&ctx->itemLock);
 
                     if (plResult->originalIndex >= 0 && plResult->originalIndex < ctx->itemCount) {
-                        wcscpy(origUrl, ctx->items[plResult->originalIndex].url);
+                        wcsncpy(origUrl, ctx->items[plResult->originalIndex].url, MAX_URL_LENGTH - 1); origUrl[MAX_URL_LENGTH - 1] = L'\0';
                         ctx->items[plResult->originalIndex].status = MULTI_DL_COMPLETE;
                         InterlockedIncrement(&ctx->completedCount);
                     }
