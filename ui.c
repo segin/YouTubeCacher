@@ -1866,7 +1866,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     return TRUE;
 
                 case ID_TOOLS_MULTI_DOWNLOAD:
-                    DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_MULTI_DOWNLOAD), hDlg, MultiDownloadDialogProc);
+                    DialogBoxParamW(GetModuleHandle(NULL), MAKEINTRESOURCEW(IDD_MULTI_DOWNLOAD), hDlg, MultiDownloadDialogProc, (LPARAM)hDlg);
                     return TRUE;
 
                 case IDC_TEXT_FIELD:

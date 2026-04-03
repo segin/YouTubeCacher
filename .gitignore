@@ -23,6 +23,17 @@ YouTubeCacher-log.txt
 
 # Error logs
 error.log
+build_error.txt
+build_log.txt
+
+# Debug artifacts
+*.gdb
+gdb_*.txt
+
 # Test artifacts
 tests/uri_functions.c
 tests/test_runner
+
+# yt-dlp test output
+ytdlp_help.txt
+ytdlp_playlist_test.txt
