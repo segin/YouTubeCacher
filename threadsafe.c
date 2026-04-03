@@ -472,6 +472,103 @@ BOOL SetSubprocessParentWindow(ThreadSafeSubprocessContext* context, HWND parent
 }
 
 /**
+ * Sanitize a command line by redacting sensitive information like authentication tokens in URLs
+ * Returns a new allocated string that must be freed with SAFE_FREE
+ */
+static wchar_t* SanitizeCommandLine(const wchar_t* cmdLine) {
+    if (!cmdLine) {
+        return NULL;
+    }
+
+    wchar_t* sanitized = SAFE_WCSDUP(cmdLine);
+    if (!sanitized) {
+        return NULL;
+    }
+
+    // List of sensitive parameter names to redact
+    static const wchar_t* sensitiveParams[] = {
+        L"token", L"auth", L"key", L"sig", L"signature",
+        L"pass", L"password", L"secret", L"access_token",
+        L"auth_token", L"sid", L"session", L"cookie"
+    };
+    const int numSensitiveParams = sizeof(sensitiveParams) / sizeof(sensitiveParams[0]);
+
+    // Search for URL-like strings (starting with http:// or https://)
+    wchar_t* currentPos = sanitized;
+    while (currentPos && *currentPos) {
+        wchar_t* urlStartHttp = wcsstr(currentPos, L"http://");
+        wchar_t* urlStartHttps = wcsstr(currentPos, L"https://");
+        wchar_t* urlStart = NULL;
+
+        if (urlStartHttp && urlStartHttps) {
+            urlStart = (urlStartHttp < urlStartHttps) ? urlStartHttp : urlStartHttps;
+        } else {
+            urlStart = urlStartHttp ? urlStartHttp : urlStartHttps;
+        }
+
+        if (!urlStart) {
+            break;
+        }
+
+        // Find end of URL (space, end of string, or common delimiters in command lines)
+        wchar_t* urlEnd = urlStart;
+        while (*urlEnd && *urlEnd != L' ' && *urlEnd != L'"' && *urlEnd != L'\'') {
+            urlEnd++;
+        }
+
+        // Process query parameters in this URL
+        wchar_t* queryStart = wcschr(urlStart, L'?');
+        if (queryStart && queryStart < urlEnd) {
+            wchar_t* paramPtr = queryStart + 1;
+            while (paramPtr < urlEnd) {
+                // Find '=' which separates key from value
+                wchar_t* equalSign = wcschr(paramPtr, L'=');
+                if (!equalSign || equalSign >= urlEnd) {
+                    break; // No more key-value pairs
+                }
+
+                // Find end of this parameter (next '&' or end of URL)
+                wchar_t* nextParam = wcschr(paramPtr, L'&');
+                if (!nextParam || nextParam > urlEnd) {
+                    nextParam = urlEnd;
+                }
+
+                // Check if this parameter is sensitive
+                size_t keyLen = equalSign - paramPtr;
+                BOOL isSensitive = FALSE;
+                for (int i = 0; i < numSensitiveParams; i++) {
+                    if (keyLen == wcslen(sensitiveParams[i]) &&
+                        _wcsnicmp(paramPtr, sensitiveParams[i], keyLen) == 0) {
+                        isSensitive = TRUE;
+                        break;
+                    }
+                }
+
+                if (isSensitive) {
+                    // Redact the value part
+                    wchar_t* valuePtr = equalSign + 1;
+                    while (valuePtr < nextParam) {
+                        *valuePtr = L'*';
+                        valuePtr++;
+                    }
+                }
+
+                // Move to next parameter
+                if (nextParam < urlEnd) {
+                    paramPtr = nextParam + 1;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        currentPos = urlEnd;
+    }
+
+    return sanitized;
+}
+
+/**
  * Start the subprocess with thread-safe execution
  */
 BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
@@ -503,29 +600,40 @@ BOOL StartThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
     }
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" %ls", context->executablePath, context->arguments);
 
+    // Sanitize command line for logging
+    wchar_t* sanitizedCmdLine = SanitizeCommandLine(cmdLine);
+
     // Log the command being executed for debugging
     wchar_t logMsg[8192];
-    int logLen = swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command: %ls", cmdLine);
+    int logLen = swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command: %ls",
+                         sanitizedCmdLine ? sanitizedCmdLine : L"[Sanitization Failed]");
     if (logLen > 0 && logLen < 8192) {
         ThreadSafeDebugOutput(logMsg);
     } else {
         // Command too long, log truncated version
-        swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command (truncated): %.500ls...", cmdLine);
+        swprintf(logMsg, 8192, L"StartThreadSafeSubprocess: Executing command (truncated): %.500ls...",
+                 sanitizedCmdLine ? sanitizedCmdLine : L"[Sanitization Failed]");
         ThreadSafeDebugOutput(logMsg);
     }
     
     // Log timestamp and command-line to session log
     SYSTEMTIME st;
     GetLocalTime(&st);
+
+    AppendToYtDlpSessionLog(L"\r\n========================================\r\n");
+
     wchar_t timestampMsg[512];
-    swprintf(timestampMsg, 512, 
-             L"\r\n========================================\r\n"
-             L"yt-dlp invocation started: %04d-%02d-%02d %02d:%02d:%02d\r\n"
-             L"Command: %ls\r\n"
-             L"========================================\r\n",
-             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
-             cmdLine);
+    swprintf(timestampMsg, 512, L"yt-dlp invocation started: %04d-%02d-%02d %02d:%02d:%02d\r\n",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
     AppendToYtDlpSessionLog(timestampMsg);
+
+    AppendToYtDlpSessionLog(L"Command: ");
+    AppendToYtDlpSessionLog(sanitizedCmdLine ? sanitizedCmdLine : L"[Sanitization Failed]");
+    AppendToYtDlpSessionLog(L"\r\n========================================\r\n");
+
+    if (sanitizedCmdLine) {
+        SAFE_FREE(sanitizedCmdLine);
+    }
 
     // Copy working directory if set
     wchar_t* workDir = NULL;
