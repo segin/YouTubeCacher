@@ -1,6 +1,6 @@
 #include "YouTubeCacher.h"
 
-static const char base64_chars[] = 
+static const char base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "abcdefghijklmnopqrstuvwxyz"
     "0123456789+/";
@@ -18,128 +18,144 @@ static const int base64_decode_table[128] = {
 
 char* Base64Encode(const unsigned char* data, size_t input_length) {
     if (!data || input_length == 0) return NULL;
-    
+
     size_t output_length = 4 * ((input_length + 2) / 3);
     char* encoded_data = (char*)SAFE_MALLOC(output_length + 1);
     if (!encoded_data) return NULL;
-    
+
     for (size_t i = 0, j = 0; i < input_length;) {
         uint32_t octet_a = i < input_length ? data[i++] : 0;
         uint32_t octet_b = i < input_length ? data[i++] : 0;
         uint32_t octet_c = i < input_length ? data[i++] : 0;
-        
+
         uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
-        
+
         encoded_data[j++] = base64_chars[(triple >> 3 * 6) & 0x3F];
         encoded_data[j++] = base64_chars[(triple >> 2 * 6) & 0x3F];
         encoded_data[j++] = base64_chars[(triple >> 1 * 6) & 0x3F];
         encoded_data[j++] = base64_chars[(triple >> 0 * 6) & 0x3F];
     }
-    
+
     // Add padding
     size_t mod_table[] = {0, 2, 1};
     for (size_t i = 0; i < mod_table[input_length % 3]; i++)
         encoded_data[output_length - 1 - i] = '=';
-    
+
     encoded_data[output_length] = '\0';
     return encoded_data;
 }
 
 unsigned char* Base64Decode(const char* data, size_t* output_length) {
     if (!data) return NULL;
-    
+
     size_t input_length = strlen(data);
+    if (input_length == 0) {
+        if (output_length) *output_length = 0;
+        return NULL;
+    }
+
     if (input_length % 4 != 0) return NULL;
-    
+
     // Validate all characters are valid base64
     for (size_t i = 0; i < input_length; i++) {
         unsigned char c = (unsigned char)data[i];
-        if (c == '=') continue; // Padding is valid
+        if (c == '=') {
+            padding_count++;
+            // Padding can only be at the end (last or second to last)
+            if (i < input_length - 2 || (i == input_length - 2 && data[i + 1] != '=')) {
+                return NULL;
+            }
+            continue;
+        }
+        if (padding_count > 0) {
+            // Character after padding is invalid
+            return NULL;
+        }
         if (c >= 128 || base64_decode_table[c] == -1) {
             // Invalid character found
             return NULL;
         }
     }
-    
+
     *output_length = input_length / 4 * 3;
     if (data[input_length - 1] == '=') (*output_length)--;
     if (data[input_length - 2] == '=') (*output_length)--;
-    
+
     unsigned char* decoded_data = (unsigned char*)SAFE_MALLOC(*output_length);
     if (!decoded_data) return NULL;
-    
+
     for (size_t i = 0, j = 0; i < input_length;) {
         uint32_t sextet_a = data[i] == '=' ? (i++, 0) : (uint32_t)base64_decode_table[(int)data[i++]];
         uint32_t sextet_b = data[i] == '=' ? (i++, 0) : (uint32_t)base64_decode_table[(int)data[i++]];
         uint32_t sextet_c = data[i] == '=' ? (i++, 0) : (uint32_t)base64_decode_table[(int)data[i++]];
         uint32_t sextet_d = data[i] == '=' ? (i++, 0) : (uint32_t)base64_decode_table[(int)data[i++]];
-        
+
         uint32_t triple = (sextet_a << 3 * 6) + (sextet_b << 2 * 6) + (sextet_c << 1 * 6) + (sextet_d << 0 * 6);
-        
+
         if (j < *output_length) decoded_data[j++] = (triple >> 2 * 8) & 0xFF;
         if (j < *output_length) decoded_data[j++] = (triple >> 1 * 8) & 0xFF;
         if (j < *output_length) decoded_data[j++] = (triple >> 0 * 8) & 0xFF;
     }
-    
+
     return decoded_data;
 }
 
 wchar_t* Base64EncodeWide(const wchar_t* input) {
-    if (!input) return NULL;
-    
+    if (!input || input[0] == L'\0') return NULL;
+
     // Convert wide string to UTF-8
     int utf8_size = WideCharToMultiByte(CP_UTF8, 0, input, -1, NULL, 0, NULL, NULL);
     if (utf8_size <= 0) return NULL;
-    
+
     char* utf8_data = (char*)SAFE_MALLOC(utf8_size);
     if (!utf8_data) return NULL;
-    
+
     WideCharToMultiByte(CP_UTF8, 0, input, -1, utf8_data, utf8_size, NULL, NULL);
-    
+
     // Encode to base64
     char* base64_data = Base64Encode((unsigned char*)utf8_data, utf8_size - 1); // -1 to exclude null terminator
     SAFE_FREE(utf8_data);
-    
+
     if (!base64_data) return NULL;
-    
+
     // Convert base64 result to wide string
     int wide_size = MultiByteToWideChar(CP_UTF8, 0, base64_data, -1, NULL, 0);
     if (wide_size <= 0) {
         SAFE_FREE(base64_data);
         return NULL;
     }
-    
+
     wchar_t* wide_result = (wchar_t*)SAFE_MALLOC(wide_size * sizeof(wchar_t));
     if (!wide_result) {
         SAFE_FREE(base64_data);
         return NULL;
     }
-    
+
     MultiByteToWideChar(CP_UTF8, 0, base64_data, -1, wide_result, wide_size);
     SAFE_FREE(base64_data);
-    
+
     return wide_result;
 }
 
 wchar_t* Base64DecodeWide(const wchar_t* input) {
-    if (!input) return NULL;
-    
+    if (!input || input[0] == L'\0') return NULL;
+
     // Convert wide string to UTF-8
     int utf8_size = WideCharToMultiByte(CP_UTF8, 0, input, -1, NULL, 0, NULL, NULL);
     if (utf8_size <= 0) return NULL;
-    
+
     char* utf8_data = (char*)SAFE_MALLOC(utf8_size);
     if (!utf8_data) return NULL;
-    
+
     WideCharToMultiByte(CP_UTF8, 0, input, -1, utf8_data, utf8_size, NULL, NULL);
-    
+
     // Decode from base64
     size_t decoded_length;
     unsigned char* decoded_data = Base64Decode(utf8_data, &decoded_length);
     SAFE_FREE(utf8_data);
-    
+
     if (!decoded_data) return NULL;
-    
+
     // Add null terminator to decoded data
     unsigned char* null_terminated = (unsigned char*)SAFE_REALLOC(decoded_data, decoded_length + 1);
     if (!null_terminated) {
@@ -147,22 +163,22 @@ wchar_t* Base64DecodeWide(const wchar_t* input) {
         return NULL;
     }
     null_terminated[decoded_length] = '\0';
-    
+
     // Convert back to wide string
     int wide_size = MultiByteToWideChar(CP_UTF8, 0, (char*)null_terminated, -1, NULL, 0);
     if (wide_size <= 0) {
         SAFE_FREE(null_terminated);
         return NULL;
     }
-    
+
     wchar_t* wide_result = (wchar_t*)SAFE_MALLOC(wide_size * sizeof(wchar_t));
     if (!wide_result) {
         SAFE_FREE(null_terminated);
         return NULL;
     }
-    
+
     MultiByteToWideChar(CP_UTF8, 0, (char*)null_terminated, -1, wide_result, wide_size);
     SAFE_FREE(null_terminated);
-    
+
     return wide_result;
 }
