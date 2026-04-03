@@ -24,6 +24,9 @@ typedef wchar_t WCHAR;
 typedef void* LPVOID;
 typedef void* LPWSTR;
 typedef const wchar_t* LPCWSTR;
+typedef intptr_t INT_PTR;
+
+#define MAX_PATH 260
 
 #ifndef TRUE
 #define TRUE 1
@@ -241,6 +244,11 @@ static inline wchar_t* SAFE_WCSDUP(const wchar_t* str) {
     wchar_t* dup = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
     if (dup) wcscpy(dup, str);
     return dup;
+}
+
+static inline int _wtoi(const wchar_t* str) {
+    if (!str) return 0;
+    return (int)wcstol(str, NULL, 10);
 }
 
 #endif // MOCK_WINDOWS_H

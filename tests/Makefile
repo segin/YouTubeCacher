@@ -5,10 +5,20 @@ CC = /mingw64/bin/gcc.exe
 CFLAGS = -Wall -Wextra -I. -DTEST_BUILD
 RM = /usr/bin/rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe
+all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe test_settings
 
 test_cache_duration: test_cache_duration.c cache_duration.c
 	$(CC) $(CFLAGS) test_cache_duration.c cache_duration.c -o $@
+
+test_settings: test_settings.c settings_logic.c
+	$(CC) $(CFLAGS) test_settings.c settings_logic.c -o $@
+
+settings_logic.c: ../settings.c
+	echo '#include "mock_windows.h"' > $@
+	echo '#include <wchar.h>' >> $@
+	echo '#include <wctype.h>' >> $@
+	echo '#include <stdio.h>' >> $@
+	/usr/bin/sed -n '/void FormatDuration/,/^}/p' ../settings.c >> $@
 
 cache_duration.c: ../cache.c
 	echo '#include <wchar.h>' > $@
@@ -38,14 +48,21 @@ test_base64: test_base64.c
 test_threadsafe: test_threadsafe.c mock_windows.h ../threadsafe.c
 	$(CC) $(CFLAGS) test_threadsafe.c -o $@
 
+test_error: test_error.c error_logic.c
+	$(CC) $(CFLAGS) test_error.c -o $@
+
+error_logic.c: ../error.c
+	/usr/bin/sed -n '/BOOL IsRecoverableError/,/^}/p' ../error.c > $@
+
 run: all
 	./test_cache_duration
 	./test_parser_classify
 	./test_uri
 	./test_base64
 	./test_threadsafe
+	./test_settings
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c
 
 .PHONY: all run clean

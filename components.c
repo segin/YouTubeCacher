@@ -342,7 +342,8 @@ BOOL ValidateFileBrowser(FileBrowserComponent* component, wchar_t* errorMsg, siz
     
     if (!component->currentPath || component->currentPath[0] == L'\0') {
         if (errorMsg && errorMsgSize > 0) {
-            swprintf(errorMsg, errorMsgSize, L"%s is required", component->label);
+            _snwprintf(errorMsg, errorMsgSize, L"%ls is required", component->label);
+            errorMsg[errorMsgSize - 1] = L'\0';
         }
         return FALSE;
     }
@@ -351,7 +352,8 @@ BOOL ValidateFileBrowser(FileBrowserComponent* component, wchar_t* errorMsg, siz
     DWORD attrs = GetFileAttributesW(component->currentPath);
     if (attrs == INVALID_FILE_ATTRIBUTES) {
         if (errorMsg && errorMsgSize > 0) {
-            swprintf(errorMsg, errorMsgSize, L"File does not exist: %s", component->currentPath);
+            _snwprintf(errorMsg, errorMsgSize, L"File does not exist: %ls", component->currentPath);
+            errorMsg[errorMsgSize - 1] = L'\0';
         }
         return FALSE;
     }
@@ -359,7 +361,8 @@ BOOL ValidateFileBrowser(FileBrowserComponent* component, wchar_t* errorMsg, siz
     // Check if it's a file (not a directory)
     if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
         if (errorMsg && errorMsgSize > 0) {
-            swprintf(errorMsg, errorMsgSize, L"Path is a directory, not a file: %s", component->currentPath);
+            _snwprintf(errorMsg, errorMsgSize, L"Path is a directory, not a file: %ls", component->currentPath);
+            errorMsg[errorMsgSize - 1] = L'\0';
         }
         return FALSE;
     }
@@ -615,7 +618,8 @@ BOOL ValidateFolderBrowser(FolderBrowserComponent* component, wchar_t* errorMsg,
     
     if (!component->currentPath || component->currentPath[0] == L'\0') {
         if (errorMsg && errorMsgSize > 0) {
-            swprintf(errorMsg, errorMsgSize, L"%s is required", component->label);
+            _snwprintf(errorMsg, errorMsgSize, L"%ls is required", component->label);
+            errorMsg[errorMsgSize - 1] = L'\0';
         }
         return FALSE;
     }
@@ -624,7 +628,8 @@ BOOL ValidateFolderBrowser(FolderBrowserComponent* component, wchar_t* errorMsg,
     DWORD attrs = GetFileAttributesW(component->currentPath);
     if (attrs == INVALID_FILE_ATTRIBUTES) {
         if (errorMsg && errorMsgSize > 0) {
-            swprintf(errorMsg, errorMsgSize, L"Folder does not exist: %s", component->currentPath);
+            _snwprintf(errorMsg, errorMsgSize, L"Folder does not exist: %ls", component->currentPath);
+            errorMsg[errorMsgSize - 1] = L'\0';
         }
         return FALSE;
     }
@@ -632,7 +637,8 @@ BOOL ValidateFolderBrowser(FolderBrowserComponent* component, wchar_t* errorMsg,
     // Check if it's a directory (not a file)
     if (!(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
         if (errorMsg && errorMsgSize > 0) {
-            swprintf(errorMsg, errorMsgSize, L"Path is a file, not a folder: %s", component->currentPath);
+            _snwprintf(errorMsg, errorMsgSize, L"Path is a file, not a folder: %ls", component->currentPath);
+            errorMsg[errorMsgSize - 1] = L'\0';
         }
         return FALSE;
     }
@@ -785,7 +791,8 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
     // Check if required and empty
     if (component->isRequired && value[0] == L'\0') {
         if (errorMsg && errorMsgSize > 0) {
-            swprintf(errorMsg, errorMsgSize, L"%s is required", component->label);
+            _snwprintf(errorMsg, errorMsgSize, L"%ls is required", component->label);
+            errorMsg[errorMsgSize - 1] = L'\0';
         }
         // Show error message
         SetWindowTextW(component->hwndError, errorMsg);
@@ -807,7 +814,8 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
             for (size_t i = 0; value[i] != L'\0'; i++) {
                 if (!iswdigit(value[i]) && value[i] != L'.' && value[i] != L'-') {
                     if (errorMsg && errorMsgSize > 0) {
-                        swprintf(errorMsg, errorMsgSize, L"%s must be numeric", component->label);
+                        _snwprintf(errorMsg, errorMsgSize, L"%ls must be numeric", component->label);
+                        errorMsg[errorMsgSize - 1] = L'\0';
                     }
                     SetWindowTextW(component->hwndError, errorMsg);
                     ShowWindow(component->hwndError, SW_SHOW);
@@ -822,7 +830,8 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
                 DWORD attrs = GetFileAttributesW(value);
                 if (attrs == INVALID_FILE_ATTRIBUTES) {
                     if (errorMsg && errorMsgSize > 0) {
-                        swprintf(errorMsg, errorMsgSize, L"Path does not exist: %s", value);
+                        _snwprintf(errorMsg, errorMsgSize, L"Path does not exist: %ls", value);
+                        errorMsg[errorMsgSize - 1] = L'\0';
                     }
                     SetWindowTextW(component->hwndError, errorMsg);
                     ShowWindow(component->hwndError, SW_SHOW);
@@ -836,7 +845,8 @@ BOOL ValidateLabeledTextInput(LabeledTextInput* component, wchar_t* errorMsg, si
             if (value[0] != L'\0') {
                 if (wcsncmp(value, L"http://", 7) != 0 && wcsncmp(value, L"https://", 8) != 0) {
                     if (errorMsg && errorMsgSize > 0) {
-                        swprintf(errorMsg, errorMsgSize, L"%s must be a valid URL", component->label);
+                        _snwprintf(errorMsg, errorMsgSize, L"%ls must be a valid URL", component->label);
+                        errorMsg[errorMsgSize - 1] = L'\0';
                     }
                     SetWindowTextW(component->hwndError, errorMsg);
                     ShowWindow(component->hwndError, SW_SHOW);
@@ -1045,7 +1055,8 @@ void ShowValidationErrors(HWND hDlg, ComponentValidationSummary* summary) {
         
         if (errorCount > 1) {
             wchar_t summaryMsg[512];
-            swprintf(summaryMsg, 512, L"Please correct %d validation errors before continuing.", errorCount);
+            _snwprintf(summaryMsg, 512, L"Please correct %d validation errors before continuing.", errorCount);
+            summaryMsg[511] = L'\0';
             MessageBoxW(hDlg, summaryMsg, L"Validation Errors", MB_OK | MB_ICONWARNING);
         }
     }

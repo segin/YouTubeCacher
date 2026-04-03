@@ -439,6 +439,90 @@ typedef struct {
     CachedVideoMetadata* cachedMetadata;
 } GetInfoContext;
 
+// Multi-Download custom window messages
+#define WM_MULTI_DL_PROGRESS         (WM_USER + 210)
+#define WM_MULTI_DL_ITEM_DONE        (WM_USER + 211)
+#define WM_MULTI_DL_ALL_DONE         (WM_USER + 212)
+#define WM_MULTI_DL_PLAYLIST_RESOLVED (WM_USER + 213)
+#define WM_MULTI_DL_STATUS           (WM_USER + 214)
+
+// Per-URL download item status
+typedef enum {
+    MULTI_DL_PENDING,
+    MULTI_DL_RESOLVING,
+    MULTI_DL_DOWNLOADING,
+    MULTI_DL_PAUSED,
+    MULTI_DL_COMPLETE,
+    MULTI_DL_FAILED,
+    MULTI_DL_CANCELLED
+} MultiDlItemStatus;
+
+// Per-URL download item
+typedef struct {
+    wchar_t url[MAX_URL_LENGTH];
+    wchar_t title[512];
+    MultiDlItemStatus status;
+    int progressPercent;
+} MultiDlItem;
+
+// Heap-allocated data for WM_MULTI_DL_ITEM_DONE
+typedef struct {
+    int itemIndex;
+    BOOL success;
+    wchar_t title[512];
+    wchar_t filePath[MAX_EXTENDED_PATH];
+    wchar_t url[MAX_URL_LENGTH];
+} MultiDlItemResult;
+
+// Heap-allocated data for WM_MULTI_DL_PROGRESS
+typedef struct {
+    int itemIndex;
+    int percentage;
+    wchar_t status[256];
+} MultiDlProgressData;
+
+// Heap-allocated data for WM_MULTI_DL_PLAYLIST_RESOLVED
+typedef struct {
+    int originalIndex;
+    wchar_t** urls;
+    wchar_t** titles;
+    int urlCount;
+} MultiDlPlaylistResult;
+
+// Multi-download batch context
+typedef struct {
+    HWND hDialog;
+    HWND hMainWindow;
+
+    // Download queue
+    MultiDlItem* items;
+    int itemCount;
+    int itemCapacity;
+    CRITICAL_SECTION itemLock;
+
+    // Thread management
+    HANDLE hCoordinatorThread;
+    volatile LONG stopRequested;
+    volatile LONG pauseRequested;
+    HANDLE hPauseEvent;          // Manual-reset event, signaled = not paused
+
+    // Statistics
+    volatile LONG completedCount;
+    volatile LONG failedCount;
+    int maxConcurrent;           // Default 3
+} MultiDownloadContext;
+
+// Multi-download worker thread functions
+DWORD WINAPI MultiDlCoordinatorThread(LPVOID lpParam);
+DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam);
+DWORD WINAPI MultiDlSingleDownloadThread(LPVOID lpParam);
+
+// Per-download thread context
+typedef struct {
+    MultiDownloadContext* batchCtx;
+    int itemIndex;
+} MultiDlWorkerContext;
+
 // Video metadata and download function prototypes moved to ytdlp.h
 
 // Error logging functions moved to ui.h

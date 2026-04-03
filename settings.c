@@ -163,7 +163,7 @@ void FormatDuration(wchar_t* duration, size_t bufferSize) {
         if (len == 1 && iswdigit(duration[0])) {
             // Single digit - treat as seconds and format as "00:0X"
             wchar_t temp[32];
-            swprintf(temp, 32, L"00:0%lc", duration[0]);
+            swprintf(temp, 32, L"00:0%lc", (wint_t)duration[0]);
             wcsncpy(duration, temp, bufferSize - 1);
             duration[bufferSize - 1] = L'\0';
         }
