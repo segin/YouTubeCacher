@@ -118,7 +118,6 @@ const wchar_t* GetYtDlpSessionLogLast(void);
 // State change notification
 typedef void (*StateChangeCallback)(const char* stateType, void* newValue, void* userData);
 void RegisterStateChangeCallback(StateChangeCallback callback, void* userData);
-void UnregisterStateChangeCallback(StateChangeCallback callback);
 void NotifyStateChange(const char* stateType, void* newValue);
 
 // Brush type constants
