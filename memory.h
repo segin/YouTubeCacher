@@ -15,23 +15,25 @@ typedef struct {
     SYSTEMTIME allocTime;
 } AllocationInfo;
 
+
 // Memory manager global state
 typedef struct {
     // Allocation tracking
     AllocationInfo* allocations;
     size_t allocationCount;
     size_t allocationCapacity;
-
+    
+    
     // Statistics
     size_t totalAllocated;
     size_t totalFreed;
     size_t peakUsage;
     size_t currentUsage;
-
+    
     // Configuration
     BOOL leakDetectionEnabled;
     BOOL verboseLogging;
-
+    
     // Synchronization
     CRITICAL_SECTION lock;
     BOOL initialized;
@@ -269,7 +271,7 @@ typedef void (*MemoryErrorCallback)(const MemoryError* error);
 // Memory error handling functions
 void SetMemoryErrorCallback(MemoryErrorCallback callback);
 MemoryErrorCallback GetMemoryErrorCallback(void);
-void ReportMemoryError(MemoryErrorType type, void* address, size_t size,
+void ReportMemoryError(MemoryErrorType type, void* address, size_t size, 
                       const char* file, int line, const wchar_t* description);
 void ClearMemoryErrorCallback(void);
 

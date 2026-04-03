@@ -52,6 +52,7 @@ static void CaptureStackTrace(void** stackTrace, int* stackDepth);
 #define INITIAL_ALLOCATION_TABLE_SIZE 1024
 #define ALLOCATION_TABLE_GROWTH_FACTOR 2
 
+
 BOOL InitializeMemoryManager(void)
 {
     if (g_memoryManager.initialized) {
@@ -69,6 +70,7 @@ BOOL InitializeMemoryManager(void)
         DeleteCriticalSection(&g_memoryManager.lock);
         return FALSE;
     }
+
 
     // Initialize memory manager state
     g_memoryManager.allocationCapacity = INITIAL_ALLOCATION_TABLE_SIZE;
@@ -106,6 +108,7 @@ void CleanupMemoryManager(void)
 
     // Cleanup memory pools first
     CleanupMemoryPools();
+
 
     // Free the allocation tracking table
     if (g_memoryManager.allocations) {
@@ -378,7 +381,6 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
 
-        // Use linear search for lookup and removal
         if (RemoveAllocationRecord(ptr, &oldSize)) {
             wasTracked = TRUE;
         }
@@ -651,13 +653,13 @@ static BOOL AddAllocationRecord(void* address, size_t size, const char* file, in
     alloc->threadId = GetCurrentThreadId();
     GetSystemTime(&alloc->allocTime);
 
+
     g_memoryManager.allocationCount++;
     return TRUE;
 }
 
 static BOOL RemoveAllocationRecord(void* address, size_t* outSize)
 {
-    // Use linear search only - hash table is too complex and error-prone
     for (size_t i = 0; i < g_memoryManager.allocationCount; i++) {
         if (g_memoryManager.allocations[i].address == address) {
             // Store size for caller
@@ -680,6 +682,10 @@ static BOOL RemoveAllocationRecord(void* address, size_t* outSize)
     return FALSE;
 }
 
+
+
+
+
 static void ExpandAllocationTable(void)
 {
     size_t newCapacity = g_memoryManager.allocationCapacity * ALLOCATION_TABLE_GROWTH_FACTOR;
@@ -692,6 +698,7 @@ static void ExpandAllocationTable(void)
         g_memoryManager.allocationCapacity = newCapacity;
     }
 }
+
 
 // Safe string management function implementations
 wchar_t* SafeWcsDup(const wchar_t* str, const char* file, int line)
@@ -2203,9 +2210,7 @@ static BOOL RecoverFromMemoryAllocationFailure(const void* context) {
     // This would need application-specific implementation
 
     // For now, just log the recovery attempt
-    wchar_t recoveryMsg[256];
-    swprintf(recoveryMsg, 256, L"Attempted memory recovery for %zu bytes", requestedSize);
-    DebugOutput(recoveryMsg);
+    ThreadSafeDebugOutputF(L"Attempted memory recovery for %zu bytes", requestedSize);
 
     // Return FALSE to indicate recovery was attempted but may not have succeeded
     // The caller should still handle the allocation failure gracefully

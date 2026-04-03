@@ -1,18 +1,34 @@
 #include "YouTubeCacher.h"
+#include <bcrypt.h>
+
+// Helper function to generate a cryptographically secure random unique name
+static void GenerateSecureRandomName(wchar_t* buffer, size_t bufferSize) {
+    unsigned long long randomVal = 0;
+    // Attempt to use BCryptGenRandom for cryptographically secure random numbers (CNG API)
+    // We use BCRYPT_USE_SYSTEM_PREFERRED_RNG with NULL for the algorithm handle
+    if (BCryptGenRandom(NULL, (BYTE*)&randomVal, sizeof(randomVal), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0) {
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%016llx", randomVal);
+    } else {
+        // Fallback to GetTickCount only if BCryptGenRandom fails (should not happen on Windows 10+)
+        // We add ProcessId to increase entropy in the fallback case
+        swprintf(buffer, bufferSize, L"YouTubeCacher_%lu_%lu", GetTickCount(), GetCurrentProcessId());
+    }
+}
+
 
 // Function to install yt-dlp using winget
 void InstallYtDlpWithWinget(HWND hParent) {
     ThreadSafeDebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - Starting yt-dlp installation");
-    
+
     // Create process to run winget install yt-dlp
     STARTUPINFOW si = {0};
     PROCESS_INFORMATION pi = {0};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_SHOW; // Show the command window so user can see progress
-    
+
     wchar_t cmdLine[] = L"winget install yt-dlp";
-    
+
     // Create the process using new error handling
     BOOL processCreated = CreateProcessW(
         NULL,           // No module name (use command line)
@@ -26,14 +42,14 @@ void InstallYtDlpWithWinget(HWND hParent) {
         &si,            // Pointer to STARTUPINFO structure
         &pi             // Pointer to PROCESS_INFORMATION structure
     );
-    
+
     if (!processCreated) {
         DWORD error = GetLastError();
-        
+
         // Report error using new error handling system
-        REPORT_ERROR_MSG(YTC_SEVERITY_WARNING, YTC_ERROR_SUBPROCESS_FAILED, 
+        REPORT_ERROR_MSG(YTC_SEVERITY_WARNING, YTC_ERROR_SUBPROCESS_FAILED,
                         L"winget process creation failed with error %lu", error);
-        
+
         // Create unified warning dialog for WinGet not available
         static wchar_t details[512];
         swprintf(details, 512, L"Process creation failed with error code: %lu\r\n\r\n"
@@ -42,14 +58,14 @@ void InstallYtDlpWithWinget(HWND hParent) {
                               L"- Windows 11 (all versions)\r\n\r\n"
                               L"winget is typically installed automatically when an admin user first logs in to modern Windows systems.",
                               error);
-        
+
         static wchar_t diagnostics[512];
         wcscpy(diagnostics, L"The system was unable to execute the 'winget install yt-dlp' command. This could be due to:\r\n\r\n"
                            L"• Running Windows 10 version older than 1809\r\n"
                            L"• Running Windows 8.1 or earlier\r\n"
                            L"• winget not properly initialized (rare on supported systems)\r\n\r\n"
                            L"winget is an integral part of Windows and cannot be installed separately on older versions.");
-        
+
         static wchar_t solutions[512];
         wcscpy(solutions, L"Manual yt-dlp Installation:\r\n"
                          L"1. Visit: https://github.com/yt-dlp/yt-dlp/releases\r\n"
@@ -58,7 +74,7 @@ void InstallYtDlpWithWinget(HWND hParent) {
                          L"4. Place it anywhere and configure the path in File > Settings\r\n\r\n"
                          L"Alternative Solution:\r\n"
                          L"• Update to Windows 10 (version 1809+) or Windows 11 to get winget support");
-        
+
         UnifiedDialogConfig config = {0};
         config.dialogType = UNIFIED_DIALOG_WARNING;
         config.title = L"winget Not Available";
@@ -71,13 +87,13 @@ void InstallYtDlpWithWinget(HWND hParent) {
         config.tab3_name = L"Solutions";
         config.showDetailsButton = TRUE;
         config.showCopyButton = TRUE;
-        
+
         ShowUnifiedDialog(hParent, &config);
         return;
     }
-    
+
     ThreadSafeDebugOutput(L"YouTubeCacher: InstallYtDlpWithWinget - WinGet process started successfully");
-    
+
     // Show simple informational dialog about installation progress using unified dialog
     UnifiedDialogConfig config = {0};
     config.dialogType = UNIFIED_DIALOG_INFO;
@@ -90,9 +106,9 @@ void InstallYtDlpWithWinget(HWND hParent) {
     config.tab1_name = L"Details";
     config.showDetailsButton = TRUE;
     config.showCopyButton = TRUE;
-    
+
     ShowUnifiedDialog(hParent, &config);
-    
+
     // Don't wait for the process - let it run independently
     // Close handles to avoid resource leaks
     SAFE_CLOSE_HANDLE(pi.hProcess);
@@ -105,62 +121,55 @@ BOOL ValidateYtDlpExecutable(const wchar_t* path) {
     if (!path || wcslen(path) == 0) {
         return FALSE;
     }
-    
+
     // Check if file exists
     DWORD attributes = GetFileAttributesW(path);
     if (attributes == INVALID_FILE_ATTRIBUTES) {
         return FALSE;
     }
-    
+
     // Check if it's a file (not a directory)
     if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
         return FALSE;
     }
-    
+
     // Check if it's an executable file (has .exe, .cmd, .bat, .py, or .ps1 extension)
     const wchar_t* ext = wcsrchr(path, L'.');
     if (ext != NULL) {
-        // Convert extension to lowercase for comparison
-        wchar_t lowerExt[10];
-        wcscpy(lowerExt, ext);
-        for (int i = 0; lowerExt[i]; i++) {
-            lowerExt[i] = towlower(lowerExt[i]);
-        }
-        
-        if (wcscmp(lowerExt, L".exe") == 0 ||
-            wcscmp(lowerExt, L".cmd") == 0 ||
-            wcscmp(lowerExt, L".bat") == 0 ||
-            wcscmp(lowerExt, L".py") == 0 ||
-            wcscmp(lowerExt, L".ps1") == 0) {
+        if (_wcsicmp(ext, L".exe") == 0 ||
+            _wcsicmp(ext, L".cmd") == 0 ||
+            _wcsicmp(ext, L".bat") == 0 ||
+            _wcsicmp(ext, L".py") == 0 ||
+            _wcsicmp(ext, L".ps1") == 0) {
             return TRUE;
         }
     }
-    
+
     return FALSE;
 }
 BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
     if (!config) return FALSE;
-    
+
     // Initialize with default values
     memset(config, 0, sizeof(YtDlpConfig));
-    
+
     // Load yt-dlp path from registry or use default
     if (!LoadSettingFromRegistry(REG_YTDLP_PATH, config->ytDlpPath, MAX_EXTENDED_PATH)) {
         GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
     }
-    
+
     // Load custom yt-dlp arguments from registry
     if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
         // Use empty default if not found in registry
         config->defaultArgs[0] = L'\0';
     }
-    
+
     // Set default timeout
     config->timeoutSeconds = 300; // 5 minutes
     config->tempDirStrategy = TEMP_DIR_SYSTEM;
     config->enableVerboseLogging = FALSE;
     config->autoRetryOnFailure = FALSE;
-    
+
     return TRUE;
 }
 
@@ -171,10 +180,10 @@ void CleanupYtDlpConfig(YtDlpConfig* config) {
 
 BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info) {
     if (!path || !info) return FALSE;
-    
+
     // Initialize validation info
     memset(info, 0, sizeof(ValidationInfo));
-    
+
     // Use existing validation function
     if (ValidateYtDlpExecutable(path)) {
         info->result = VALIDATION_OK;
@@ -193,7 +202,7 @@ BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info) {
 
 void FreeValidationInfo(ValidationInfo* info) {
     if (!info) return;
-    
+
     if (info->version) {
         SAFE_FREE(info->version);
         info->version = NULL;
@@ -211,23 +220,23 @@ void FreeValidationInfo(ValidationInfo* info) {
 YtDlpRequest* CreateYtDlpRequest(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath) {
     YtDlpRequest* request = (YtDlpRequest*)SAFE_MALLOC(sizeof(YtDlpRequest));
     if (!request) return NULL;
-    
+
     memset(request, 0, sizeof(YtDlpRequest));
     request->operation = operation;
-    
+
     if (url) {
         request->url = SAFE_WCSDUP(url);
     }
     if (outputPath) {
         request->outputPath = SAFE_WCSDUP(outputPath);
     }
-    
+
     return request;
 }
 
 void FreeYtDlpRequest(YtDlpRequest* request) {
     if (!request) return;
-    
+
     if (request->url) {
         SAFE_FREE(request->url);
         request->url = NULL;
@@ -244,13 +253,13 @@ void FreeYtDlpRequest(YtDlpRequest* request) {
         SAFE_FREE(request->customArgs);
         request->customArgs = NULL;
     }
-    
+
     SAFE_FREE(request);
 }
 
 BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize) {
     (void)config; // Unused parameter
-    
+
     // Get system temp directory
     DWORD result = GetTempPathW((DWORD)tempDirSize, tempDir);
     if (result == 0 || result >= tempDirSize) {
@@ -265,9 +274,9 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
             wcscpy(tempDir, L".");
         }
     }
-    
+
     // Validate that we're not trying to use a system directory
-    if (wcsstr(tempDir, L"\\Windows\\") != NULL || 
+    if (wcsstr(tempDir, L"\\Windows\\") != NULL ||
         wcsstr(tempDir, L"\\System32\\") != NULL ||
         wcsstr(tempDir, L"\\SysWOW64\\") != NULL) {
         // Force fallback to user's local app data
@@ -280,18 +289,18 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
             wcscpy(tempDir, L".\\temp");
         }
     }
-    
+
     // Append unique subdirectory name
     wchar_t uniqueName[64];
-    swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
-    
+    GenerateSecureRandomName(uniqueName, 64);
+
     if (wcslen(tempDir) + wcslen(uniqueName) + 2 >= tempDirSize) {
         return FALSE;
     }
-    
+
     wcscat(tempDir, L"\\");
     wcscat(tempDir, uniqueName);
-    
+
     // Create the directory (and parent directories if needed)
     wchar_t parentDir[MAX_EXTENDED_PATH];
     wcscpy(parentDir, tempDir);
@@ -300,7 +309,7 @@ BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tem
         *lastSlash = L'\0';
         CreateDirectoryW(parentDir, NULL); // Create parent if it doesn't exist
     }
-    
+
     return CreateDirectoryW(tempDir, NULL);
 }
 
@@ -310,10 +319,10 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
     HRESULT hr = SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &localAppDataW);
     if (SUCCEEDED(hr) && localAppDataW) {
         wchar_t uniqueName[64];
-        swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
+        GenerateSecureRandomName(uniqueName, 64);
         swprintf(tempPath, pathSize, L"%ls\\YouTubeCacher\\Temp\\%ls", localAppDataW, uniqueName);
         CoTaskMemFree(localAppDataW);
-        
+
         // Create parent directories
         wchar_t parentDir[MAX_EXTENDED_PATH];
         wcscpy(parentDir, tempPath);
@@ -330,23 +339,23 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
             }
             CreateDirectoryW(parentDir, NULL);
         }
-        
+
         if (CreateDirectoryW(tempPath, NULL)) {
             return TRUE;
         }
     }
-    
+
     // Try system temp directory as second option
     DWORD result = GetTempPathW((DWORD)pathSize, tempPath);
     if (result > 0 && result < pathSize) {
         // Validate it's not a system directory
-        if (wcsstr(tempPath, L"\\Windows\\") == NULL && 
+        if (wcsstr(tempPath, L"\\Windows\\") == NULL &&
             wcsstr(tempPath, L"\\System32\\") == NULL &&
             wcsstr(tempPath, L"\\SysWOW64\\") == NULL) {
-            
+
             wchar_t uniqueName[64];
-            swprintf(uniqueName, 64, L"YouTubeCacher_%lu", GetTickCount());
-            
+            GenerateSecureRandomName(uniqueName, 64);
+
             if (wcslen(tempPath) + wcslen(uniqueName) + 1 < pathSize) {
                 wcscat(tempPath, uniqueName);
                 if (CreateDirectoryW(tempPath, NULL)) {
@@ -355,7 +364,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
             }
         }
     }
-    
+
     // Final fallback to current directory
     wcscpy(tempPath, L".\\temp");
     return CreateDirectoryW(tempPath, NULL);
@@ -363,72 +372,58 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
 
 BOOL CleanupTempDirectory(const wchar_t* tempDir) {
     if (!tempDir || wcslen(tempDir) == 0) return FALSE;
-    
-    wchar_t logMsg[512];
-    swprintf(logMsg, 512, L"Cleaning up temporary directory: %ls", tempDir);
-    WriteToLogfile(logMsg);
-    
+
+    ThreadSafeDebugOutputF(L"Cleaning up temporary directory: %ls", tempDir);
+
     // Find and delete all files in the temp directory
     wchar_t searchPattern[MAX_EXTENDED_PATH];
     swprintf(searchPattern, MAX_EXTENDED_PATH, L"%ls\\*", tempDir);
-    
+
     WIN32_FIND_DATAW findData;
     HANDLE hFind = FindFirstFileW(searchPattern, &findData);
-    
+
     int filesDeleted = 0;
     int filesSkipped = 0;
-    
+
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
             // Skip . and .. entries
             if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0) {
                 continue;
             }
-            
+
             wchar_t fullPath[MAX_EXTENDED_PATH];
             swprintf(fullPath, MAX_EXTENDED_PATH, L"%ls\\%ls", tempDir, findData.cFileName);
-            
+
             if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
                 // Skip subdirectories for now (could be enhanced to recurse)
                 filesSkipped++;
-                wchar_t skipMsg[512];
-                swprintf(skipMsg, 512, L"Skipped subdirectory during temp cleanup: %ls", fullPath);
-                WriteToLogfile(skipMsg);
+                ThreadSafeDebugOutputF(L"Skipped subdirectory during temp cleanup: %ls", fullPath);
             } else {
                 // Delete file
                 if (DeleteFileW(fullPath)) {
                     filesDeleted++;
-                    wchar_t deleteMsg[512];
-                    swprintf(deleteMsg, 512, L"Deleted temporary file: %ls", fullPath);
-                    WriteToLogfile(deleteMsg);
+                    ThreadSafeDebugOutputF(L"Deleted temporary file: %ls", fullPath);
                 } else {
                     DWORD error = GetLastError();
                     filesSkipped++;
-                    wchar_t errorMsg[512];
-                    swprintf(errorMsg, 512, L"Failed to delete temporary file: %ls (Error: %lu)", fullPath, error);
-                    WriteToLogfile(errorMsg);
+                    ThreadSafeDebugOutputF(L"Failed to delete temporary file: %ls (Error: %lu)", fullPath, error);
                 }
             }
         } while (FindNextFileW(hFind, &findData));
-        
+
         FindClose(hFind);
     }
-    
+
     // Try to remove the directory itself
     BOOL dirRemoved = RemoveDirectoryW(tempDir);
     if (dirRemoved) {
-        wchar_t successMsg[512];
-        swprintf(successMsg, 512, L"Temporary directory cleanup completed: %ls (%d files deleted, %d skipped)", 
-                tempDir, filesDeleted, filesSkipped);
-        WriteToLogfile(successMsg);
+        ThreadSafeDebugOutputF(L"Temporary directory cleanup completed: %ls (%d files deleted, %d skipped)", tempDir, filesDeleted, filesSkipped);
     } else {
         DWORD error = GetLastError();
-        wchar_t errorMsg[512];
-        swprintf(errorMsg, 512, L"Failed to remove temporary directory: %ls (Error: %lu, %d files deleted, %d skipped)", 
-                tempDir, error, filesDeleted, filesSkipped);
-        WriteToLogfile(errorMsg);
+        ThreadSafeDebugOutputF(L"Failed to remove temporary directory: %ls (Error: %lu, %d files deleted, %d skipped)", tempDir, error, filesDeleted, filesSkipped);
     }
-    
+
     return dirRemoved;
 }
 
@@ -439,7 +434,7 @@ BOOL CleanupTempDirectory(const wchar_t* tempDir) {
 wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, const wchar_t* url) {
     wchar_t* userMessage = (wchar_t*)SAFE_MALLOC(1024 * sizeof(wchar_t));
     if (!userMessage) return NULL;
-    
+
     // Analyze exit code and output to provide specific guidance
     if (exitCode == ERROR_FILE_NOT_FOUND) {
         wcscpy(userMessage, L"yt-dlp executable not found.\r\n\r\n"
@@ -451,7 +446,7 @@ wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, con
                            L"Try running YouTubeCacher as administrator or add yt-dlp to your antivirus exclusions.");
     } else if (output && wcslen(output) > 0) {
         // Analyze output for common error patterns
-        if (wcsstr(output, L"Video unavailable") || wcsstr(output, L"Private video") || 
+        if (wcsstr(output, L"Video unavailable") || wcsstr(output, L"Private video") ||
             wcsstr(output, L"This video is not available")) {
             swprintf(userMessage, 1024, L"The video is not available for download.\r\n\r\n"
                                        L"This could be because:\r\n"
@@ -502,7 +497,7 @@ wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, con
                                    L"• Invalid command line arguments\r\n\r\n"
                                    L"Try reinstalling yt-dlp using File > Install yt-dlp.", exitCode);
     }
-    
+
     return userMessage;
 }
 
@@ -511,31 +506,31 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
     if (!output || wcslen(output) == 0) {
         return NULL;
     }
-    
+
     // Split output into lines and find the last meaningful error line
     wchar_t* outputCopy = SAFE_WCSDUP(output);
     if (!outputCopy) return NULL;
-    
+
     wchar_t* lastErrorLine = NULL;
     wchar_t* context = NULL;
     wchar_t* line = wcstok(outputCopy, L"\r\n", &context);
-    
+
     while (line) {
         // Trim leading/trailing whitespace
         while (*line == L' ' || *line == L'\t') line++;
-        
+
         size_t len = wcslen(line);
         while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'\t')) {
             line[--len] = L'\0';
         }
-        
+
         // Look for lines that start with "ERROR:" or contain common error patterns
         if (len > 0) {
             if (wcsncmp(line, L"ERROR:", 6) == 0) {
                 // Found an ERROR line - this is likely the main error
                 if (lastErrorLine) SAFE_FREE(lastErrorLine);
                 lastErrorLine = SAFE_WCSDUP(line);
-            } else if (wcsstr(line, L"HTTP Error") || 
+            } else if (wcsstr(line, L"HTTP Error") ||
                       wcsstr(line, L"Forbidden") ||
                       wcsstr(line, L"Not Found") ||
                       wcsstr(line, L"Unavailable") ||
@@ -551,12 +546,12 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
                 }
             }
         }
-        
+
         line = wcstok(NULL, L"\r\n", &context);
     }
-    
+
     SAFE_FREE(outputCopy);
-    
+
     // If we found an error line, clean it up and return it
     if (lastErrorLine) {
         // Remove "ERROR: " prefix if present
@@ -564,21 +559,21 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
         if (wcsncmp(cleanError, L"ERROR: ", 7) == 0) {
             cleanError += 7;
         }
-        
+
         // Create a clean copy without the prefix
         wchar_t* result = SAFE_WCSDUP(cleanError);
         SAFE_FREE(lastErrorLine);
         return result;
     }
-    
+
     // Fallback: return the last non-empty line if no specific error found
     outputCopy = SAFE_WCSDUP(output);
     if (!outputCopy) return NULL;
-    
+
     wchar_t* lastLine = NULL;
     context = NULL;
     line = wcstok(outputCopy, L"\r\n", &context);
-    
+
     while (line) {
         // Trim and check if line has meaningful content
         while (*line == L' ' || *line == L'\t') line++;
@@ -586,15 +581,15 @@ wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
         while (len > 0 && (line[len-1] == L' ' || line[len-1] == L'\t')) {
             line[--len] = L'\0';
         }
-        
+
         if (len > 0 && wcscmp(line, L"") != 0) {
             if (lastLine) SAFE_FREE(lastLine);
             lastLine = SAFE_WCSDUP(line);
         }
-        
+
         line = wcstok(NULL, L"\r\n", &context);
     }
-    
+
     SAFE_FREE(outputCopy);
     return lastLine;
 }
@@ -603,25 +598,25 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     // Validate input parameters using new error handling macros
     VALIDATE_POINTER_PARAM(config, L"config", cleanup_early);
     VALIDATE_POINTER_PARAM(request, L"request", cleanup_early);
-    
+
     ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Starting thread-safe execution for operation %d", request->operation);
-    
+
     // Use the new thread-safe implementation
     YtDlpResult* result = ExecuteYtDlpRequestThreadSafe(config, request);
-    
+
     if (result) {
         // Save output to global buffer (clear previous run first) for backward compatibility
         ClearYtDlpOutputBuffer();
         if (result->output && wcslen(result->output) > 0) {
             AppendToYtDlpOutputBuffer(result->output);
         }
-        
-        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Thread-safe execution completed: success=%s, exitCode=%lu", 
+
+        ThreadSafeDebugOutputF(L"YouTubeCacher: ExecuteYtDlpRequest - Thread-safe execution completed: success=%s, exitCode=%lu",
                 result->success ? L"TRUE" : L"FALSE", result->exitCode);
     } else {
         ThreadSafeDebugOutput(L"YouTubeCacher: ExecuteYtDlpRequest - Thread-safe execution failed to return result");
     }
-    
+
     return result;
 
 cleanup_early:
@@ -630,7 +625,7 @@ cleanup_early:
 
 void FreeYtDlpResult(YtDlpResult* result) {
     if (!result) return;
-    
+
     if (result->output) {
         SAFE_FREE(result->output);
         result->output = NULL;
@@ -643,97 +638,97 @@ void FreeYtDlpResult(YtDlpResult* result) {
         SAFE_FREE(result->diagnostics);
         result->diagnostics = NULL;
     }
-    
+
     SAFE_FREE(result);
 }
 
 // Enhanced error handling functions
 
-DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode, 
+DetailedErrorInfo* CreateDetailedErrorInfo(ErrorType errorType, DWORD errorCode,
                                           const wchar_t* operation, const wchar_t* context) {
     DetailedErrorInfo* errorInfo = (DetailedErrorInfo*)SAFE_MALLOC(sizeof(DetailedErrorInfo));
     if (!errorInfo) return NULL;
-    
+
     memset(errorInfo, 0, sizeof(DetailedErrorInfo));
     errorInfo->errorType = errorType;
     errorInfo->errorCode = errorCode;
-    
+
     // Copy operation string
     if (operation) {
         errorInfo->operation = SAFE_WCSDUP(operation);
     }
-    
+
     // Copy context string
     if (context) {
         errorInfo->context = SAFE_WCSDUP(context);
     }
-    
+
     // Generate detailed error information based on error type and code
     wchar_t detailsBuffer[1024];
     wchar_t diagnosticsBuffer[1024];
     wchar_t solutionsBuffer[1024];
-    
+
     switch (errorType) {
         case ERROR_TYPE_MEMORY_ALLOCATION:
             swprintf(detailsBuffer, 1024, L"Memory allocation failed (Error Code: %lu). The system may be low on available memory.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"GetLastError(): %lu\r\nOperation: %ls\r\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"GetLastError(): %lu\r\nOperation: %ls\r\nContext: %ls",
                     errorCode, operation ? operation : L"Unknown", context ? context : L"None");
             wcscpy(solutionsBuffer, L"• Close other applications to free memory\r\n• Restart the application\r\n• Check available system memory");
             break;
-            
+
         case ERROR_TYPE_THREAD_CREATION:
             swprintf(detailsBuffer, 1024, L"Failed to create worker thread (Error Code: %lu). The system may have reached thread limits.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"CreateThread() failed\r\nGetLastError(): %lu\r\nOperation: %ls\r\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"CreateThread() failed\r\nGetLastError(): %lu\r\nOperation: %ls\r\nContext: %ls",
                     errorCode, operation ? operation : L"Unknown", context ? context : L"None");
             wcscpy(solutionsBuffer, L"• Close other applications to reduce thread usage\r\n• Restart the application\r\n• Check system resources");
             break;
-            
+
         case ERROR_TYPE_YTDLP_NOT_FOUND:
             swprintf(detailsBuffer, 1024, L"yt-dlp executable not found or not accessible (Error Code: %lu).", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"File access failed\r\nGetLastError(): %lu\r\nOperation: %ls\r\nExpected path: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"File access failed\r\nGetLastError(): %lu\r\nOperation: %ls\r\nExpected path: %ls",
                     errorCode, operation ? operation : L"Unknown", context ? context : L"Not specified");
             wcscpy(solutionsBuffer, L"• Install yt-dlp via Help > Install yt-dlp if not already installed\r\n• Check yt-dlp path in File > Settings\r\n• Verify yt-dlp is in system PATH");
             break;
-            
+
         case ERROR_TYPE_YTDLP_EXECUTION:
             swprintf(detailsBuffer, 1024, L"yt-dlp execution failed (Exit Code: %lu). The video may be unavailable or the URL invalid.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Process exit code: %lu\r\nOperation: %ls\r\nURL: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Process exit code: %lu\r\nOperation: %ls\r\nURL: %ls",
                     errorCode, operation ? operation : L"Unknown", context ? context : L"Not provided");
             wcscpy(solutionsBuffer, L"• Verify the URL is correct and accessible\r\n• Check internet connection\r\n• Try a different video URL\r\n• Update yt-dlp to latest version");
             break;
-            
+
         case ERROR_TYPE_INVALID_PARAMETERS:
             swprintf(detailsBuffer, 1024, L"Invalid parameters provided to operation (Error Code: %lu).", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Parameter validation failed\r\nError Code: %lu\r\nOperation: %ls\r\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Parameter validation failed\r\nError Code: %lu\r\nOperation: %ls\r\nContext: %ls",
                     errorCode, operation ? operation : L"Unknown", context ? context : L"None");
             wcscpy(solutionsBuffer, L"• Check that all required fields are filled\r\n• Verify URL format is correct\r\n• Contact support if issue persists");
             break;
-            
+
         case ERROR_TYPE_NETWORK:
             swprintf(detailsBuffer, 1024, L"Network connectivity issue (Error Code: %lu). Unable to reach the video source.", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Network error\r\nError Code: %lu\r\nOperation: %ls\r\nURL: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Network error\r\nError Code: %lu\r\nOperation: %ls\r\nURL: %ls",
                     errorCode, operation ? operation : L"Unknown", context ? context : L"Not provided");
             wcscpy(solutionsBuffer, L"• Check internet connection\r\n• Verify firewall settings\r\n• Try again later\r\n• Check if the website is accessible");
             break;
-            
+
         default:
             swprintf(detailsBuffer, 1024, L"An unexpected error occurred (Error Code: %lu).", errorCode);
-            swprintf(diagnosticsBuffer, 1024, L"Unknown error type: %d\r\nError Code: %lu\r\nOperation: %ls\r\nContext: %ls", 
+            swprintf(diagnosticsBuffer, 1024, L"Unknown error type: %d\r\nError Code: %lu\r\nOperation: %ls\r\nContext: %ls",
                     errorType, errorCode, operation ? operation : L"Unknown", context ? context : L"None");
             wcscpy(solutionsBuffer, L"• Try the operation again\r\n• Restart the application\r\n• Check the application logs\r\n• Contact support with error details");
             break;
     }
-    
+
     errorInfo->details = SAFE_WCSDUP(detailsBuffer);
     errorInfo->diagnostics = SAFE_WCSDUP(diagnosticsBuffer);
     errorInfo->solutions = SAFE_WCSDUP(solutionsBuffer);
-    
+
     return errorInfo;
 }
 
 void FreeDetailedErrorInfo(DetailedErrorInfo* errorInfo) {
     if (!errorInfo) return;
-    
+
     if (errorInfo->operation) {
         SAFE_FREE(errorInfo->operation);
         errorInfo->operation = NULL;
@@ -754,34 +749,34 @@ void FreeDetailedErrorInfo(DetailedErrorInfo* errorInfo) {
         SAFE_FREE(errorInfo->context);
         errorInfo->context = NULL;
     }
-    
+
     SAFE_FREE(errorInfo);
 }
 
 OperationResult* CreateOperationResult(BOOL success, DetailedErrorInfo* errorInfo) {
     OperationResult* result = (OperationResult*)SAFE_MALLOC(sizeof(OperationResult));
     if (!result) return NULL;
-    
+
     result->success = success;
     result->errorInfo = errorInfo;
-    
+
     return result;
 }
 
 void FreeOperationResult(OperationResult* result) {
     if (!result) return;
-    
+
     if (result->errorInfo) {
         FreeDetailedErrorInfo(result->errorInfo);
         result->errorInfo = NULL;
     }
-    
+
     SAFE_FREE(result);
 }
 
 void ShowDetailedError(HWND parent, const DetailedErrorInfo* errorInfo) {
     if (!errorInfo) return;
-    
+
     // Create unified dialog with detailed information
     UnifiedDialogConfig config = {0};
     config.dialogType = UNIFIED_DIALOG_ERROR;
@@ -795,18 +790,18 @@ void ShowDetailedError(HWND parent, const DetailedErrorInfo* errorInfo) {
     config.tab3_name = L"Solutions";
     config.showDetailsButton = TRUE;
     config.showCopyButton = TRUE;
-    
+
     ShowUnifiedDialog(parent, &config);
 }
 
 ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result) {
     if (!result || result->success) return NULL;
-    
+
     ErrorAnalysis* analysis = (ErrorAnalysis*)SAFE_MALLOC(sizeof(ErrorAnalysis));
     if (!analysis) return NULL;
-    
+
     memset(analysis, 0, sizeof(ErrorAnalysis));
-    
+
     // Simple error analysis based on exit code and output
     if (result->exitCode == 1) {
         analysis->type = ERROR_TYPE_URL_INVALID;
@@ -821,17 +816,17 @@ ErrorAnalysis* AnalyzeYtDlpError(const YtDlpResult* result) {
         analysis->description = SAFE_WCSDUP(L"Unknown error occurred");
         analysis->solution = SAFE_WCSDUP(L"Please try again or check yt-dlp configuration");
     }
-    
+
     if (result->output) {
         analysis->technicalDetails = SAFE_WCSDUP(result->output);
     }
-    
+
     return analysis;
 }
 
 void FreeErrorAnalysis(ErrorAnalysis* analysis) {
     if (!analysis) return;
-    
+
     if (analysis->description) {
         SAFE_FREE(analysis->description);
         analysis->description = NULL;
@@ -844,150 +839,218 @@ void FreeErrorAnalysis(ErrorAnalysis* analysis) {
         SAFE_FREE(analysis->technicalDetails);
         analysis->technicalDetails = NULL;
     }
-    
+
     SAFE_FREE(analysis);
 }
 
 // Additional stub implementations for missing functions
 BOOL ValidateYtDlpArguments(const wchar_t* args) {
     if (!args) return TRUE;
-    
+
     // Simple validation - reject potentially dangerous arguments
     if (wcsstr(args, L"--exec") || wcsstr(args, L"--batch-file")) {
         return FALSE;
     }
-    
+
     return TRUE;
 }
 
 BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
-    
+
     // Simple sanitization - remove dangerous arguments
     // This is a basic implementation
     (void)argsSize; // Suppress unused parameter warning
     return TRUE;
 }
 
-BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath, 
+/**
+ * Escapes a command line argument according to Windows rules.
+ * Wraps the argument in double quotes and escapes existing quotes.
+ * Returns an allocated wide string that must be freed by the caller.
+ */
+wchar_t* EscapeCommandLineArgument(const wchar_t* arg) {
+    if (!arg) return NULL;
+
+    size_t len = wcslen(arg);
+    // Rough estimate for escaped length: 2x original + quotes
+    size_t escapedCapacity = (len * 2) + 3;
+    wchar_t* escaped = (wchar_t*)SAFE_MALLOC(escapedCapacity * sizeof(wchar_t));
+    if (!escaped) return NULL;
+
+    size_t j = 0;
+    escaped[j++] = L'\"';
+
+    for (size_t i = 0; i < len; i++) {
+        size_t backslashes = 0;
+        while (i < len && arg[i] == L'\\') {
+            backslashes++;
+            i++;
+        }
+
+        if (i == len) {
+            // End of string, escape all backslashes
+            for (size_t k = 0; k < backslashes * 2; k++) {
+                escaped[j++] = L'\\';
+            }
+            break;
+        } else if (arg[i] == L'\"') {
+            // Escape backslashes and the quote
+            for (size_t k = 0; k < backslashes * 2 + 1; k++) {
+                escaped[j++] = L'\\';
+            }
+            escaped[j++] = L'\"';
+        } else {
+            // Just the backslashes and the character
+            for (size_t k = 0; k < backslashes; k++) {
+                escaped[j++] = L'\\';
+            }
+            escaped[j++] = arg[i];
+        }
+    }
+
+    escaped[j++] = L'\"';
+    escaped[j] = L'\0';
+
+    return escaped;
+}
+
+BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath,
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
-    
+
+    wchar_t* escapedUrl = NULL;
+    wchar_t* escapedOutputPath = NULL;
+
+    if (url && wcslen(url) > 0) {
+        escapedUrl = EscapeCommandLineArgument(url);
+        if (!escapedUrl) goto cleanup;
+    }
+
+    if (outputPath) {
+        // Construct the output template: "outputPath\%(id)s.%(ext)s"
+        wchar_t outputTemplate[MAX_EXTENDED_PATH];
+        swprintf(outputTemplate, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", outputPath);
+        escapedOutputPath = EscapeCommandLineArgument(outputTemplate);
+        if (!escapedOutputPath) goto cleanup;
+    }
+
     // Start with custom arguments if they exist
     wchar_t baseArgs[2048] = L"";
     if (config && config->defaultArgs[0] != L'\0') {
         wcscpy(baseArgs, config->defaultArgs);
         wcscat(baseArgs, L" ");
     }
-    
+
     // Build operation-specific arguments
     wchar_t operationArgs[4096];
     switch (operation) {
         case YTDLP_OP_GET_INFO:
-            if (url && wcslen(url) > 0) {
+            if (escapedUrl) {
                 // Use JSON output for structured data extraction
-                swprintf(operationArgs, 4096, L"--dump-json --no-download --no-warnings \"%ls\"", url);
+                swprintf(operationArgs, 4096, L"--dump-json --no-download --no-warnings %ls", escapedUrl);
             } else {
                 wcscpy(operationArgs, L"--version");
             }
             break;
-            
+
         case YTDLP_OP_GET_TITLE:
-            if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 4096, L"--get-title --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+            if (escapedUrl) {
+                swprintf(operationArgs, 4096, L"--get-title --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
-            
+
         case YTDLP_OP_GET_DURATION:
-            if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 4096, L"--get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+            if (escapedUrl) {
+                swprintf(operationArgs, 4096, L"--get-duration --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
-            
+
         case YTDLP_OP_GET_TITLE_DURATION:
-            if (url && wcslen(url) > 0) {
-                swprintf(operationArgs, 4096, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 \"%ls\"", url);
+            if (escapedUrl) {
+                swprintf(operationArgs, 4096, L"--get-title --get-duration --no-download --no-warnings --encoding utf-8 %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
-            
+
         case YTDLP_OP_DOWNLOAD:
-            if (url && outputPath) {
+            if (escapedUrl && escapedOutputPath) {
                 // Machine-parseable progress format with pipe delimiters and raw numeric values
-                // Format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-                // Use proper yt-dlp template syntax with single % for template variables
-                // Double %% is only needed in C format strings, not in the actual command
-                // Note: yt-dlp progress dict fields are: downloaded_bytes, total_bytes, speed, eta
-                // REMOVED --print-json because it outputs massive JSON blob that breaks parsing
-                swprintf(operationArgs, 4096, 
+                swprintf(operationArgs, 4096,
                     L"--newline --no-colors --force-overwrites "
                     L"--write-info-json "
                     L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
-                    L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
-                    outputPath, url);
+                    L"--output %ls %ls",
+                    escapedOutputPath, escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
-            
+
         case YTDLP_OP_VALIDATE:
             wcscpy(operationArgs, L"--version");
             break;
-            
+
         case YTDLP_OP_GET_PLAYLIST_INFO:
-            if (url && wcslen(url) > 0) {
+            if (escapedUrl) {
                 // Fast playlist enumeration with flat-playlist (no full video extraction)
                 // Output format: id|title|duration (duration in seconds)
-                swprintf(operationArgs, 4096, 
+                swprintf(operationArgs, 4096,
                     L"--flat-playlist --no-download --no-warnings --encoding utf-8 "
-                    L"--print \"%%(id)s|%%(title)s|%%(duration)s\" \"%ls\"", url);
+                    L"--print \"%%(id)s|%%(title)s|%%(duration)s\" %ls", escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
-            
+
         case YTDLP_OP_DOWNLOAD_PLAYLIST:
-            if (url && outputPath) {
+            if (escapedUrl && escapedOutputPath) {
                 // Playlist download - same as regular download but with --ignore-errors
-                // so we continue if individual videos fail
-                // Keep the same progress template format as single video for consistent parsing
-                swprintf(operationArgs, 4096, 
+                swprintf(operationArgs, 4096,
                     L"--newline --no-colors --force-overwrites --ignore-errors "
                     L"--write-info-json "
                     L"--progress-template \"download:%%(progress.downloaded_bytes)s|%%(progress.total_bytes_estimate)s|%%(progress.speed)s|%%(progress.eta)s\" "
-                    L"--output \"%ls\\%%(id)s.%%(ext)s\" \"%ls\"", 
-                    outputPath, url);
+                    L"--output %ls %ls",
+                    escapedOutputPath, escapedUrl);
             } else {
-                return FALSE;
+                goto cleanup;
             }
             break;
-            
+
         default:
-            return FALSE;
+            goto cleanup;
     }
-    
+
     // Combine custom arguments with operation-specific arguments
     if (wcslen(baseArgs) + wcslen(operationArgs) + 1 >= argsSize) {
-        return FALSE; // Not enough space
+        goto cleanup;
     }
-    
+
     wcscpy(args, baseArgs);
     wcscat(args, operationArgs);
-    
+
+    if (escapedUrl) SAFE_FREE(escapedUrl);
+    if (escapedOutputPath) SAFE_FREE(escapedOutputPath);
     return TRUE;
+
+cleanup:
+    if (escapedUrl) SAFE_FREE(escapedUrl);
+    if (escapedOutputPath) SAFE_FREE(escapedOutputPath);
+    return FALSE;
 }
+
 
 // Video metadata extraction functions
 
 // Free video metadata structure
 void FreeVideoMetadata(VideoMetadata* metadata) {
     if (!metadata) return;
-    
+
     if (metadata->title) {
         SAFE_FREE(metadata->title);
         metadata->title = NULL;
@@ -1006,7 +1069,7 @@ void FreeVideoMetadata(VideoMetadata* metadata) {
 // Free a single playlist video entry
 void FreePlaylistVideoEntry(PlaylistVideoEntry* entry) {
     if (!entry) return;
-    
+
     if (entry->videoId) {
         SAFE_FREE(entry->videoId);
         entry->videoId = NULL;
@@ -1022,7 +1085,7 @@ void FreePlaylistVideoEntry(PlaylistVideoEntry* entry) {
 // Free playlist metadata structure
 void FreePlaylistMetadata(PlaylistMetadata* playlist) {
     if (!playlist) return;
-    
+
     if (playlist->playlistId) {
         SAFE_FREE(playlist->playlistId);
         playlist->playlistId = NULL;
@@ -1046,10 +1109,10 @@ void FreePlaylistMetadata(PlaylistMetadata* playlist) {
 // Each line is in format: id|title|duration
 BOOL ParsePlaylistMetadataOutput(const wchar_t* output, PlaylistMetadata* playlist) {
     if (!output || !playlist) return FALSE;
-    
+
     // Initialize playlist
     memset(playlist, 0, sizeof(PlaylistMetadata));
-    
+
     // Count lines to allocate array
     int lineCount = 0;
     const wchar_t* p = output;
@@ -1059,14 +1122,14 @@ BOOL ParsePlaylistMetadataOutput(const wchar_t* output, PlaylistMetadata* playli
     }
     // Add one more if last line doesn't end with newline
     if (p > output && *(p - 1) != L'\n') lineCount++;
-    
+
     if (lineCount == 0) return FALSE;
-    
+
     // Allocate video array
     playlist->videos = (PlaylistVideoEntry*)SAFE_MALLOC(sizeof(PlaylistVideoEntry) * lineCount);
     if (!playlist->videos) return FALSE;
     memset(playlist->videos, 0, sizeof(PlaylistVideoEntry) * lineCount);
-    
+
     // Parse each line
     wchar_t* outputCopy = SAFE_WCSDUP(output);
     if (!outputCopy) {
@@ -1074,18 +1137,18 @@ BOOL ParsePlaylistMetadataOutput(const wchar_t* output, PlaylistMetadata* playli
         playlist->videos = NULL;
         return FALSE;
     }
-    
+
     wchar_t* context = NULL;
     wchar_t* line = wcstok(outputCopy, L"\r\n", &context);
     int index = 0;
-    
+
     while (line && index < lineCount) {
         // Skip empty lines
         if (wcslen(line) == 0) {
             line = wcstok(NULL, L"\r\n", &context);
             continue;
         }
-        
+
         // Parse: id|title|duration
         wchar_t* id = line;
         wchar_t* title = wcschr(id, L'|');
@@ -1096,95 +1159,95 @@ BOOL ParsePlaylistMetadataOutput(const wchar_t* output, PlaylistMetadata* playli
             if (duration) {
                 *duration = L'\0';
                 duration++;
-                
+
                 // Store parsed values
                 playlist->videos[index].videoId = SAFE_WCSDUP(id);
                 playlist->videos[index].title = SAFE_WCSDUP(title);
                 playlist->videos[index].durationSeconds = _wtoi(duration);
                 playlist->videos[index].index = index + 1;  // 1-based
-                
+
                 index++;
             }
         }
-        
+
         line = wcstok(NULL, L"\r\n", &context);
     }
-    
+
     SAFE_FREE(outputCopy);
-    
+
     playlist->videoCount = index;
     playlist->currentVideoIndex = 0;
-    
+
     ThreadSafeDebugOutputF(L"ParsePlaylistMetadataOutput: Parsed %d videos from playlist", index);
-    
+
     return (index > 0);
 }
 
 // Parse "Downloading item X of Y" progress line
 BOOL ParsePlaylistProgressLine(const wchar_t* line, int* current, int* total) {
     if (!line || !current || !total) return FALSE;
-    
+
     // Look for pattern: "[download] Downloading item X of Y"
     const wchar_t* marker = wcsstr(line, L"Downloading item ");
     if (!marker) return FALSE;
-    
+
     marker += wcslen(L"Downloading item ");
-    
+
     // Parse current item number
     *current = _wtoi(marker);
-    
+
     // Find " of "
     const wchar_t* ofMarker = wcsstr(marker, L" of ");
     if (!ofMarker) return FALSE;
-    
+
     ofMarker += wcslen(L" of ");
     *total = _wtoi(ofMarker);
-    
+
     return (*current > 0 && *total > 0);
 }
 
 // Parse VIDEOSTART marker: "VIDEOSTART|id|title"
 BOOL ParseVideoStartMarker(const wchar_t* line, wchar_t** videoId, wchar_t** title) {
     if (!line || !videoId || !title) return FALSE;
-    
+
     *videoId = NULL;
     *title = NULL;
-    
+
     const wchar_t* marker = wcsstr(line, L"VIDEOSTART|");
     if (!marker) return FALSE;
-    
+
     marker += wcslen(L"VIDEOSTART|");
-    
+
     // Find next separator
     const wchar_t* sep = wcschr(marker, L'|');
     if (!sep) return FALSE;
-    
+
     // Extract video ID
     size_t idLen = sep - marker;
     *videoId = (wchar_t*)SAFE_MALLOC((idLen + 1) * sizeof(wchar_t));
     if (!*videoId) return FALSE;
     wcsncpy(*videoId, marker, idLen);
     (*videoId)[idLen] = L'\0';
-    
+
     // Extract title (rest of line)
     *title = SAFE_WCSDUP(sep + 1);
-    
+
     return TRUE;
 }
 
 // Parse VIDEOEND marker: "VIDEOEND|id"
 BOOL ParseVideoEndMarker(const wchar_t* line, wchar_t** videoId) {
     if (!line || !videoId) return FALSE;
-    
+
     *videoId = NULL;
-    
+
     const wchar_t* marker = wcsstr(line, L"VIDEOEND|");
     if (!marker) return FALSE;
-    
+
     marker += wcslen(L"VIDEOEND|");
-    
+
     *videoId = SAFE_WCSDUP(marker);
-    
+
     // Trim trailing whitespace/newlines
     if (*videoId) {
         size_t len = wcslen(*videoId);
@@ -1192,17 +1255,17 @@ BOOL ParseVideoEndMarker(const wchar_t* line, wchar_t** videoId) {
             (*videoId)[--len] = L'\0';
         }
     }
-    
+
     return (*videoId != NULL && wcslen(*videoId) > 0);
 }
 
 // Parse JSON output from yt-dlp to extract metadata
 BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metadata) {
     if (!jsonOutput || !metadata) return FALSE;
-    
+
     // Initialize metadata
     memset(metadata, 0, sizeof(VideoMetadata));
-    
+
     // Simple JSON parsing for title
     const wchar_t* titleStart = wcsstr(jsonOutput, L"\"title\":");
     if (titleStart) {
@@ -1224,13 +1287,13 @@ BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metada
             }
         }
     }
-    
+
     // Simple JSON parsing for duration
     const wchar_t* durationStart = wcsstr(jsonOutput, L"\"duration\":");
     if (durationStart) {
         durationStart += 11; // Skip "duration":
         while (*durationStart == L' ') durationStart++; // Skip spaces
-        
+
         if (*durationStart >= L'0' && *durationStart <= L'9') {
             int seconds = _wtoi(durationStart);
             if (seconds > 0) {
@@ -1238,7 +1301,7 @@ BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metada
                 int remainingSeconds = seconds % 60;
                 int hours = minutes / 60;
                 minutes = minutes % 60;
-                
+
                 metadata->duration = (wchar_t*)SAFE_MALLOC(32 * sizeof(wchar_t));
                 if (metadata->duration) {
                     if (hours > 0) {
@@ -1250,7 +1313,7 @@ BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metada
             }
         }
     }
-    
+
     // Simple JSON parsing for video ID
     const wchar_t* idStart = wcsstr(jsonOutput, L"\"id\":");
     if (idStart) {
@@ -1272,7 +1335,7 @@ BOOL ParseVideoMetadataFromJson(const wchar_t* jsonOutput, VideoMetadata* metada
             }
         }
     }
-    
+
     metadata->success = (metadata->title != NULL);
     return metadata->success;
 }
@@ -1285,19 +1348,19 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
         ThreadSafeDebugOutput(L"GetVideoMetadata: Invalid parameters - URL or metadata is NULL");
         return FALSE;
     }
-    
+
     // Initialize metadata
     memset(metadata, 0, sizeof(VideoMetadata));
-    
+
     ThreadSafeDebugOutputF(L"GetVideoMetadata: Processing URL: %ls", url);
-    
+
     // Initialize config
     YtDlpConfig config;
     if (!InitializeYtDlpConfig(&config)) {
         ThreadSafeDebugOutput(L"GetVideoMetadata: Failed to initialize yt-dlp configuration");
         return FALSE;
     }
-    
+
     // Create request for getting title and duration together
     YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_TITLE_DURATION, url, NULL);
     if (!request) {
@@ -1305,16 +1368,16 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
-    
+
     // Execute the request
     YtDlpResult* result = ExecuteYtDlpRequest(&config, request);
-    
+
     BOOL success = FALSE;
     if (result) {
         if (result->success && result->output) {
-            ThreadSafeDebugOutputF(L"GetVideoMetadata: yt-dlp execution successful, parsing output (length: %zu)", 
+            ThreadSafeDebugOutputF(L"GetVideoMetadata: yt-dlp execution successful, parsing output (length: %zu)",
                     wcslen(result->output));
-            
+
             // Parse the output - first line is title, second line is duration
             wchar_t* output = SAFE_WCSDUP(result->output);
             if (output) {
@@ -1324,7 +1387,7 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
                     // First line is title
                     metadata->title = SAFE_WCSDUP(line);
                     ThreadSafeDebugOutputF(L"GetVideoMetadata: Extracted title: %ls", metadata->title);
-                    
+
                     // Second line is duration
                     line = wcstok(NULL, L"\n", &context);
                     if (line) {
@@ -1337,7 +1400,7 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
                     ThreadSafeDebugOutput(L"GetVideoMetadata: Error - No lines found in yt-dlp output");
                 }
                 SAFE_FREE(output);
-                
+
                 metadata->success = (metadata->title != NULL);
                 success = metadata->success;
             } else {
@@ -1347,7 +1410,7 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
             // Log detailed error information
             if (!result->success) {
                 ThreadSafeDebugOutputF(L"GetVideoMetadata: yt-dlp execution failed with exit code: %lu", result->exitCode);
-                
+
                 if (result->errorMessage) {
                     ThreadSafeDebugOutputF(L"GetVideoMetadata: yt-dlp error message: %ls", result->errorMessage);
                 }
@@ -1358,18 +1421,18 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
     } else {
         ThreadSafeDebugOutput(L"GetVideoMetadata: ExecuteYtDlpRequest returned NULL result");
     }
-    
+
     if (success) {
         ThreadSafeDebugOutput(L"GetVideoMetadata: Successfully retrieved video metadata");
     } else {
         ThreadSafeDebugOutput(L"GetVideoMetadata: Failed to retrieve video metadata");
     }
-    
+
     // Cleanup
     if (result) FreeYtDlpResult(result);
     FreeYtDlpRequest(request);
     CleanupYtDlpConfig(&config);
-    
+
     return success;
 }
 
@@ -1378,7 +1441,7 @@ BOOL GetVideoMetadata(const wchar_t* url, VideoMetadata* metadata) {
 // Initialize cached metadata structure
 void InitializeCachedMetadata(CachedVideoMetadata* cached) {
     if (!cached) return;
-    
+
     memset(cached, 0, sizeof(CachedVideoMetadata));
     cached->isValid = FALSE;
 }
@@ -1386,12 +1449,12 @@ void InitializeCachedMetadata(CachedVideoMetadata* cached) {
 // Free cached metadata structure
 void FreeCachedMetadata(CachedVideoMetadata* cached) {
     if (!cached) return;
-    
+
     if (cached->url) {
         SAFE_FREE(cached->url);
         cached->url = NULL;
     }
-    
+
     FreeVideoMetadata(&cached->metadata);
     cached->isValid = FALSE;
 }
@@ -1401,20 +1464,20 @@ BOOL IsCachedMetadataValid(const CachedVideoMetadata* cached, const wchar_t* url
     if (!cached || !url || !cached->isValid || !cached->url) {
         return FALSE;
     }
-    
+
     return (wcscmp(cached->url, url) == 0);
 }
 
 // Store metadata in cache
 void StoreCachedMetadata(CachedVideoMetadata* cached, const wchar_t* url, const VideoMetadata* metadata) {
     if (!cached || !url || !metadata) return;
-    
+
     // Free existing data
     FreeCachedMetadata(cached);
-    
+
     // Store new data
     cached->url = SAFE_WCSDUP(url);
-    
+
     // Copy metadata
     if (metadata->title) {
         cached->metadata.title = SAFE_WCSDUP(metadata->title);
@@ -1426,7 +1489,7 @@ void StoreCachedMetadata(CachedVideoMetadata* cached, const wchar_t* url, const 
         cached->metadata.id = SAFE_WCSDUP(metadata->id);
     }
     cached->metadata.success = metadata->success;
-    
+
     cached->isValid = TRUE;
 }
 
@@ -1435,10 +1498,10 @@ BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadat
     if (!cached || !metadata || !cached->isValid) {
         return FALSE;
     }
-    
+
     // Initialize output metadata
     memset(metadata, 0, sizeof(VideoMetadata));
-    
+
     // Copy cached data
     if (cached->metadata.title) {
         metadata->title = SAFE_WCSDUP(cached->metadata.title);
@@ -1450,7 +1513,7 @@ BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadat
         metadata->id = SAFE_WCSDUP(cached->metadata.id);
     }
     metadata->success = cached->metadata.success;
-    
+
     return TRUE;
 }
 
@@ -1459,7 +1522,7 @@ BOOL GetCachedMetadata(const CachedVideoMetadata* cached, VideoMetadata* metadat
 // Free progress info structure
 void FreeProgressInfo(ProgressInfo* progress) {
     if (!progress) return;
-    
+
     if (progress->status) {
         SAFE_FREE(progress->status);
         progress->status = NULL;
@@ -1477,488 +1540,245 @@ void FreeProgressInfo(ProgressInfo* progress) {
 // Parse yt-dlp progress output (pipe-delimited machine format)
 // Expected format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
 // Example: 5562368|104857600|1290000.0|77
-BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
-    if (!line || !progress) return FALSE;
-    
-    // Initialize progress info
-    memset(progress, 0, sizeof(ProgressInfo));
-    
-    // Check for pipe-delimited progress format (downloaded|total|speed|eta)
-    const wchar_t* firstPipe = wcschr(line, L'|');
-    if (firstPipe) {
-        // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
-        const wchar_t* dataStart = line;
-        if (wcsstr(line, L"download:") == line) {
-            dataStart = line + 9; // Skip "download:" prefix
-        }
-        
-        // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
-        wchar_t* lineCopy = SAFE_WCSDUP(dataStart);
-        if (!lineCopy) return FALSE;
-        
-        wchar_t* context = NULL;
-        wchar_t* token = wcstok(lineCopy, L"|", &context);
-        int tokenIndex = 0;
-        
-        long long downloadedBytes = 0;
-        long long totalBytes = 0;
-        double speedBytesPerSec = 0.0;
-        long long etaSeconds = 0;
-        
-        while (token && tokenIndex < 4) {
-            switch (tokenIndex) {
-                case 0: { // Downloaded bytes
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        downloadedBytes = wcstoll(token, NULL, 10);
-                        progress->downloadedBytes = downloadedBytes;
-                    }
-                    break;
+static BOOL ParsePipeDelimitedProgress(const wchar_t* line, ProgressInfo* progress) {
+    // Handle both "download:123|456|789|10" and raw "123|456|789|10" formats
+    const wchar_t* dataStart = line;
+    if (wcsstr(line, L"download:") == line) {
+        dataStart = line + 9; // Skip "download:" prefix
+    }
+
+    // Parse pipe-delimited format: downloaded_bytes|total_bytes|speed_bytes_per_sec|eta_seconds
+    wchar_t* lineCopy = SAFE_WCSDUP(dataStart);
+    if (!lineCopy) return FALSE;
+
+    wchar_t* context = NULL;
+    wchar_t* token = wcstok(lineCopy, L"|", &context);
+    int tokenIndex = 0;
+
+    long long downloadedBytes = 0;
+    long long totalBytes = 0;
+    double speedBytesPerSec = 0.0;
+    long long etaSeconds = 0;
+
+    while (token && tokenIndex < 4) {
+        switch (tokenIndex) {
+            case 0: { // Downloaded bytes
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    downloadedBytes = wcstoll(token, NULL, 10);
+                    progress->downloadedBytes = downloadedBytes;
                 }
-                case 1: { // Total bytes
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        totalBytes = wcstoll(token, NULL, 10);
-                        progress->totalBytes = totalBytes;
-                    }
-                    break;
-                }
-                case 2: { // Speed in bytes per second (can be decimal)
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        speedBytesPerSec = wcstod(token, NULL);
-                        if (speedBytesPerSec > 0) {
-                            // Convert to human-readable format for display
-                            wchar_t speedStr[64];
-                            if (speedBytesPerSec >= 1024 * 1024 * 1024) {
-                                swprintf(speedStr, 64, L"%.1f GB/s", speedBytesPerSec / (1024.0 * 1024.0 * 1024.0));
-                            } else if (speedBytesPerSec >= 1024 * 1024) {
-                                swprintf(speedStr, 64, L"%.1f MB/s", speedBytesPerSec / (1024.0 * 1024.0));
-                            } else if (speedBytesPerSec >= 1024) {
-                                swprintf(speedStr, 64, L"%.1f KB/s", speedBytesPerSec / 1024.0);
-                            } else {
-                                swprintf(speedStr, 64, L"%.0f B/s", speedBytesPerSec);
-                            }
-                            progress->speed = SAFE_WCSDUP(speedStr);
-                        }
-                    }
-                    break;
-                }
-                case 3: { // ETA in seconds
-                    if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
-                        etaSeconds = wcstoll(token, NULL, 10);
-                        if (etaSeconds > 0) {
-                            // Convert seconds to human-readable format
-                            wchar_t etaStr[32];
-                            if (etaSeconds >= 3600) {
-                                int hours = (int)(etaSeconds / 3600);
-                                int minutes = (int)((etaSeconds % 3600) / 60);
-                                int seconds = (int)(etaSeconds % 60);
-                                swprintf(etaStr, 32, L"%d:%02d:%02d", hours, minutes, seconds);
-                            } else if (etaSeconds >= 60) {
-                                int minutes = (int)(etaSeconds / 60);
-                                int seconds = (int)(etaSeconds % 60);
-                                swprintf(etaStr, 32, L"%d:%02d", minutes, seconds);
-                            } else {
-                                swprintf(etaStr, 32, L"%llds", etaSeconds);
-                            }
-                            progress->eta = SAFE_WCSDUP(etaStr);
-                        }
-                    }
-                    break;
-                }
+                break;
             }
-            token = wcstok(NULL, L"|", &context);
-            tokenIndex++;
+            case 1: { // Total bytes
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    totalBytes = wcstoll(token, NULL, 10);
+                    progress->totalBytes = totalBytes;
+                }
+                break;
+            }
+            case 2: { // Speed in bytes per second (can be decimal)
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    speedBytesPerSec = wcstod(token, NULL);
+                    if (speedBytesPerSec > 0) {
+                        // Convert to human-readable format for display
+                        wchar_t speedStr[64];
+                        if (speedBytesPerSec >= 1024 * 1024 * 1024) {
+                            swprintf(speedStr, 64, L"%.1f GB/s", speedBytesPerSec / (1024.0 * 1024.0 * 1024.0));
+                        } else if (speedBytesPerSec >= 1024 * 1024) {
+                            swprintf(speedStr, 64, L"%.1f MB/s", speedBytesPerSec / (1024.0 * 1024.0));
+                        } else if (speedBytesPerSec >= 1024) {
+                            swprintf(speedStr, 64, L"%.1f KB/s", speedBytesPerSec / 1024.0);
+                        } else {
+                            swprintf(speedStr, 64, L"%.0f B/s", speedBytesPerSec);
+                        }
+                        progress->speed = SAFE_WCSDUP(speedStr);
+                    }
+                }
+                break;
+            }
+            case 3: { // ETA in seconds
+                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                    etaSeconds = wcstoll(token, NULL, 10);
+                    if (etaSeconds > 0) {
+                        // Convert seconds to human-readable format
+                        wchar_t etaStr[32];
+                        if (etaSeconds >= 3600) {
+                            int hours = (int)(etaSeconds / 3600);
+                            int minutes = (int)((etaSeconds % 3600) / 60);
+                            int seconds = (int)(etaSeconds % 60);
+                            swprintf(etaStr, 32, L"%d:%02d:%02d", hours, minutes, seconds);
+                        } else if (etaSeconds >= 60) {
+                            int minutes = (int)(etaSeconds / 60);
+                            int seconds = (int)(etaSeconds % 60);
+                            swprintf(etaStr, 32, L"%d:%02d", minutes, seconds);
+                        } else {
+                            swprintf(etaStr, 32, L"%llds", etaSeconds);
+                        }
+                        progress->eta = SAFE_WCSDUP(etaStr);
+                    }
+                }
+                break;
+            }
         }
-        
-        SAFE_FREE(lineCopy);
-        
-        // Calculate percentage ourselves from the raw data
-        if (totalBytes > 0 && downloadedBytes >= 0) {
-            progress->percentage = (int)((downloadedBytes * 100) / totalBytes);
-            if (progress->percentage > 100) progress->percentage = 100;
+        token = wcstok(NULL, L"|", &context);
+        tokenIndex++;
+    }
+
+    SAFE_FREE(lineCopy);
+
+    // Calculate percentage ourselves from the raw data
+    if (totalBytes > 0 && downloadedBytes >= 0) {
+        progress->percentage = (int)((downloadedBytes * 100) / totalBytes);
+        if (progress->percentage > 100) progress->percentage = 100;
+    } else {
+        // No total size available - use marquee mode (indicated by -1)
+        progress->percentage = -1;
+    }
+
+    // Build comprehensive status message
+    wchar_t statusMsg[256];
+    if (downloadedBytes > 0 && totalBytes > 0) {
+        // Convert bytes to human-readable format
+        wchar_t downloadedStr[32], totalStr[32];
+
+        if (totalBytes >= 1024 * 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+            swprintf(totalStr, 32, L"%.1f GB", totalBytes / (1024.0 * 1024.0 * 1024.0));
+        } else if (totalBytes >= 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
+            swprintf(totalStr, 32, L"%.1f MB", totalBytes / (1024.0 * 1024.0));
+        } else if (totalBytes >= 1024) {
+            swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
+            swprintf(totalStr, 32, L"%.1f KB", totalBytes / 1024.0);
         } else {
-            // No total size available - use marquee mode (indicated by -1)
-            progress->percentage = -1;
+            swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
+            swprintf(totalStr, 32, L"%lld B", totalBytes);
         }
-        
-        // Build comprehensive status message
-        wchar_t statusMsg[256];
-        if (downloadedBytes > 0 && totalBytes > 0) {
-            // Convert bytes to human-readable format
-            wchar_t downloadedStr[32], totalStr[32];
-            
-            if (totalBytes >= 1024 * 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
-                swprintf(totalStr, 32, L"%.1f GB", totalBytes / (1024.0 * 1024.0 * 1024.0));
-            } else if (totalBytes >= 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
-                swprintf(totalStr, 32, L"%.1f MB", totalBytes / (1024.0 * 1024.0));
-            } else if (totalBytes >= 1024) {
-                swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
-                swprintf(totalStr, 32, L"%.1f KB", totalBytes / 1024.0);
-            } else {
-                swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
-                swprintf(totalStr, 32, L"%lld B", totalBytes);
-            }
-            
-            if (progress->speed && progress->eta) {
-                swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls (ETA: %ls)", 
-                        downloadedStr, totalStr, progress->speed, progress->eta);
-            } else if (progress->speed) {
-                swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls", 
-                        downloadedStr, totalStr, progress->speed);
-            } else {
-                swprintf(statusMsg, 256, L"Downloading %ls of %ls (%d%%)", downloadedStr, totalStr, progress->percentage);
-            }
-        } else if (downloadedBytes > 0) {
-            // We have downloaded bytes but no total - show downloaded amount with speed if available
-            wchar_t downloadedStr[32];
-            if (downloadedBytes >= 1024 * 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
-            } else if (downloadedBytes >= 1024 * 1024) {
-                swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
-            } else if (downloadedBytes >= 1024) {
-                swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
-            } else {
-                swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
-            }
-            
-            if (progress->speed) {
-                swprintf(statusMsg, 256, L"Downloaded %ls at %ls", downloadedStr, progress->speed);
-            } else {
-                swprintf(statusMsg, 256, L"Downloaded %ls", downloadedStr);
-            }
+
+        if (progress->speed && progress->eta) {
+            swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls (ETA: %ls)",
+                    downloadedStr, totalStr, progress->speed, progress->eta);
         } else if (progress->speed) {
-            swprintf(statusMsg, 256, L"Downloading at %ls", progress->speed);
+            swprintf(statusMsg, 256, L"Downloading %ls of %ls at %ls",
+                    downloadedStr, totalStr, progress->speed);
         } else {
-            wcscpy(statusMsg, L"Downloading");
+            swprintf(statusMsg, 256, L"Downloading %ls of %ls (%d%%)", downloadedStr, totalStr, progress->percentage);
         }
-        
-        progress->status = SAFE_WCSDUP(statusMsg);
-        
-        // Check for completion
-        if (progress->percentage >= 100 || (totalBytes > 0 && downloadedBytes >= totalBytes)) {
-            progress->isComplete = TRUE;
-            if (progress->status) {
-                SAFE_FREE(progress->status);
-                progress->status = SAFE_WCSDUP(L"Download complete");
-            }
+    } else if (downloadedBytes > 0) {
+        // We have downloaded bytes but no total - show downloaded amount with speed if available
+        wchar_t downloadedStr[32];
+        if (downloadedBytes >= 1024 * 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f GB", downloadedBytes / (1024.0 * 1024.0 * 1024.0));
+        } else if (downloadedBytes >= 1024 * 1024) {
+            swprintf(downloadedStr, 32, L"%.1f MB", downloadedBytes / (1024.0 * 1024.0));
+        } else if (downloadedBytes >= 1024) {
+            swprintf(downloadedStr, 32, L"%.1f KB", downloadedBytes / 1024.0);
+        } else {
+            swprintf(downloadedStr, 32, L"%lld B", downloadedBytes);
         }
-        
-        return TRUE;
+
+        if (progress->speed) {
+            swprintf(statusMsg, 256, L"Downloaded %ls at %ls", downloadedStr, progress->speed);
+        } else {
+            swprintf(statusMsg, 256, L"Downloaded %ls", downloadedStr);
+        }
+    } else if (progress->speed) {
+        swprintf(statusMsg, 256, L"Downloading at %ls", progress->speed);
+    } else {
+        wcscpy(statusMsg, L"Downloading");
     }
-    
-    // Fallback: Look for old format [download] lines for compatibility
-    if (wcsstr(line, L"[download]") == NULL) {
-        return FALSE;
-    }
-    
-    // Look for percentage in format like "50.0%"
-    const wchar_t* percentPos = wcsstr(line, L"%");
-    if (percentPos) {
-        // Go backwards to find the start of the number
-        const wchar_t* start = percentPos - 1;
-        while (start > line && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
-            start--;
-        }
-        start++; // Move to first digit
-        
-        if (start < percentPos) {
-            double percent = wcstod(start, NULL);
-            progress->percentage = (int)percent;
-        }
-    }
-    
-    // Look for speed (pattern like "at 1.23MiB/s")
-    const wchar_t* atPos = wcsstr(line, L" at ");
-    if (atPos) {
-        const wchar_t* speedStart = atPos + 4; // Skip " at "
-        const wchar_t* speedEnd = wcsstr(speedStart, L" ETA");
-        if (!speedEnd) speedEnd = speedStart + wcslen(speedStart);
-        
-        if (speedEnd > speedStart) {
-            size_t speedLen = speedEnd - speedStart;
-            progress->speed = (wchar_t*)SAFE_MALLOC((speedLen + 1) * sizeof(wchar_t));
-            if (progress->speed) {
-                wcsncpy(progress->speed, speedStart, speedLen);
-                progress->speed[speedLen] = L'\0';
-            }
-        }
-    }
-    
-    // Look for ETA (pattern like "ETA 01:17")
-    const wchar_t* etaPos = wcsstr(line, L" ETA ");
-    if (etaPos) {
-        const wchar_t* etaStart = etaPos + 5; // Skip " ETA "
-        const wchar_t* etaEnd = etaStart;
-        while (*etaEnd && *etaEnd != L' ' && *etaEnd != L'\n' && *etaEnd != L'\r') {
-            etaEnd++;
-        }
-        
-        if (etaEnd > etaStart) {
-            size_t etaLen = etaEnd - etaStart;
-            progress->eta = (wchar_t*)SAFE_MALLOC((etaLen + 1) * sizeof(wchar_t));
-            if (progress->eta) {
-                wcsncpy(progress->eta, etaStart, etaLen);
-                progress->eta[etaLen] = L'\0';
-            }
-        }
-    }
-    
-    // Set status
-    progress->status = SAFE_WCSDUP(L"Downloading");
-    
+
+    progress->status = SAFE_WCSDUP(statusMsg);
+
     // Check for completion
-    if (wcsstr(line, L"100%") || wcsstr(line, L"has already been downloaded")) {
-        progress->percentage = 100;
+    if (progress->percentage >= 100 || (totalBytes > 0 && downloadedBytes >= totalBytes)) {
         progress->isComplete = TRUE;
         if (progress->status) {
             SAFE_FREE(progress->status);
             progress->status = SAFE_WCSDUP(L"Download complete");
         }
-    } else {
-        progress->isComplete = (progress->percentage >= 100);
     }
-    
+
     return TRUE;
+}
+
+static BOOL ParseLegacyProgress(const wchar_t* line, ProgressInfo* progress) {
+    if (wcsstr(line, L"[download]") == NULL) {
+        return FALSE;
+    }
+
+    // Look for percentage in format like "50.0%"
+    const wchar_t* percentPos = wcsstr(line, L"%");
+    if (percentPos) {
+        const wchar_t* start = percentPos - 1;
+        while (start > line && (iswdigit(*start) || *start == L'.' || *start == L' ')) {
+            start--;
+        }
+        start++; // Move to first digit
+
+        if (start < percentPos) {
+            double percent = wcstod(start, NULL);
+            progress->percentage = (int)percent;
+            if (progress->percentage >= 100) progress->isComplete = TRUE;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+BOOL ParseProgressOutput(const wchar_t* line, ProgressInfo* progress) {
+    if (!line || !progress) return FALSE;
+
+    // Initialize progress info
+    memset(progress, 0, sizeof(ProgressInfo));
+
+    // Check for pipe-delimited progress format (downloaded|total|speed|eta)
+    const wchar_t* firstPipe = wcschr(line, L'|');
+    if (firstPipe) {
+        return ParsePipeDelimitedProgress(line, progress);
+    }
+
+    // Fallback: Look for old format [download] lines for compatibility
+    return ParseLegacyProgress(line, progress);
 }
 
 // VideoInfoThread moved to ytdlp.h
 
 // Thread function for getting video info
-DWORD WINAPI VideoInfoWorkerThread(LPVOID lpParam) {
-    VideoInfoThread* threadInfo = (VideoInfoThread*)lpParam;
-    if (!threadInfo || !threadInfo->config || !threadInfo->request) {
-        return 1;
-    }
-    
-    threadInfo->result = ExecuteYtDlpRequest(threadInfo->config, threadInfo->request);
-    threadInfo->completed = TRUE;
-    return 0;
-}
 
-BOOL GetVideoTitleAndDurationSync(const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
-    if (!url || !title || !duration || titleSize == 0 || durationSize == 0) return FALSE;
-    
-    // Initialize output strings
-    title[0] = L'\0';
-    duration[0] = L'\0';
-    
-    // Initialize YtDlp configuration
-    YtDlpConfig config = {0};
-    if (!InitializeYtDlpConfig(&config)) {
-        return FALSE;
-    }
-    
-    // Validate yt-dlp installation
-    ValidationInfo validationInfo = {0};
-    if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
-        FreeValidationInfo(&validationInfo);
-        CleanupYtDlpConfig(&config);
-        return FALSE;
-    }
-    FreeValidationInfo(&validationInfo);
-    
-    BOOL success = FALSE;
-    
-    // Create temporary directory for operations
-    wchar_t tempDir[MAX_EXTENDED_PATH];
-    if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
-        CleanupYtDlpConfig(&config);
-        return FALSE;
-    }
-    
-    // Create requests for both title and duration
-    YtDlpRequest* titleRequest = CreateYtDlpRequest(YTDLP_OP_GET_TITLE, url, NULL);
-    YtDlpRequest* durationRequest = CreateYtDlpRequest(YTDLP_OP_GET_DURATION, url, NULL);
-    
-    if (!titleRequest || !durationRequest) {
-        if (titleRequest) FreeYtDlpRequest(titleRequest);
-        if (durationRequest) FreeYtDlpRequest(durationRequest);
-        CleanupTempDirectory(tempDir);
-        CleanupYtDlpConfig(&config);
-        return FALSE;
-    }
-    
-    titleRequest->tempDir = SAFE_WCSDUP(tempDir);
-    durationRequest->tempDir = SAFE_WCSDUP(tempDir);
-    
-    // Create thread info structures
-    VideoInfoThread titleThread = {0};
-    VideoInfoThread durationThread = {0};
-    
-    titleThread.config = &config;
-    titleThread.request = titleRequest;
-    
-    durationThread.config = &config;
-    durationThread.request = durationRequest;
-    
-    // Start both threads concurrently
-    titleThread.hThread = CreateThread(NULL, 0, VideoInfoWorkerThread, &titleThread, 0, &titleThread.threadId);
-    durationThread.hThread = CreateThread(NULL, 0, VideoInfoWorkerThread, &durationThread, 0, &durationThread.threadId);
-    
-    if (titleThread.hThread && durationThread.hThread) {
-        // Wait for both threads to complete (with timeout)
-        HANDLE threads[2] = {titleThread.hThread, durationThread.hThread};
-        DWORD waitResult = WaitForMultipleObjects(2, threads, TRUE, 30000); // 30 second timeout
-        
-        if (waitResult == WAIT_OBJECT_0) {
-            // Both threads completed successfully
-            
-            // Process title result
-            if (titleThread.result && titleThread.result->success && titleThread.result->output) {
-                wchar_t* cleanTitle = titleThread.result->output;
-                
-                // Remove trailing newlines and whitespace
-                size_t len = wcslen(cleanTitle);
-                while (len > 0 && (cleanTitle[len-1] == L'\n' || cleanTitle[len-1] == L'\r' || cleanTitle[len-1] == L' ')) {
-                    cleanTitle[len-1] = L'\0';
-                    len--;
-                }
-                
-                wcsncpy(title, cleanTitle, titleSize - 1);
-                title[titleSize - 1] = L'\0';
-                success = TRUE;
-            }
-            
-            // Process duration result
-            if (durationThread.result && durationThread.result->success && durationThread.result->output) {
-                wchar_t* cleanDuration = durationThread.result->output;
-                
-                // Remove trailing newlines and whitespace
-                size_t len = wcslen(cleanDuration);
-                while (len > 0 && (cleanDuration[len-1] == L'\n' || cleanDuration[len-1] == L'\r' || cleanDuration[len-1] == L' ')) {
-                    cleanDuration[len-1] = L'\0';
-                    len--;
-                }
-                
-                wcsncpy(duration, cleanDuration, durationSize - 1);
-                duration[durationSize - 1] = L'\0';
-                
-                // Format the duration properly
-                FormatDuration(duration, durationSize);
-                
-                // If we got duration but not title, still consider it a partial success
-                if (!success && wcslen(duration) > 0) {
-                    success = TRUE;
-                }
-            }
-        } else {
-            // Timeout or error - terminate threads
-            if (titleThread.hThread) {
-                TerminateThread(titleThread.hThread, 1);
-            }
-            if (durationThread.hThread) {
-                TerminateThread(durationThread.hThread, 1);
-            }
-        }
-    }
-    
-    // Cleanup threads
-    if (titleThread.hThread) {
-        CloseHandle(titleThread.hThread);
-    }
-    if (durationThread.hThread) {
-        CloseHandle(durationThread.hThread);
-    }
-    
-    // Cleanup results
-    if (titleThread.result) FreeYtDlpResult(titleThread.result);
-    if (durationThread.result) FreeYtDlpResult(durationThread.result);
-    
-    // Cleanup requests
-    FreeYtDlpRequest(titleRequest);
-    FreeYtDlpRequest(durationRequest);
-    
-    // Cleanup
-    CleanupTempDirectory(tempDir);
-    CleanupYtDlpConfig(&config);
-    
-    return success;
-}
-
-// VideoInfoThreadData moved to ytdlp.h
-
-// Thread function for getting video info without blocking UI
-DWORD WINAPI GetVideoInfoThread(LPVOID lpParam) {
-    VideoInfoThreadData* data = (VideoInfoThreadData*)lpParam;
-    if (!data) return 1;
-    
-    // Get video title and duration using the existing synchronous function
-    data->success = GetVideoTitleAndDurationSync(data->url, data->title, 512, data->duration, 64);
-    
-    // Notify main thread that we're done
-    PostMessageW(data->hDlg, WM_USER + 101, 0, (LPARAM)data);
-    
-    return 0;
-}
-
-// Threaded version that doesn't block the UI
-BOOL GetVideoTitleAndDuration(HWND hDlg, const wchar_t* url, wchar_t* title, size_t titleSize, wchar_t* duration, size_t durationSize) {
-    UNREFERENCED_PARAMETER(title);      // Not used in threaded version
-    UNREFERENCED_PARAMETER(titleSize);  // Not used in threaded version
-    UNREFERENCED_PARAMETER(duration);   // Not used in threaded version
-    UNREFERENCED_PARAMETER(durationSize); // Not used in threaded version
-    
-    if (!hDlg || !url) return FALSE;
-    
-    // Create thread data structure
-    VideoInfoThreadData* data = (VideoInfoThreadData*)SAFE_MALLOC(sizeof(VideoInfoThreadData));
-    if (!data) return FALSE;
-    
-    // Initialize thread data
-    data->hDlg = hDlg;
-    wcsncpy(data->url, url, MAX_URL_LENGTH - 1);
-    data->url[MAX_URL_LENGTH - 1] = L'\0';
-    data->title[0] = L'\0';
-    data->duration[0] = L'\0';
-    data->success = FALSE;
-    
-    // Create thread to get video info using new error handling macro
-    data->hThread = CreateThread(NULL, 0, GetVideoInfoThread, data, 0, &data->threadId);
-    if (!data->hThread) {
-        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
-                        L"Failed to create video info thread (Error: %lu)", GetLastError());
-        SAFE_FREE(data);
-        return FALSE;
-    }
-    
-    // Don't wait for completion - let the thread notify us when done
-    // The thread will send WM_USER + 101 message when complete
-    return TRUE; // Return TRUE to indicate thread started successfully
-}
 
 // Non-blocking Get Info worker thread
 DWORD WINAPI GetInfoWorkerThread(LPVOID lpParam) {
     GetInfoContext* context = (GetInfoContext*)lpParam;
     if (!context) return 1;
-    
+
     VideoMetadata* metadata = (VideoMetadata*)SAFE_MALLOC(sizeof(VideoMetadata));
     if (!metadata) {
         // Log memory allocation failure
         ThreadSafeDebugOutput(L"GetInfoWorkerThread: Failed to allocate VideoMetadata structure");
-        
+
         // Send failure notification with NULL metadata to indicate memory error
         PostMessageW(context->hDialog, WM_USER + 103, (WPARAM)FALSE, (LPARAM)NULL);
         SAFE_FREE(context);
         return 1;
     }
-    
+
     // Log the operation start
     ThreadSafeDebugOutputF(L"GetInfoWorkerThread: Starting metadata retrieval for URL: %ls", context->url);
-    
+
     BOOL success = GetVideoMetadata(context->url, metadata);
-    
+
     if (success) {
-        ThreadSafeDebugOutputF(L"GetInfoWorkerThread: Successfully retrieved metadata - Title: %ls, Duration: %ls", 
-                metadata->title ? metadata->title : L"(null)", 
+        ThreadSafeDebugOutputF(L"GetInfoWorkerThread: Successfully retrieved metadata - Title: %ls, Duration: %ls",
+                metadata->title ? metadata->title : L"(null)",
                 metadata->duration ? metadata->duration : L"(null)");
     } else {
         ThreadSafeDebugOutputF(L"GetInfoWorkerThread: Failed to retrieve metadata for URL: %ls", context->url);
     }
-    
+
     // Send result back to main thread (metadata will be freed by the main thread)
     PostMessageW(context->hDialog, WM_USER + 103, (WPARAM)success, (LPARAM)metadata);
-    
+
     SAFE_FREE(context);
     return success ? 0 : 1;
 }
@@ -1968,56 +1788,56 @@ OperationResult* StartNonBlockingGetInfoEx(HWND hDlg, const wchar_t* url, Cached
     // Validate parameters
     if (!hDlg) {
         DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
-            ERROR_TYPE_INVALID_PARAMETERS, 0, 
+            ERROR_TYPE_INVALID_PARAMETERS, 0,
             L"StartNonBlockingGetInfoEx", L"Parent window handle is NULL");
         return CreateOperationResult(FALSE, errorInfo);
     }
-    
+
     if (!url || wcslen(url) == 0) {
         DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
-            ERROR_TYPE_INVALID_PARAMETERS, 0, 
+            ERROR_TYPE_INVALID_PARAMETERS, 0,
             L"StartNonBlockingGetInfoEx", L"URL is NULL or empty");
         return CreateOperationResult(FALSE, errorInfo);
     }
-    
+
     if (!cachedMetadata) {
         DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
-            ERROR_TYPE_INVALID_PARAMETERS, 0, 
+            ERROR_TYPE_INVALID_PARAMETERS, 0,
             L"StartNonBlockingGetInfoEx", L"Cached metadata pointer is NULL");
         return CreateOperationResult(FALSE, errorInfo);
     }
-    
+
     // Allocate context
     GetInfoContext* context = (GetInfoContext*)SAFE_MALLOC(sizeof(GetInfoContext));
     if (!context) {
         DWORD errorCode = GetLastError();
         DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
-            ERROR_TYPE_MEMORY_ALLOCATION, errorCode, 
+            ERROR_TYPE_MEMORY_ALLOCATION, errorCode,
             L"StartNonBlockingGetInfoEx", L"Failed to allocate GetInfoContext");
         return CreateOperationResult(FALSE, errorInfo);
     }
-    
+
     context->hDialog = hDlg;
     wcscpy(context->url, url);
     context->cachedMetadata = cachedMetadata;
-    
+
     // Create worker thread using new error handling macro
     HANDLE hThread = CreateThread(NULL, 0, GetInfoWorkerThread, context, 0, NULL);
     if (!hThread) {
         DWORD errorCode = GetLastError();
-        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create GetInfo worker thread (Error: %lu)", errorCode);
         SAFE_FREE(context);
-        
+
         wchar_t contextBuffer[512];
         swprintf(contextBuffer, 512, L"URL: %ls", url);
-        
+
         DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
-            ERROR_TYPE_THREAD_CREATION, errorCode, 
+            ERROR_TYPE_THREAD_CREATION, errorCode,
             L"StartNonBlockingGetInfoEx", contextBuffer);
         return CreateOperationResult(FALSE, errorInfo);
     }
-    
+
     CloseHandle(hThread);
     return CreateOperationResult(TRUE, NULL);
 }
@@ -2026,7 +1846,7 @@ OperationResult* StartNonBlockingGetInfoEx(HWND hDlg, const wchar_t* url, Cached
 BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata* cachedMetadata) {
     OperationResult* result = StartNonBlockingGetInfoEx(hDlg, url, cachedMetadata);
     if (!result) return FALSE;
-    
+
     BOOL success = result->success;
     FreeOperationResult(result);
     return success;
@@ -2036,16 +1856,16 @@ BOOL StartNonBlockingGetInfo(HWND hDlg, const wchar_t* url, CachedVideoMetadata*
 
 BOOL LoadYtDlpConfig(YtDlpConfig* config) {
     if (!config) return FALSE;
-    
+
     // Initialize with default values first
     memset(config, 0, sizeof(YtDlpConfig));
-    
+
     // Load yt-dlp path from registry
     if (!LoadSettingFromRegistry(REG_YTDLP_PATH, config->ytDlpPath, MAX_EXTENDED_PATH)) {
         // No path in registry, use default
         GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
     }
-    
+
     // Load default temporary directory
     wchar_t tempBuffer[MAX_EXTENDED_PATH];
     if (LoadSettingFromRegistry(L"DefaultTempDir", tempBuffer, MAX_EXTENDED_PATH)) {
@@ -2057,12 +1877,12 @@ BOOL LoadYtDlpConfig(YtDlpConfig* config) {
             wcscpy(config->defaultTempDir, L"C:\\Temp\\");
         }
     }
-    
+
     // Load custom yt-dlp arguments
     if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
         config->defaultArgs[0] = L'\0';
     }
-    
+
     // Load timeout setting (stored as string in registry)
     wchar_t timeoutStr[32];
     if (LoadSettingFromRegistry(L"TimeoutSeconds", timeoutStr, 32)) {
@@ -2073,7 +1893,7 @@ BOOL LoadYtDlpConfig(YtDlpConfig* config) {
     } else {
         config->timeoutSeconds = 300; // Default 5 minutes
     }
-    
+
     // Load boolean settings
     wchar_t boolBuffer[16];
     if (LoadSettingFromRegistry(L"EnableVerboseLogging", boolBuffer, 16)) {
@@ -2081,13 +1901,13 @@ BOOL LoadYtDlpConfig(YtDlpConfig* config) {
     } else {
         config->enableVerboseLogging = FALSE;
     }
-    
+
     if (LoadSettingFromRegistry(L"AutoRetryOnFailure", boolBuffer, 16)) {
         config->autoRetryOnFailure = (wcscmp(boolBuffer, L"1") == 0);
     } else {
         config->autoRetryOnFailure = FALSE;
     }
-    
+
     // Load temp directory strategy
     wchar_t strategyStr[32];
     if (LoadSettingFromRegistry(L"TempDirStrategy", strategyStr, 32)) {
@@ -2098,53 +1918,53 @@ BOOL LoadYtDlpConfig(YtDlpConfig* config) {
     } else {
         config->tempDirStrategy = TEMP_DIR_SYSTEM;
     }
-    
+
     return TRUE;
 }
 
 BOOL SaveYtDlpConfig(const YtDlpConfig* config) {
     if (!config) return FALSE;
-    
+
     BOOL allSuccess = TRUE;
-    
+
     // Save yt-dlp path
     if (!SaveSettingToRegistry(REG_YTDLP_PATH, config->ytDlpPath)) {
         allSuccess = FALSE;
     }
-    
+
     // Save default temporary directory
     if (!SaveSettingToRegistry(L"DefaultTempDir", config->defaultTempDir)) {
         allSuccess = FALSE;
     }
-    
+
     // Save custom yt-dlp arguments
     if (!SaveSettingToRegistry(REG_CUSTOM_ARGS, config->defaultArgs)) {
         allSuccess = FALSE;
     }
-    
+
     // Save timeout setting
     wchar_t timeoutStr[32];
     swprintf(timeoutStr, 32, L"%lu", config->timeoutSeconds);
     if (!SaveSettingToRegistry(L"TimeoutSeconds", timeoutStr)) {
         allSuccess = FALSE;
     }
-    
+
     // Save boolean settings
     if (!SaveSettingToRegistry(L"EnableVerboseLogging", config->enableVerboseLogging ? L"1" : L"0")) {
         allSuccess = FALSE;
     }
-    
+
     if (!SaveSettingToRegistry(L"AutoRetryOnFailure", config->autoRetryOnFailure ? L"1" : L"0")) {
         allSuccess = FALSE;
     }
-    
+
     // Save temp directory strategy
     wchar_t strategyStr[32];
     swprintf(strategyStr, 32, L"%d", (int)config->tempDirStrategy);
     if (!SaveSettingToRegistry(L"TempDirStrategy", strategyStr)) {
         allSuccess = FALSE;
     }
-    
+
     return allSuccess;
 }
 
@@ -2152,16 +1972,13 @@ BOOL SaveYtDlpConfig(const YtDlpConfig* config) {
 // Start unified download process
 BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Entry");
-    
+
     if (!hDlg || !url) {
         ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Invalid parameters");
         return FALSE;
     }
-    
-    wchar_t debugMsg[512];
-    swprintf(debugMsg, 512, L"YouTubeCacher: StartUnifiedDownload - URL: %ls\n", url);
-    OutputDebugStringW(debugMsg);
-    
+    ThreadSafeDebugOutputF(L"YouTubeCacher: StartUnifiedDownload - URL: %ls", url);
+
     // Initialize configuration
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Initializing config");
     YtDlpConfig config = {0};
@@ -2170,94 +1987,92 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
         return FALSE;
     }
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config initialized successfully");
-    
+
     // Validate configuration
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Validating config\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Validating config");
     ValidationInfo validationInfo = {0};
     if (!ValidateYtDlpComprehensive(config.ytDlpPath, &validationInfo)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Config validation failed\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config validation failed");
         FreeValidationInfo(&validationInfo);
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
     FreeValidationInfo(&validationInfo);
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Config validated successfully\n");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Config validated successfully");
+
     // Get download path
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Getting download path\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Getting download path");
     wchar_t downloadPath[MAX_EXTENDED_PATH];
     if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Using default download path\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Using default download path");
         GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
     }
-    swprintf(debugMsg, 512, L"YouTubeCacher: StartUnifiedDownload - Download path: %ls\n", downloadPath);
-    OutputDebugStringW(debugMsg);
-    
+    ThreadSafeDebugOutputF(L"YouTubeCacher: StartUnifiedDownload - Download path: %ls", downloadPath);
+
     // Create download directory
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating download directory\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating download directory");
     if (!CreateDownloadDirectoryIfNeeded(downloadPath)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create download directory\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create download directory");
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Download directory ready\n");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Download directory ready");
+
     // Detect if this is a playlist URL
     BOOL isPlaylist = IsYouTubePlaylistURL(url);
     YtDlpOperation operation = isPlaylist ? YTDLP_OP_DOWNLOAD_PLAYLIST : YTDLP_OP_DOWNLOAD;
-    
+
     if (isPlaylist) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Detected playlist URL, using YTDLP_OP_DOWNLOAD_PLAYLIST\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Detected playlist URL, using YTDLP_OP_DOWNLOAD_PLAYLIST");
     }
-    
+
     // Create request with appropriate operation
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating YtDlp request\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating YtDlp request");
     YtDlpRequest* request = CreateYtDlpRequest(operation, url, downloadPath);
     if (!request) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create YtDlp request\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create YtDlp request");
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - YtDlp request created successfully\n");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - YtDlp request created successfully");
+
     // Create temp directory
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating temp directory\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating temp directory");
     wchar_t tempDir[MAX_EXTENDED_PATH];
     if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Primary temp dir failed, trying fallback\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Primary temp dir failed, trying fallback");
         if (!CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH)) {
-            OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Fallback temp dir also failed\n");
+            ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Fallback temp dir also failed");
             FreeYtDlpRequest(request);
             CleanupYtDlpConfig(&config);
             return FALSE;
         }
     }
     request->tempDir = SAFE_WCSDUP(tempDir);
-    swprintf(debugMsg, 512, L"YouTubeCacher: StartUnifiedDownload - Temp dir: %ls\n", tempDir);
-    OutputDebugStringW(debugMsg);
-    
+    ThreadSafeDebugOutputF(L"YouTubeCacher: StartUnifiedDownload - Temp dir: %ls", tempDir);
+
     // Create context
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Creating context\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating context");
     UnifiedDownloadContext* context = (UnifiedDownloadContext*)SAFE_MALLOC(sizeof(UnifiedDownloadContext));
     if (!context) {
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to allocate context\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to allocate context");
         FreeYtDlpRequest(request);
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
-    
+
     context->hDialog = hDlg;
     wcscpy(context->url, url);
     context->config = config; // Copy config
     context->request = request;
     wcscpy(context->tempDir, tempDir);
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Context created successfully\n");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Context created successfully");
+
     // Show progress and disable UI
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Setting up UI");
     ShowMainProgressBar(hDlg, TRUE);
     SetProgressBarMarquee(hDlg, TRUE);  // Start with marquee for indefinite "Starting..." phase
-    
+
     // For playlists, show the video progress counter
     if (isPlaylist) {
         ShowVideoProgress(hDlg, TRUE);
@@ -2267,20 +2082,20 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
         UpdateMainProgressBar(hDlg, -1, L"Starting download...");
     }
     SetDownloadUIState(hDlg, TRUE);
-    
+
     // Start worker thread using new error handling macro
-    OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Starting worker thread\n");
+    ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Starting worker thread");
     HANDLE hThread = CreateThread(NULL, 0, UnifiedDownloadWorkerThread, context, 0, NULL);
     if (!hThread) {
-        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create unified download worker thread (Error: %lu)", GetLastError());
-        OutputDebugStringW(L"YouTubeCacher: StartUnifiedDownload - Failed to create worker thread\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create worker thread");
         SAFE_FREE(context);
         FreeYtDlpRequest(request);
         CleanupYtDlpConfig(&config);
         return FALSE;
     }
-    
+
     CloseHandle(hThread);
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Worker thread started successfully");
     return TRUE;
@@ -2288,37 +2103,37 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
 
 // Thread function for non-blocking download
 DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
-    OutputDebugStringW(L"YouTubeCacher: NonBlockingDownloadThread started\n");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: NonBlockingDownloadThread started");
+
     NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)lpParam;
     if (!downloadContext) {
-        OutputDebugStringW(L"YouTubeCacher: Invalid downloadContext\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: Invalid downloadContext");
         return 1;
     }
-    
+
     // Execute the download using multithreaded approach with progress
-    YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&downloadContext->config, downloadContext->request, 
+    YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&downloadContext->config, downloadContext->request,
                                                           downloadContext->parentWindow, L"Downloading Video");
-    
+
     // Post completion message to main window with result
     PostMessageW(downloadContext->parentWindow, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
-    
+
     return 0;
 }
 
 // Start non-blocking download operation
 BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND parentWindow) {
     if (!config || !request || !parentWindow) return FALSE;
-    
+
     // Create download context
     NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)SAFE_MALLOC(sizeof(NonBlockingDownloadContext));
     if (!downloadContext) return FALSE;
-    
+
     // Copy configuration and request data
     memcpy(&downloadContext->config, config, sizeof(YtDlpConfig));
     downloadContext->request = request; // Transfer ownership
     downloadContext->parentWindow = parentWindow;
-    
+
     // Copy temp directory and URL for cleanup
     if (request->tempDir) {
         wcscpy(downloadContext->tempDir, request->tempDir);
@@ -2326,55 +2141,55 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
     if (request->url) {
         wcscpy(downloadContext->url, request->url);
     }
-    
+
     // Set progress bar to indeterminate (marquee) mode before starting download
     HWND hProgressBar = GetDlgItem(parentWindow, IDC_PROGRESS_BAR);
     if (hProgressBar) {
-        SetWindowLongW(hProgressBar, GWL_STYLE, 
+        SetWindowLongW(hProgressBar, GWL_STYLE,
             GetWindowLongW(hProgressBar, GWL_STYLE) | PBS_MARQUEE);
         SendMessageW(hProgressBar, PBM_SETMARQUEE, TRUE, 50); // 50ms animation speed
     }
-    
+
     // Create and start the download thread using new error handling macro
     HANDLE hThread = CreateThread(NULL, 0, NonBlockingDownloadThread, downloadContext, 0, NULL);
     if (!hThread) {
-        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION, 
+        REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create non-blocking download thread (Error: %lu)", GetLastError());
         SAFE_FREE(downloadContext);
         return FALSE;
     }
-    
+
     // Don't wait for thread - it will notify us via message when complete
     CloseHandle(hThread);
     return TRUE;
 }
 
 // Multithreaded subprocess execution implementation
-SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 
+SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request,
                                           ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow) {
     ThreadSafeDebugOutput(L"CreateSubprocessContext: Creating legacy wrapper for thread-safe implementation");
-    
+
     if (!config || !request) {
         ThreadSafeDebugOutput(L"CreateSubprocessContext: Invalid parameters");
         return NULL;
     }
-    
+
     // Allocate legacy context structure
     SubprocessContext* context = (SubprocessContext*)SAFE_MALLOC(sizeof(SubprocessContext));
     if (!context) {
         ThreadSafeDebugOutput(L"CreateSubprocessContext: Failed to allocate context");
         return NULL;
     }
-    
+
     memset(context, 0, sizeof(SubprocessContext));
-    
+
     // Initialize thread context for compatibility
     if (!InitializeThreadContext(&context->threadContext)) {
         ThreadSafeDebugOutput(L"CreateSubprocessContext: Failed to initialize thread context");
         SAFE_FREE(context);
         return NULL;
     }
-    
+
     // Deep copy configuration
     context->config = (YtDlpConfig*)SAFE_MALLOC(sizeof(YtDlpConfig));
     if (!context->config) {
@@ -2383,7 +2198,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
         return NULL;
     }
     memcpy(context->config, config, sizeof(YtDlpConfig));
-    
+
     // Deep copy request
     context->request = (YtDlpRequest*)SAFE_MALLOC(sizeof(YtDlpRequest));
     if (!context->request) {
@@ -2393,7 +2208,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
         return NULL;
     }
     memcpy(context->request, request, sizeof(YtDlpRequest));
-    
+
     // Deep copy strings in request
     if (request->url) {
         context->request->url = SAFE_WCSDUP(request->url);
@@ -2405,7 +2220,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
             return NULL;
         }
     }
-    
+
     if (request->outputPath) {
         context->request->outputPath = SAFE_WCSDUP(request->outputPath);
         if (!context->request->outputPath) {
@@ -2417,7 +2232,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
             return NULL;
         }
     }
-    
+
     if (request->tempDir) {
         context->request->tempDir = SAFE_WCSDUP(request->tempDir);
         if (!context->request->tempDir) {
@@ -2430,7 +2245,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
             return NULL;
         }
     }
-    
+
     if (request->customArgs) {
         context->request->customArgs = SAFE_WCSDUP(request->customArgs);
         if (!context->request->customArgs) {
@@ -2444,27 +2259,27 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
             return NULL;
         }
     }
-    
+
     // Set callback information
     context->progressCallback = progressCallback;
     context->callbackUserData = callbackUserData;
     context->parentWindow = parentWindow;
-    
+
     ThreadSafeDebugOutput(L"CreateSubprocessContext: Legacy context created successfully");
     return context;
 }
 
 void FreeSubprocessContext(SubprocessContext* context) {
     if (!context) return;
-    
+
     ThreadSafeDebugOutput(L"FreeSubprocessContext: Using thread-safe cleanup");
-    
+
     // Cleanup thread-safe backend first
     CleanupLegacySubprocessContext(context);
-    
+
     // Cleanup thread context
     CleanupThreadContext(&context->threadContext);
-    
+
     // Free deep-copied strings
     if (context->request) {
         if (context->request->url) {
@@ -2486,26 +2301,26 @@ void FreeSubprocessContext(SubprocessContext* context) {
         SAFE_FREE(context->request);
         context->request = NULL;
     }
-    
+
     if (context->config) {
         SAFE_FREE(context->config);
         context->config = NULL;
     }
-    
+
     // Free result if it exists
     if (context->result) {
         FreeYtDlpResult(context->result);
         context->result = NULL;
     }
-    
+
     // Note: accumulatedOutput is now used to store ThreadSafeSubprocessContext pointer
     // It's cleaned up by CleanupLegacySubprocessContext above
-    
+
     // Close handles (these should already be cleaned up by thread-safe backend)
     // Use defensive validation to prevent STATUS_INVALID_HANDLE crashes
     if (context->hProcess && context->hProcess != INVALID_HANDLE_VALUE) {
         HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hProcess, 
+        if (DuplicateHandle(GetCurrentProcess(), context->hProcess,
                            GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
             CloseHandle(hTest);
             CloseHandle(context->hProcess);
@@ -2514,7 +2329,7 @@ void FreeSubprocessContext(SubprocessContext* context) {
     }
     if (context->hOutputRead && context->hOutputRead != INVALID_HANDLE_VALUE) {
         HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hOutputRead, 
+        if (DuplicateHandle(GetCurrentProcess(), context->hOutputRead,
                            GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
             CloseHandle(hTest);
             CloseHandle(context->hOutputRead);
@@ -2523,60 +2338,60 @@ void FreeSubprocessContext(SubprocessContext* context) {
     }
     if (context->hOutputWrite && context->hOutputWrite != INVALID_HANDLE_VALUE) {
         HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hOutputWrite, 
+        if (DuplicateHandle(GetCurrentProcess(), context->hOutputWrite,
                            GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
             CloseHandle(hTest);
             CloseHandle(context->hOutputWrite);
         }
         context->hOutputWrite = NULL;
     }
-    
+
     SAFE_FREE(context);
 }
 
 BOOL StartSubprocessExecution(SubprocessContext* context) {
     if (!context) return FALSE;
-    
+
     ThreadSafeDebugOutput(L"StartSubprocessExecution: Using thread-safe backend");
-    
+
     // Use the new thread-safe implementation
     return StartThreadSafeSubprocessFromLegacyContext(context);
 }
 
 BOOL IsSubprocessRunning(const SubprocessContext* context) {
     if (!context) return FALSE;
-    
+
     // Use the new thread-safe implementation
     return IsLegacySubprocessRunning(context);
 }
 
 BOOL CancelSubprocessExecution(SubprocessContext* context) {
     if (!context) return FALSE;
-    
+
     ThreadSafeDebugOutput(L"CancelSubprocessExecution: Using thread-safe backend");
-    
+
     // Use the new thread-safe implementation
     return CancelLegacySubprocessExecution(context);
 }
 
 BOOL WaitForSubprocessCompletion(SubprocessContext* context, DWORD timeoutMs) {
     if (!context) return FALSE;
-    
+
     ThreadSafeDebugOutput(L"WaitForSubprocessCompletion: Using thread-safe backend");
-    
+
     // Use the new thread-safe implementation
     return WaitForLegacySubprocessCompletion(context, timeoutMs);
 }
 
 // Convenience function for simple multithreaded execution (NO POPUP DIALOGS)
 // Uses enhanced subprocess execution with progress updates to main window
-YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request, 
+YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const YtDlpRequest* request,
                                              HWND parentWindow, const wchar_t* operationTitle) {
     if (!config || !request) return NULL;
-    
+
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Using enhanced execution with progress updates");
     (void)operationTitle;   // Suppress unused parameter warning
-    
+
     // Create enhanced subprocess context with IPC progress callback
     IPCContext* ipc = GetGlobalIPCContext();
     if (!ipc || !parentWindow) {
@@ -2584,36 +2399,36 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: No IPC available, using basic execution");
         return ExecuteYtDlpRequestThreadSafe(config, request);
     }
-    
+
     // Create enhanced context with progress callback
     EnhancedSubprocessContext* enhancedContext = CreateEnhancedSubprocessContext(
         config, request, MainWindowProgressCallback, (void*)parentWindow, parentWindow);
-    
+
     if (!enhancedContext) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Failed to create enhanced context");
         return ExecuteYtDlpRequestThreadSafe(config, request);
     }
-    
+
     // Start enhanced execution
     if (!StartEnhancedSubprocessExecution(enhancedContext)) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Failed to start enhanced execution");
         FreeEnhancedSubprocessContext(enhancedContext);
         return ExecuteYtDlpRequestThreadSafe(config, request);
     }
-    
+
     // Wait for completion
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Waiting for enhanced execution to complete");
     while (!enhancedContext->baseContext->completed) {
         Sleep(100);
     }
-    
+
     // Get result
     YtDlpResult* result = enhancedContext->baseContext->result;
     enhancedContext->baseContext->result = NULL; // Transfer ownership
-    
+
     // Cleanup
     FreeEnhancedSubprocessContext(enhancedContext);
-    
+
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Enhanced execution completed");
     return result;
 }
@@ -2622,63 +2437,60 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
 // Updated to use thread-safe subprocess handling
 DWORD WINAPI SubprocessWorkerThread(LPVOID lpParam) {
     ThreadSafeDebugOutput(L"YouTubeCacher: SubprocessWorkerThread started (using thread-safe implementation)");
-    
+
     // Delegate to the thread-safe implementation
     return ThreadSafeSubprocessWorkerThread(lpParam);
 }
 
 // Unified download worker thread - simplified version that delegates to subprocess worker
 DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
-    OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread started\n");
-    DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting download execution");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread started");
+    ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Starting download execution");
+
     UnifiedDownloadContext* context = (UnifiedDownloadContext*)lpParam;
     if (!context) {
-        OutputDebugStringW(L"YouTubeCacher: UnifiedDownloadWorkerThread - Invalid context\n");
-        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - FAILED: Invalid context");
+        ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Invalid context");
+        ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - FAILED: Invalid context");
         return 1;
     }
-    
-    wchar_t logBuffer[512];
-    swprintf(logBuffer, 512, L"YouTubeCacher: UnifiedDownloadWorkerThread - Executing download for URL: %ls", 
-            context->request->url ? context->request->url : L"NULL");
-    DebugOutput(logBuffer);
-    
+
+    ThreadSafeDebugOutputF(L"YouTubeCacher: UnifiedDownloadWorkerThread - Executing download for URL: %ls", context->request->url ? context->request->url : L"NULL");
+
     // Execute the download using the enhanced method for real-time progress
     // Use the existing StartNonBlockingDownload which already uses enhanced execution
     if (!StartNonBlockingDownload(&context->config, context->request, context->hDialog)) {
-        DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
+        ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
         PostMessageW(context->hDialog, WM_DOWNLOAD_COMPLETE, (WPARAM)NULL, (LPARAM)NULL);
         SAFE_FREE(context);
         return 1;
     }
-    
+
     // The enhanced execution is now running asynchronously
     // The completion will be handled by the existing WM_DOWNLOAD_COMPLETE message system
     // No need to wait here - just clean up and exit
-    DebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Enhanced download started, delegating to async system");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Enhanced download started, delegating to async system");
+
     SAFE_FREE(context);
     return 0;
 }
 
 BOOL TestYtDlpFunctionality(const wchar_t* path) {
     VALIDATE_STRING_PARAM(path, L"path", 256, cleanup);
-    
+
     // Build command line to test yt-dlp version
     size_t cmdLineLen = wcslen(path) + 20;
     wchar_t* cmdLine = NULL;
     SAFE_ALLOC(cmdLine, cmdLineLen * sizeof(wchar_t), cleanup);
-    
+
     swprintf(cmdLine, cmdLineLen, L"\"%ls\" --version", path);
-    
+
     // Create pipes for output capture
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     HANDLE hRead = NULL, hWrite = NULL;
-    
+
     CHECK_SYSTEM_CALL(CreatePipe(&hRead, &hWrite, &sa, 0), pipe_cleanup);
     CHECK_SYSTEM_CALL(SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0), pipe_cleanup);
-    
+
     // Set up process creation
     STARTUPINFOW si = {0};
     si.cb = sizeof(si);
@@ -2686,18 +2498,18 @@ BOOL TestYtDlpFunctionality(const wchar_t* path) {
     si.hStdOutput = hWrite;
     si.hStdError = hWrite;
     si.hStdInput = NULL;
-    
+
     PROCESS_INFORMATION pi = {0};
-    
+
     // Create process
     CHECK_SYSTEM_CALL_EX(CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi),
                          YTC_ERROR_YTDLP_EXECUTION, process_cleanup);
-    
+
     CloseHandle(hWrite);
-    
+
     // Wait for process completion with timeout
     DWORD waitResult = WaitForSingleObject(pi.hProcess, 10000); // 10 second timeout
-    
+
     BOOL success = FALSE;
     if (waitResult == WAIT_OBJECT_0) {
         // Process completed, check exit code
@@ -2709,13 +2521,13 @@ BOOL TestYtDlpFunctionality(const wchar_t* path) {
         // Process timed out or failed, terminate it
         TerminateProcess(pi.hProcess, 1);
     }
-    
+
     // Cleanup
     SAFE_FREE_AND_NULL(cmdLine);
     SAFE_CLOSE_HANDLE(hRead);
     SAFE_CLOSE_HANDLE(pi.hProcess);
     SAFE_CLOSE_HANDLE(pi.hThread);
-    
+
     return success;
 
 process_cleanup:
@@ -2733,10 +2545,10 @@ cleanup:
 }BOOL
  ValidateYtDlpConfiguration(const YtDlpConfig* config, ValidationInfo* validationInfo) {
     if (!config || !validationInfo) return FALSE;
-    
+
     // Initialize validation info
     memset(validationInfo, 0, sizeof(ValidationInfo));
-    
+
     // Check if yt-dlp path is set and valid
     if (wcslen(config->ytDlpPath) == 0) {
         validationInfo->result = VALIDATION_NOT_FOUND;
@@ -2744,7 +2556,7 @@ cleanup:
         validationInfo->suggestions = SAFE_WCSDUP(L"Please configure the yt-dlp path in File > Settings. If you don't have yt-dlp installed, you can install it via Help > Install yt-dlp");
         return FALSE;
     }
-    
+
     // Validate the yt-dlp executable
     if (!ValidateYtDlpExecutable(config->ytDlpPath)) {
         validationInfo->result = VALIDATION_NOT_EXECUTABLE;
@@ -2752,9 +2564,9 @@ cleanup:
         validationInfo->suggestions = SAFE_WCSDUP(L"Please check the yt-dlp path in File > Settings and ensure the file exists and is executable. If you don't have yt-dlp installed, you can install it via Help > Install yt-dlp");
         return FALSE;
     }
-    
+
     // Skip functionality test during startup - it will be tested when actually used
-    
+
     // Validate temporary directory access
     if (wcslen(config->defaultTempDir) > 0) {
         DWORD attributes = GetFileAttributesW(config->defaultTempDir);
@@ -2768,7 +2580,7 @@ cleanup:
             }
         }
     }
-    
+
     // Validate custom arguments if present
     if (wcslen(config->defaultArgs) > 0) {
         if (!ValidateYtDlpArguments(config->defaultArgs)) {
@@ -2778,7 +2590,7 @@ cleanup:
             return FALSE;
         }
     }
-    
+
     // All validation passed
     validationInfo->result = VALIDATION_OK;
     validationInfo->version = SAFE_WCSDUP(L"Configuration validated successfully");
@@ -2787,24 +2599,24 @@ cleanup:
 
 BOOL MigrateYtDlpConfiguration(YtDlpConfig* config) {
     if (!config) return FALSE;
-    
+
     BOOL migrationPerformed = FALSE;
-    
+
     // Check if this is an old configuration that needs migration
     // For now, we'll just ensure all fields have reasonable defaults
-    
+
     // Migrate timeout if it's unreasonable
     if (config->timeoutSeconds < 30 || config->timeoutSeconds > 3600) {
         config->timeoutSeconds = 300; // 5 minutes default
         migrationPerformed = TRUE;
     }
-    
+
     // Migrate temp directory strategy if invalid
     if (config->tempDirStrategy > TEMP_DIR_APPDATA) {
         config->tempDirStrategy = TEMP_DIR_SYSTEM;
         migrationPerformed = TRUE;
     }
-    
+
     // Ensure temp directory is set
     if (wcslen(config->defaultTempDir) == 0) {
         DWORD result = GetTempPathW(MAX_EXTENDED_PATH, config->defaultTempDir);
@@ -2813,128 +2625,124 @@ BOOL MigrateYtDlpConfiguration(YtDlpConfig* config) {
         }
         migrationPerformed = TRUE;
     }
-    
+
     // If migration was performed, save the updated configuration
     if (migrationPerformed) {
         SaveYtDlpConfig(config);
     }
-    
+
     return TRUE;
-}BOOL 
+}BOOL
 SetupDefaultYtDlpConfiguration(YtDlpConfig* config) {
     if (!config) return FALSE;
-    
+
     // Initialize all fields to default values
     memset(config, 0, sizeof(YtDlpConfig));
-    
+
     // Set default yt-dlp path
     GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
-    
+
     // Set default temporary directory
     DWORD result = GetTempPathW(MAX_EXTENDED_PATH, config->defaultTempDir);
     if (result == 0 || result >= MAX_EXTENDED_PATH) {
         wcscpy(config->defaultTempDir, L"C:\\Temp\\");
     }
-    
+
     // Set default arguments (empty)
     config->defaultArgs[0] = L'\0';
-    
+
     // Set default timeout (5 minutes)
     config->timeoutSeconds = 300;
-    
+
     // Set default boolean options
     config->enableVerboseLogging = FALSE;
     config->autoRetryOnFailure = FALSE;
-    
+
     // Set default temp directory strategy
     config->tempDirStrategy = TEMP_DIR_SYSTEM;
-    
+
     return TRUE;
 }
 
 void NotifyConfigurationIssues(HWND hParent, const ValidationInfo* validationInfo) {
     if (!validationInfo) return;
-    
+
     wchar_t title[256];
     wchar_t message[1024];
-    
+
     switch (validationInfo->result) {
         case VALIDATION_NOT_FOUND:
             wcscpy(title, L"yt-dlp Not Found");
-            swprintf(message, 1024, L"yt-dlp could not be found.\n\n%ls\n\n%ls", 
+            swprintf(message, 1024, L"yt-dlp could not be found.\n\n%ls\n\n%ls",
                     validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
                     validationInfo->suggestions ? validationInfo->suggestions : L"Please check your configuration");
             break;
-            
+
         case VALIDATION_NOT_EXECUTABLE:
             wcscpy(title, L"yt-dlp Not Executable");
-            swprintf(message, 1024, L"yt-dlp executable is not valid or accessible.\n\n%ls\n\n%ls", 
+            swprintf(message, 1024, L"yt-dlp executable is not valid or accessible.\n\n%ls\n\n%ls",
                     validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
                     validationInfo->suggestions ? validationInfo->suggestions : L"Please check your configuration");
             break;
-            
+
         case VALIDATION_MISSING_DEPENDENCIES:
             wcscpy(title, L"yt-dlp Dependencies Missing");
-            swprintf(message, 1024, L"yt-dlp is installed but missing required dependencies.\n\n%ls\n\n%ls", 
+            swprintf(message, 1024, L"yt-dlp is installed but missing required dependencies.\n\n%ls\n\n%ls",
                     validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
                     validationInfo->suggestions ? validationInfo->suggestions : L"Please install Python and yt-dlp dependencies");
             break;
-            
+
         case VALIDATION_VERSION_INCOMPATIBLE:
             wcscpy(title, L"yt-dlp Version Incompatible");
-            swprintf(message, 1024, L"yt-dlp version is not compatible.\n\n%ls\n\n%ls", 
+            swprintf(message, 1024, L"yt-dlp version is not compatible.\n\n%ls\n\n%ls",
                     validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
                     validationInfo->suggestions ? validationInfo->suggestions : L"Please update yt-dlp");
             break;
-            
+
         case VALIDATION_PERMISSION_DENIED:
             wcscpy(title, L"Configuration Permission Error");
-            swprintf(message, 1024, L"Configuration has permission or security issues.\n\n%ls\n\n%ls", 
+            swprintf(message, 1024, L"Configuration has permission or security issues.\n\n%ls\n\n%ls",
                     validationInfo->errorDetails ? validationInfo->errorDetails : L"Unknown error",
                     validationInfo->suggestions ? validationInfo->suggestions : L"Please check permissions");
             break;
-            
+
         default:
             wcscpy(title, L"Configuration Error");
-            swprintf(message, 1024, L"An unknown configuration error occurred.\n\n%ls", 
+            swprintf(message, 1024, L"An unknown configuration error occurred.\n\n%ls",
                     validationInfo->errorDetails ? validationInfo->errorDetails : L"Please check your yt-dlp configuration");
             break;
     }
-    
+
     // Use the new error dialog system for configuration errors
     SHOW_ERROR_DIALOG(hParent, YTC_SEVERITY_WARNING, YTC_ERROR_CONFIGURATION, message);
 }
 
 // Get subprocess result (transfers ownership to caller)
 YtDlpResult* GetSubprocessResult(SubprocessContext* context) {
-    OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - ENTRY\n");
-    
+    ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - ENTRY");
+
     if (!context) {
-        OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - NULL context, returning NULL\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - NULL context, returning NULL");
         return NULL;
     }
-    
+
     if (!context->completed) {
-        OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Context not completed, returning NULL\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Context not completed, returning NULL");
         return NULL;
     }
-    
-    OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Context is completed\n");
-    
+
+    ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Context is completed");
+
     if (!context->result) {
-        OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Context result is NULL, returning NULL\n");
+        ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Context result is NULL, returning NULL");
         return NULL;
     }
-    
-    wchar_t debugMsg[256];
-    swprintf(debugMsg, 256, L"YouTubeCacher: GetSubprocessResult - Transferring result: success=%d, exitCode=%d\n", 
-            context->result->success, context->result->exitCode);
-    OutputDebugStringW(debugMsg);
-    
+    ThreadSafeDebugOutputF(L"YouTubeCacher: GetSubprocessResult - Transferring result: success=%d, exitCode=%d", context->result->success, context->result->exitCode);
+
     YtDlpResult* result = context->result;
     context->result = NULL; // Transfer ownership
-    
-    OutputDebugStringW(L"YouTubeCacher: GetSubprocessResult - Result transferred successfully\n");
+
+    ThreadSafeDebugOutput(L"YouTubeCacher: GetSubprocessResult - Result transferred successfully");
     return result;
 }
 
@@ -2947,11 +2755,11 @@ BOOL InitializeYtDlpSystem(HWND hMainWindow) {
             ShowConfigurationError(hMainWindow, L"Failed to initialize yt-dlp configuration with default values.");
             return FALSE;
         }
-        
+
         // Save the default configuration
         SaveYtDlpConfig(&config);
     }
-    
+
     // Validate the loaded/default configuration
     ValidationInfo validationInfo;
     if (!ValidateYtDlpConfiguration(&config, &validationInfo)) {
@@ -2960,7 +2768,7 @@ BOOL InitializeYtDlpSystem(HWND hMainWindow) {
         FreeValidationInfo(&validationInfo);
         return FALSE;
     }
-    
+
     FreeValidationInfo(&validationInfo);
     return TRUE;
 }
