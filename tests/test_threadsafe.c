@@ -1,216 +1,342 @@
 #include "mock_windows.h"
-#include <wchar.h>
 
-// Override windows.h to point to our mock
-#define _WINDOWS_
-#define _INC_WINDOWS
-
-// Provide empty implementations to avoid missing dependencies
-#define YouTubeCacher_h
+// Define macros to prevent inclusion of real headers
+#define THREADSAFE_H
 #define YOUTUBECACHER_H
 
-// Mock necessary functions
-void DebugOutput(const wchar_t* msg) {
-    wprintf(L"DEBUG: %ls\n", msg);
+// Mock systems
+void DebugOutput(const wchar_t* msg) { (void)msg; }
+void AppendToYtDlpSessionLog(const wchar_t* msg) { (void)msg; }
+void* GetApplicationState(void) { return NULL; }
+void* GetYtDlpArgsForOperation(int op, const wchar_t* url, const wchar_t* path, void* config, wchar_t* args, int len) {
+    (void)op; (void)url; (void)path; (void)config; (void)args; (void)len;
+    return (void*)1;
+}
+void* CreateUserFriendlyYtDlpError(DWORD code, const wchar_t* output, const wchar_t* url) {
+    (void)code; (void)output; (void)url;
+    return NULL;
 }
 
-// Forward declarations to mock structs and functions for YouTubeCacher.h
+// Dummy structures needed by threadsafe.c
 typedef struct { int dummy; } ErrorHandler;
-ErrorHandler g_ErrorHandler;
 typedef struct { int dummy; } MemoryManager;
 typedef struct { int dummy; } ApplicationState;
 typedef void (*ProgressCallback)(int, const wchar_t*, void*);
-
-ApplicationState* GetApplicationState() { return NULL; }
-void AppendToYtDlpSessionLog(const wchar_t* msg) { (void)msg; }
-
-#define SAFE_MALLOC malloc
-#define SAFE_FREE free
-#define SAFE_WCSDUP wcsdup
-#define SAFE_REALLOC realloc
-
-// Hack to skip original windows.h
-#define THREADSAFE_H_INCLUDED
-#define THREADSAFE_H
-
-// Mock threadsafe.h definitions here to avoid including it and triggering windows.h
-BOOL InitializeThreadSafety(void);
-void CleanupThreadSafety(void);
-void ThreadSafeDebugOutput(const wchar_t* message);
-void ThreadSafeDebugOutputF(const wchar_t* format, ...);
-
-// Define just the struct we need from threading.h for threadsafe.c
 typedef struct {
-    CRITICAL_SECTION processStateLock;
-    CRITICAL_SECTION outputLock;
-    CRITICAL_SECTION configLock;
-    HANDLE cancellationEvent;
-
-    wchar_t* executablePath;
-    wchar_t* arguments;
-    wchar_t* workingDirectory;
-
-    wchar_t* outputBuffer;
-    size_t outputBufferSize;
-    size_t outputLength;
-    BOOL outputComplete;
-
-    DWORD timeoutMs;
-
-    HANDLE hProcess;
-    HANDLE hThread;
-    DWORD processId;
-    DWORD threadId;
-    BOOL processRunning;
-    BOOL processCompleted;
-    DWORD exitCode;
-
-    HANDLE hOutputRead;
-    HANDLE hOutputWrite;
-
-    BOOL initialized;
-    BOOL cancellationRequested;
-
-    ProgressCallback progressCallback;
-    void* callbackUserData;
-    void* parentWindow;
-} ThreadSafeSubprocessContext;
-
-// Forward declare functions from threadsafe.c to resolve implicit declaration warnings
-BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context);
-BOOL WaitForThreadSafeSubprocessCompletion(ThreadSafeSubprocessContext* context, DWORD timeoutMs);
-BOOL ForceKillThreadSafeSubprocess(ThreadSafeSubprocessContext* context);
-
-// Mock external functions used in threadsafe.c
-void* CreateEventW(void* attr, BOOL manualReset, BOOL initialState, const wchar_t* name) { (void)attr; (void)manualReset; (void)initialState; (void)name; return (void*)1; }
-BOOL CloseHandle(HANDLE h) { (void)h; return TRUE; }
-BOOL DuplicateHandle(HANDLE hSourceProcessHandle, HANDLE hSourceHandle, HANDLE hTargetProcessHandle, HANDLE* lpTargetHandle, DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwOptions) {
-    (void)hSourceProcessHandle; (void)hSourceHandle; (void)hTargetProcessHandle; (void)lpTargetHandle; (void)dwDesiredAccess; (void)bInheritHandle; (void)dwOptions;
-    return TRUE;
-}
-HANDLE GetCurrentProcess() { return (HANDLE)2; }
-#define DUPLICATE_SAME_ACCESS 2
-#define INVALID_HANDLE_VALUE ((void*)-1)
-void OutputDebugStringW(const wchar_t* str) { (void)str; }
-#define CREATE_NO_WINDOW 0x08000000
-#define STARTF_USESTDHANDLES 0x00000100
-BOOL CreatePipe(HANDLE* hReadPipe, HANDLE* hWritePipe, SECURITY_ATTRIBUTES* lpPipeAttributes, DWORD nSize) {
-    (void)hReadPipe; (void)hWritePipe; (void)lpPipeAttributes; (void)nSize;
-    return TRUE;
-}
-BOOL SetHandleInformation(HANDLE hObject, DWORD dwMask, DWORD dwFlags) {
-    (void)hObject; (void)dwMask; (void)dwFlags;
-    return TRUE;
-}
-#define HANDLE_FLAG_INHERIT 0x00000001
-BOOL CreateProcessW(const wchar_t* lpApplicationName, wchar_t* lpCommandLine, SECURITY_ATTRIBUTES* lpProcessAttributes, SECURITY_ATTRIBUTES* lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags, void* lpEnvironment, const wchar_t* lpCurrentDirectory, STARTUPINFOW* lpStartupInfo, PROCESS_INFORMATION* lpProcessInformation) {
-    (void)lpApplicationName; (void)lpCommandLine; (void)lpProcessAttributes; (void)lpThreadAttributes; (void)bInheritHandles; (void)dwCreationFlags; (void)lpEnvironment; (void)lpCurrentDirectory; (void)lpStartupInfo; (void)lpProcessInformation;
-    return TRUE;
-}
-DWORD GetLastError() { return 0; }
-BOOL GetExitCodeProcess(HANDLE hProcess, DWORD* lpExitCode) { (void)hProcess; (void)lpExitCode; return TRUE; }
-#define STILL_ACTIVE 259
-BOOL ResetEvent(HANDLE hEvent) { (void)hEvent; return TRUE; }
-BOOL SetEvent(HANDLE hEvent) { (void)hEvent; return TRUE; }
-BOOL GenerateConsoleCtrlEvent(DWORD dwCtrlEvent, DWORD dwProcessGroupId) { (void)dwCtrlEvent; (void)dwProcessGroupId; return TRUE; }
-#define CTRL_C_EVENT 0
-DWORD WaitForSingleObject(HANDLE hHandle, DWORD dwMilliseconds) { (void)hHandle; (void)dwMilliseconds; return 0; }
-#define WAIT_OBJECT_0 0
-BOOL TerminateProcess(HANDLE hProcess, DWORD uExitCode) { (void)hProcess; (void)uExitCode; return TRUE; }
-HANDLE CreateThread(SECURITY_ATTRIBUTES* lpThreadAttributes, size_t dwStackSize, void* lpStartAddress, void* lpParameter, DWORD dwCreationFlags, DWORD* lpThreadId) {
-    (void)lpThreadAttributes; (void)dwStackSize; (void)lpStartAddress; (void)lpParameter; (void)dwCreationFlags; (void)lpThreadId;
-    return (HANDLE)3;
-}
-BOOL PeekNamedPipe(HANDLE hNamedPipe, void* lpBuffer, DWORD nBufferSize, DWORD* lpBytesRead, DWORD* lpTotalBytesAvail, DWORD* lpBytesLeftThisMessage) {
-    (void)hNamedPipe; (void)lpBuffer; (void)nBufferSize; (void)lpBytesRead; (void)lpTotalBytesAvail; (void)lpBytesLeftThisMessage;
-    return TRUE;
-}
-#define ERROR_BROKEN_PIPE 109
-void Sleep(DWORD dwMilliseconds) { (void)dwMilliseconds; }
-BOOL ReadFile(HANDLE hFile, void* lpBuffer, DWORD nNumberOfBytesToRead, DWORD* lpNumberOfBytesRead, void* lpOverlapped) {
-    (void)hFile; (void)lpBuffer; (void)nNumberOfBytesToRead; (void)lpNumberOfBytesRead; (void)lpOverlapped;
-    return TRUE;
-}
-int MultiByteToWideChar(unsigned int CodePage, DWORD dwFlags, const char* lpMultiByteStr, int cbMultiByte, wchar_t* lpWideCharStr, int cchWideChar) {
-    (void)CodePage; (void)dwFlags; (void)lpMultiByteStr; (void)cbMultiByte; (void)lpWideCharStr; (void)cchWideChar;
-    return 0;
-}
-#define CP_UTF8 65001
-DWORD GetTickCount() { return 0; }
-
-// Dummy structures for legacy compatibility functions
-typedef struct {
-    int operation;
-    const wchar_t* url;
-    const wchar_t* outputPath;
-} YtDlpRequest;
-
-typedef struct {
-    const wchar_t* ytDlpPath;
-} YtDlpConfig;
-
+    CRITICAL_SECTION criticalSection;
+    BOOL isRunning;
+} ThreadContext;
 typedef struct {
     BOOL success;
     DWORD exitCode;
     wchar_t* output;
     wchar_t* errorMessage;
 } YtDlpResult;
-
 typedef struct {
-    CRITICAL_SECTION criticalSection;
-    BOOL isRunning;
-} ThreadContext;
-
+    wchar_t* ytDlpPath;
+} YtDlpConfig;
+typedef struct {
+    int operation;
+    wchar_t* url;
+    wchar_t* outputPath;
+} YtDlpRequest;
 typedef struct {
     YtDlpConfig* config;
     YtDlpRequest* request;
-    YtDlpResult* result;
     ProgressCallback progressCallback;
     void* callbackUserData;
-    void* parentWindow;
+    HWND parentWindow;
     ThreadContext threadContext;
+    YtDlpResult* result;
     BOOL completed;
     DWORD completionTime;
 } SubprocessContext;
 
-BOOL GetYtDlpArgsForOperation(int op, const wchar_t* url, const wchar_t* out, YtDlpConfig* config, wchar_t* args, size_t max) {
-    (void)op; (void)url; (void)out; (void)config; (void)args; (void)max;
-    return TRUE;
-}
-wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, const wchar_t* url) {
-    (void)exitCode; (void)output; (void)url;
-    return NULL;
-}
+typedef struct {
+    BOOL initialized;
+    CRITICAL_SECTION processStateLock;
+    CRITICAL_SECTION outputLock;
+    CRITICAL_SECTION configLock;
+    HANDLE cancellationEvent;
+    BOOL cancellationRequested;
+    BOOL processRunning;
+    BOOL processCompleted;
+    DWORD exitCode;
+    wchar_t* outputBuffer;
+    size_t outputLength;
+    size_t outputBufferSize;
+    BOOL outputComplete;
+    wchar_t* executablePath;
+    wchar_t* arguments;
+    wchar_t* workingDirectory;
+    DWORD timeoutMs;
+    ProgressCallback progressCallback;
+    void* callbackUserData;
+    HWND parentWindow;
+    HANDLE hProcess;
+    HANDLE hThread;
+    DWORD processId;
+    DWORD threadId;
+    HANDLE hOutputRead;
+    HANDLE hOutputWrite;
+} ThreadSafeSubprocessContext;
 
-// Include the source file, which will use our mocked functions instead of including headers since we defined the guards
+// Forward declarations of functions in threadsafe.c that are used before they are defined
+BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context);
+BOOL WaitForThreadSafeSubprocessCompletion(ThreadSafeSubprocessContext* context, DWORD timeoutMs);
+BOOL ForceKillThreadSafeSubprocess(ThreadSafeSubprocessContext* context);
+
+ErrorHandler g_ErrorHandler;
+
+// Include the actual source file
 #include "../threadsafe.c"
 
-int main() {
-    printf("Starting tests...\n");
+int test_initialization() {
+    printf("Starting thread safety initialization tests...\n");
+
+    // Test 1: Initial state
+    printf("Test 1: Check initial state... ");
+    if (IsThreadSafetyInitialized() != FALSE) {
+        printf("FAILED (Expected FALSE, got TRUE)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    // Test 2: Initialize
+    printf("Test 2: Check state after InitializeThreadSafety... ");
+    InitializeThreadSafety();
+    if (IsThreadSafetyInitialized() != TRUE) {
+        printf("FAILED (Expected TRUE, got FALSE)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    // Test 3: Cleanup
+    printf("Test 3: Check state after CleanupThreadSafety... ");
+    CleanupThreadSafety();
+    if (IsThreadSafetyInitialized() != FALSE) {
+        printf("FAILED (Expected FALSE, got TRUE)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    // Test 4: Multiple calls
+    printf("Test 4: Check state after re-initialization... ");
+    InitializeThreadSafety();
+    InitializeThreadSafety(); // Double call should be fine
+    if (IsThreadSafetyInitialized() != TRUE) {
+        printf("FAILED (Expected TRUE, got FALSE)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    printf("Test 5: Check state after re-cleanup... ");
+    CleanupThreadSafety();
+    CleanupThreadSafety(); // Double call should be fine
+    if (IsThreadSafetyInitialized() != FALSE) {
+        printf("FAILED (Expected FALSE, got TRUE)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    printf("\nAll thread safety initialization tests passed successfully!\n");
+    return 0;
+}
+
+int test_set_executable() {
+    printf("Starting SetSubprocessExecutable tests...\n");
+
+    // 1. Test Setup
+    ThreadSafeSubprocessContext context;
+    if (!InitializeThreadSafeSubprocessContext(&context)) {
+        printf("FAILED: Could not initialize context\n");
+        return 1;
+    }
+
+    // 2. Test SetSubprocessExecutable
+    const wchar_t* testPath = L"C:\\path\\to\\yt-dlp.exe";
+    BOOL result = SetSubprocessExecutable(&context, testPath);
+
+    if (!result) {
+        printf("FAILED: SetSubprocessExecutable returned FALSE\n");
+        return 1;
+    }
+
+    if (context.executablePath == NULL) {
+        printf("FAILED: executablePath is NULL after setting\n");
+        return 1;
+    }
+
+    if (wcscmp(context.executablePath, testPath) != 0) {
+        printf("FAILED: executablePath mismatch\n");
+        return 1;
+    }
+
+    // Test updating the path
+    const wchar_t* testPath2 = L"C:\\other\\yt-dlp.exe";
+    result = SetSubprocessExecutable(&context, testPath2);
+
+    if (!result) {
+        printf("FAILED: SetSubprocessExecutable returned FALSE on update\n");
+        return 1;
+    }
+
+    if (wcscmp(context.executablePath, testPath2) != 0) {
+        printf("FAILED: executablePath mismatch after update\n");
+        return 1;
+    }
+
+    // Test missing context
+    result = SetSubprocessExecutable(NULL, testPath2);
+    if (result) {
+        printf("FAILED: SetSubprocessExecutable returned TRUE for NULL context\n");
+        return 1;
+    }
+
+    // Test uninitialized context
+    ThreadSafeSubprocessContext uninitContext;
+    memset(&uninitContext, 0, sizeof(ThreadSafeSubprocessContext));
+    result = SetSubprocessExecutable(&uninitContext, testPath2);
+    if (result) {
+        printf("FAILED: SetSubprocessExecutable returned TRUE for uninitialized context\n");
+        return 1;
+    }
+
+    // Test NULL path
+    result = SetSubprocessExecutable(&context, NULL);
+    if (result) {
+        printf("FAILED: SetSubprocessExecutable returned TRUE for NULL path\n");
+        return 1;
+    }
+
+    // Clean up
+    CleanupThreadSafeSubprocessContext(&context);
+
+    printf("All SetSubprocessExecutable tests passed successfully!\n");
+    return 0;
+}
+
+int test_debug_output() {
+    printf("Starting ThreadSafeDebugOutput tests...\n");
 
     // Initialize thread safety
     InitializeThreadSafety();
 
     // Test ThreadSafeDebugOutput with NULL message
-    printf("Testing ThreadSafeDebugOutput(NULL)...\n");
+    printf("Testing ThreadSafeDebugOutput(NULL)... ");
     ThreadSafeDebugOutput(NULL);
-    printf("ThreadSafeDebugOutput(NULL) passed (no crash).\n");
+    printf("Passed.\n");
 
     // Test ThreadSafeDebugOutputF with NULL format
-    printf("Testing ThreadSafeDebugOutputF(NULL)...\n");
+    printf("Testing ThreadSafeDebugOutputF(NULL)... ");
     ThreadSafeDebugOutputF(NULL);
-    printf("ThreadSafeDebugOutputF(NULL) passed (no crash).\n");
+    printf("Passed.\n");
 
     // Test with actual message to ensure it still works
-    printf("Testing ThreadSafeDebugOutput(L\"Test message\")...\n");
+    printf("Testing ThreadSafeDebugOutput(L\"Test message\")... ");
     ThreadSafeDebugOutput(L"Test message");
+    printf("Passed.\n");
 
-    printf("Testing ThreadSafeDebugOutputF(L\"Test format %%d\", 42)...\n");
+    printf("Testing ThreadSafeDebugOutputF(L\"Test format %%d\", 42)... ");
     ThreadSafeDebugOutputF(L"Test format %d", 42);
+    printf("Passed.\n");
 
     // Cleanup
     CleanupThreadSafety();
 
-    printf("All tests passed!\n");
+    printf("All ThreadSafeDebugOutput tests passed successfully!\n");
+    return 0;
+}
+
+int test_clear_and_dir_null() {
+    printf("Starting ClearThreadSafeSubprocessOutput and NULL directory tests...\n");
+
+    // Initialize
+    ThreadSafeSubprocessContext context;
+    InitializeThreadSafeSubprocessContext(&context);
+
+    // Test ClearThreadSafeSubprocessOutput with NULL context (PR 28)
+    printf("Testing ClearThreadSafeSubprocessOutput(NULL)... ");
+    ClearThreadSafeSubprocessOutput(NULL);
+    printf("Passed.\n");
+
+    // Test ClearThreadSafeSubprocessOutput with uninitialized context (PR 28)
+    printf("Testing ClearThreadSafeSubprocessOutput(uninitialized)... ");
+    ThreadSafeSubprocessContext uninitContext;
+    memset(&uninitContext, 0, sizeof(ThreadSafeSubprocessContext));
+    uninitContext.initialized = FALSE;
+    ClearThreadSafeSubprocessOutput(&uninitContext);
+    printf("Passed.\n");
+
+    // Test SetSubprocessWorkingDirectory with NULL directory (PR 29)
+    printf("Testing SetSubprocessWorkingDirectory(NULL)... ");
+    if (SetSubprocessWorkingDirectory(&context, NULL)) {
+        if (context.workingDirectory == NULL) {
+            printf("Passed.\n");
+        } else {
+            printf("FAILED (Expected NULL workingDirectory)\n");
+            return 1;
+        }
+    } else {
+        printf("FAILED (Expected TRUE return)\n");
+        return 1;
+    }
+
+    // Cleanup
+    CleanupThreadSafeSubprocessContext(&context);
+
+    printf("All ClearThreadSafeSubprocessOutput and NULL directory tests passed successfully!\n");
+    return 0;
+}
+
+int test_exit_code() {
+    printf("Starting GetThreadSafeSubprocessExitCode tests...\n");
+
+    // Test with NULL context
+    printf("Testing GetThreadSafeSubprocessExitCode(NULL)... ");
+    if (GetThreadSafeSubprocessExitCode(NULL) == (DWORD)-1) {
+        printf("Passed.\n");
+    } else {
+        printf("FAILED (Expected -1)\n");
+        return 1;
+    }
+
+    // Test with uninitialized context
+    printf("Testing GetThreadSafeSubprocessExitCode(uninitialized)... ");
+    ThreadSafeSubprocessContext uninitContext;
+    memset(&uninitContext, 0, sizeof(ThreadSafeSubprocessContext));
+    uninitContext.initialized = FALSE;
+    if (GetThreadSafeSubprocessExitCode(&uninitContext) == (DWORD)-1) {
+        printf("Passed.\n");
+    } else {
+        printf("FAILED (Expected -1)\n");
+        return 1;
+    }
+
+    // Test with initialized context
+    printf("Testing GetThreadSafeSubprocessExitCode(initialized)... ");
+    ThreadSafeSubprocessContext context;
+    InitializeThreadSafeSubprocessContext(&context);
+    context.exitCode = 42;
+    if (GetThreadSafeSubprocessExitCode(&context) == 42) {
+        printf("Passed.\n");
+    } else {
+        printf("FAILED (Expected 42)\n");
+        return 1;
+    }
+
+    // Cleanup
+    CleanupThreadSafeSubprocessContext(&context);
+
+    printf("All GetThreadSafeSubprocessExitCode tests passed successfully!\n");
+    return 0;
+}
+
+int main() {
+    if (test_initialization() != 0) return 1;
+    if (test_set_executable() != 0) return 1;
+    if (test_debug_output() != 0) return 1;
+    if (test_clear_and_dir_null() != 0) return 1;
+    if (test_exit_code() != 0) return 1;
     return 0;
 }
