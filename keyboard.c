@@ -4,7 +4,7 @@
 
 /**
  * SetDialogTabOrder - Configure tab order for dialog controls
- * 
+ *
  * @param hDlg: Dialog window handle
  * @param config: Tab order configuration
  */
@@ -12,15 +12,15 @@ void SetDialogTabOrder(HWND hDlg, const TabOrderConfig* config) {
     if (!hDlg || !config || !config->entries || config->count <= 0) {
         return;
     }
-    
+
     // Sort entries by tab order (bubble sort for simplicity)
     TabOrderEntry* sorted = (TabOrderEntry*)SAFE_MALLOC(config->count * sizeof(TabOrderEntry));
     if (!sorted) {
         return;
     }
-    
+
     memcpy(sorted, config->entries, config->count * sizeof(TabOrderEntry));
-    
+
     // Simple bubble sort by tabOrder
     for (int i = 0; i < config->count - 1; i++) {
         for (int j = 0; j < config->count - i - 1; j++) {
@@ -31,7 +31,7 @@ void SetDialogTabOrder(HWND hDlg, const TabOrderConfig* config) {
             }
         }
     }
-    
+
     // Set tab order using SetWindowPos with proper Z-order
     HWND hPrevious = HWND_TOP;
     for (int i = 0; i < config->count; i++) {
@@ -45,20 +45,20 @@ void SetDialogTabOrder(HWND hDlg, const TabOrderConfig* config) {
                 style &= ~WS_TABSTOP;
             }
             SetWindowLong(hControl, GWL_STYLE, style);
-            
+
             // Set Z-order for tab navigation
-            SetWindowPos(hControl, hPrevious, 0, 0, 0, 0, 
+            SetWindowPos(hControl, hPrevious, 0, 0, 0, 0,
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             hPrevious = hControl;
         }
     }
-    
+
     SAFE_FREE(sorted);
 }
 
 /**
  * CalculateTabOrder - Automatically calculate logical tab order
- * 
+ *
  * @param hDlg: Dialog window handle
  * @return: Allocated TabOrderConfig (caller must free with FreeTabOrderConfig)
  */
@@ -66,7 +66,7 @@ TabOrderConfig* CalculateTabOrder(HWND hDlg) {
     if (!hDlg) {
         return NULL;
     }
-    
+
     // Count controls with WS_TABSTOP style
     int controlCount = 0;
     HWND hControl = GetWindow(hDlg, GW_CHILD);
@@ -77,24 +77,24 @@ TabOrderConfig* CalculateTabOrder(HWND hDlg) {
         }
         hControl = GetWindow(hControl, GW_HWNDNEXT);
     }
-    
+
     if (controlCount == 0) {
         return NULL;
     }
-    
+
     // Allocate configuration
     TabOrderConfig* config = (TabOrderConfig*)SAFE_MALLOC(sizeof(TabOrderConfig));
     if (!config) {
         return NULL;
     }
-    
+
     config->entries = (TabOrderEntry*)SAFE_MALLOC(controlCount * sizeof(TabOrderEntry));
     if (!config->entries) {
         SAFE_FREE(config);
         return NULL;
     }
     config->count = controlCount;
-    
+
     // Collect controls with their positions
     typedef struct {
         HWND hwnd;
@@ -102,14 +102,14 @@ TabOrderConfig* CalculateTabOrder(HWND hDlg) {
         RECT rect;
         BOOL isTabStop;
     } ControlInfo;
-    
+
     ControlInfo* controls = (ControlInfo*)SAFE_MALLOC(controlCount * sizeof(ControlInfo));
     if (!controls) {
         SAFE_FREE(config->entries);
         SAFE_FREE(config);
         return NULL;
     }
-    
+
     int index = 0;
     hControl = GetWindow(hDlg, GW_CHILD);
     while (hControl && index < controlCount) {
@@ -123,12 +123,12 @@ TabOrderConfig* CalculateTabOrder(HWND hDlg) {
         }
         hControl = GetWindow(hControl, GW_HWNDNEXT);
     }
-    
+
     // Sort by position: top-to-bottom, left-to-right
     for (int i = 0; i < controlCount - 1; i++) {
         for (int j = 0; j < controlCount - i - 1; j++) {
             BOOL shouldSwap = FALSE;
-            
+
             // Compare Y positions first (top-to-bottom)
             if (controls[j].rect.top > controls[j + 1].rect.top + 10) {
                 shouldSwap = TRUE;
@@ -138,7 +138,7 @@ TabOrderConfig* CalculateTabOrder(HWND hDlg) {
                     shouldSwap = TRUE;
                 }
             }
-            
+
             if (shouldSwap) {
                 ControlInfo temp = controls[j];
                 controls[j] = controls[j + 1];
@@ -146,21 +146,21 @@ TabOrderConfig* CalculateTabOrder(HWND hDlg) {
             }
         }
     }
-    
+
     // Build tab order configuration
     for (int i = 0; i < controlCount; i++) {
         config->entries[i].controlId = controls[i].controlId;
         config->entries[i].tabOrder = i;
         config->entries[i].isTabStop = controls[i].isTabStop;
     }
-    
+
     SAFE_FREE(controls);
     return config;
 }
 
 /**
  * FreeTabOrderConfig - Free tab order configuration
- * 
+ *
  * @param config: Configuration to free
  */
 void FreeTabOrderConfig(TabOrderConfig* config) {
@@ -176,7 +176,7 @@ void FreeTabOrderConfig(TabOrderConfig* config) {
 
 /**
  * GetAcceleratorChar - Extract accelerator character from label
- * 
+ *
  * @param label: Button or control label text
  * @return: Accelerator character (uppercase) or 0 if none
  */
@@ -184,7 +184,7 @@ wchar_t GetAcceleratorChar(const wchar_t* label) {
     if (!label) {
         return 0;
     }
-    
+
     // Find ampersand that's not doubled (&&)
     const wchar_t* p = label;
     while (*p) {
@@ -202,13 +202,13 @@ wchar_t GetAcceleratorChar(const wchar_t* label) {
         }
         p++;
     }
-    
+
     return 0;
 }
 
 /**
  * HasAcceleratorConflict - Check if accelerator conflicts with existing controls
- * 
+ *
  * @param hDlg: Dialog window handle
  * @param accelChar: Accelerator character to check
  * @return: TRUE if conflict exists
@@ -217,10 +217,10 @@ BOOL HasAcceleratorConflict(HWND hDlg, wchar_t accelChar) {
     if (!hDlg || accelChar == 0) {
         return FALSE;
     }
-    
+
     accelChar = towupper(accelChar);
     int conflictCount = 0;
-    
+
     // Enumerate all child controls
     HWND hControl = GetWindow(hDlg, GW_CHILD);
     while (hControl) {
@@ -236,13 +236,13 @@ BOOL HasAcceleratorConflict(HWND hDlg, wchar_t accelChar) {
         }
         hControl = GetWindow(hControl, GW_HWNDNEXT);
     }
-    
+
     return FALSE;
 }
 
 /**
  * ValidateAcceleratorKeys - Check for accelerator key conflicts in dialog
- * 
+ *
  * @param hDlg: Dialog window handle
  * @return: TRUE if no conflicts, FALSE if conflicts exist
  */
@@ -250,11 +250,11 @@ BOOL ValidateAcceleratorKeys(HWND hDlg) {
     if (!hDlg) {
         return FALSE;
     }
-    
+
     // Collect all accelerator keys
     wchar_t accelerators[256];
     int accelCount = 0;
-    
+
     HWND hControl = GetWindow(hDlg, GW_CHILD);
     while (hControl) {
         wchar_t text[256];
@@ -262,18 +262,16 @@ BOOL ValidateAcceleratorKeys(HWND hDlg) {
             wchar_t accel = GetAcceleratorChar(text);
             if (accel != 0) {
                 accel = towupper(accel);
-                
+
                 // Check for duplicate
                 for (int i = 0; i < accelCount; i++) {
                     if (accelerators[i] == accel) {
                         // Conflict found
-                        wchar_t debugMsg[256];
-                        swprintf(debugMsg, 256, L"[Keyboard] Accelerator key conflict detected: %c\r\n", accel);
-                        ThreadSafeDebugOutput(debugMsg);
+                        ThreadSafeDebugOutputF(L"[Keyboard] Accelerator key conflict detected: %c", accel);
                         return FALSE;
                     }
                 }
-                
+
                 if (accelCount < 256) {
                     accelerators[accelCount++] = accel;
                 }
@@ -281,7 +279,7 @@ BOOL ValidateAcceleratorKeys(HWND hDlg) {
         }
         hControl = GetWindow(hControl, GW_HWNDNEXT);
     }
-    
+
     return TRUE;
 }
 
@@ -289,18 +287,18 @@ BOOL ValidateAcceleratorKeys(HWND hDlg) {
 
 /**
  * SetInitialDialogFocus - Set focus to logical first control
- * 
+ *
  * @param hDlg: Dialog window handle
  */
 void SetInitialDialogFocus(HWND hDlg) {
     if (!hDlg) {
         return;
     }
-    
+
     // Find first control with WS_TABSTOP style
     HWND hControl = GetWindow(hDlg, GW_CHILD);
     HWND hFirstTabStop = NULL;
-    
+
     while (hControl) {
         LONG style = GetWindowLong(hControl, GWL_STYLE);
         if ((style & WS_TABSTOP) && (style & WS_VISIBLE) && IsWindowEnabled(hControl)) {
@@ -309,7 +307,7 @@ void SetInitialDialogFocus(HWND hDlg) {
         }
         hControl = GetWindow(hControl, GW_HWNDNEXT);
     }
-    
+
     if (hFirstTabStop) {
         SetFocus(hFirstTabStop);
     }
@@ -317,7 +315,7 @@ void SetInitialDialogFocus(HWND hDlg) {
 
 /**
  * GetNextFocusableControl - Get next or previous focusable control
- * 
+ *
  * @param hDlg: Dialog window handle
  * @param hCurrent: Current control with focus
  * @param forward: TRUE for next, FALSE for previous
@@ -327,15 +325,15 @@ HWND GetNextFocusableControl(HWND hDlg, HWND hCurrent, BOOL forward) {
     if (!hDlg) {
         return NULL;
     }
-    
+
     HWND hControl = hCurrent ? hCurrent : GetWindow(hDlg, GW_CHILD);
     if (!hControl) {
         return NULL;
     }
-    
+
     // Start searching from next/previous control
     hControl = GetWindow(hControl, forward ? GW_HWNDNEXT : GW_HWNDPREV);
-    
+
     // Search for focusable control
     HWND hStart = hControl;
     while (hControl) {
@@ -344,7 +342,7 @@ HWND GetNextFocusableControl(HWND hDlg, HWND hCurrent, BOOL forward) {
             return hControl;
         }
         hControl = GetWindow(hControl, forward ? GW_HWNDNEXT : GW_HWNDPREV);
-        
+
         // Wrap around
         if (!hControl) {
             hControl = GetWindow(hDlg, forward ? GW_CHILD : GW_CHILD);
@@ -357,30 +355,30 @@ HWND GetNextFocusableControl(HWND hDlg, HWND hCurrent, BOOL forward) {
                 hControl = hLast;
             }
         }
-        
+
         // Prevent infinite loop
         if (hControl == hStart) {
             break;
         }
     }
-    
+
     return NULL;
 }
 
 /**
  * EnsureFocusVisible - Ensure focus indicator is visible
- * 
+ *
  * @param hwnd: Control window handle
  */
 void EnsureFocusVisible(HWND hwnd) {
     if (!hwnd) {
         return;
     }
-    
+
     // Send WM_UPDATEUISTATE to ensure focus rectangles are shown
-    SendMessage(hwnd, WM_UPDATEUISTATE, 
+    SendMessage(hwnd, WM_UPDATEUISTATE,
                 MAKEWPARAM(UIS_CLEAR, UISF_HIDEFOCUS), 0);
-    
+
     // Invalidate control to force redraw
     InvalidateRect(hwnd, NULL, TRUE);
 }

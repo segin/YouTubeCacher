@@ -15,17 +15,6 @@ typedef struct {
     SYSTEMTIME allocTime;
 } AllocationInfo;
 
-// Hash table entry for fast allocation lookup
-typedef struct HashEntry {
-    AllocationInfo* allocation;
-    struct HashEntry* next;
-} HashEntry;
-
-// Hash table for allocation lookup
-typedef struct {
-    HashEntry** buckets;
-    size_t bucketCount;
-} AllocationHashTable;
 
 // Memory manager global state
 typedef struct {
@@ -34,8 +23,6 @@ typedef struct {
     size_t allocationCount;
     size_t allocationCapacity;
     
-    // Hash table for fast lookup
-    AllocationHashTable hashTable;
     
     // Statistics
     size_t totalAllocated;

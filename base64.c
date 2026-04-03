@@ -49,6 +49,11 @@ unsigned char* Base64Decode(const char* data, size_t* output_length) {
     if (!data) return NULL;
     
     size_t input_length = strlen(data);
+    if (input_length == 0) {
+        if (output_length) *output_length = 0;
+        return NULL;
+    }
+
     if (input_length % 4 != 0) return NULL;
     
     // Validate all characters are valid base64
