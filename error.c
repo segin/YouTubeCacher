@@ -1160,7 +1160,16 @@ ParameterValidationResult ValidateURL(const wchar_t* url, const wchar_t* paramNa
     // First validate as string with reasonable URL length limit
     ParameterValidationResult stringResult = ValidateString(url, paramName, 2048);
     if (!stringResult.isValid) {
-        return stringResult; // Return the string validation error
+        return stringResult;
+    }
+
+    // Check for double quotes in URL (Security requirement)
+    if (wcschr(url, L'\"') != NULL) {
+        result.isValid = FALSE;
+        result.errorCode = YTC_ERROR_URL_INVALID;
+        swprintf(result.errorMessage, 512,
+            L"URL '%ls' cannot contain double quote characters", result.fieldName);
+        return result;
     }
     
     // Convert to lowercase for case-insensitive comparison
