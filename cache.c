@@ -967,10 +967,14 @@ wchar_t* FormatDeleteErrorDetails(const DeleteResult* result) {
                 displayName, errorCode, errorCode, errorMessage, fileName);
             
             // Check if we have enough space
-            if (wcslen(details) + wcslen(errorInfo) < bufferSize - 1) {
+            const wchar_t* truncationMessage = L"... (additional errors truncated)\n";
+            if (wcslen(details) + wcslen(errorInfo) < bufferSize) {
                 wcscat(details, errorInfo);
             } else {
-                wcscat(details, L"... (additional errors truncated)\n");
+                // Before truncating, ensure we have space for the truncation message
+                if (wcslen(details) + wcslen(truncationMessage) < bufferSize) {
+                    wcscat(details, truncationMessage);
+                }
                 break;
             }
         }
