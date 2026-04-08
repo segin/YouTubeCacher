@@ -1,1 +1,17 @@
+# Generated source files
+classify_logic.c
+settings_logic.c
+uri_functions.c
+cache_duration.c
+error_logic.c
+parser_types.h
+
+# Test binaries
+test_cache_duration
+test_parser_classify
+test_uri
+test_base64
 test_threadsafe
+test_settings
+test_memory
+test_error
