@@ -46,16 +46,15 @@ char* Base64Encode(const unsigned char* data, size_t input_length) {
 }
 
 unsigned char* Base64Decode(const char* data, size_t* output_length) {
-    if (!data) return NULL;
-
-    size_t input_length = strlen(data);
-    if (input_length == 0) {
+    if (!data || data[0] == '\0') {
         if (output_length) *output_length = 0;
         return NULL;
     }
 
+    size_t input_length = strlen(data);
     if (input_length % 4 != 0) return NULL;
 
+    int padding_count = 0;
     // Validate all characters are valid base64
     for (size_t i = 0; i < input_length; i++) {
         unsigned char c = (unsigned char)data[i];
