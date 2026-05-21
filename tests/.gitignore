@@ -1,1 +1,10 @@
 test_threadsafe
+test_*
+*.c
+*.h
+!test_*.c
+!mock_*.h
+!windows.h
+!windows_mock.h
+!uri_test.c
+!mock_defs.h
