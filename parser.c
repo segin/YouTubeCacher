@@ -1057,6 +1057,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (!context->result) {
         ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - Failed to allocate result structure");
         context->completed = TRUE;
+        if (context->hCompletionEvent) SetEvent(context->hCompletionEvent);
         return 1;
     }
     memset(context->result, 0, sizeof(YtDlpResult));
@@ -1076,6 +1077,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         context->result->exitCode = 1;
         context->result->errorMessage = SAFE_WCSDUP(L"Failed to build yt-dlp arguments");
         context->completed = TRUE;
+        if (context->hCompletionEvent) SetEvent(context->hCompletionEvent);
         return 1;
     }
 
@@ -1085,6 +1087,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         context->result->success = FALSE;
         context->result->errorMessage = SAFE_WCSDUP(L"Operation cancelled by user");
         context->completed = TRUE;
+        if (context->hCompletionEvent) SetEvent(context->hCompletionEvent);
         return 1;
     }
 
@@ -1097,6 +1100,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         context->result->exitCode = error;
         context->result->errorMessage = SAFE_WCSDUP(L"Failed to create output pipe");
         context->completed = TRUE;
+        if (context->hCompletionEvent) SetEvent(context->hCompletionEvent);
         return 1;
     }
 
@@ -1123,6 +1127,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         context->result->exitCode = 1;
         context->result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed");
         context->completed = TRUE;
+        if (context->hCompletionEvent) SetEvent(context->hCompletionEvent);
         return 1;
     }
 
@@ -1150,6 +1155,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         context->result->exitCode = error;
         context->result->errorMessage = SAFE_WCSDUP(L"Failed to start yt-dlp process");
         context->completed = TRUE;
+        if (context->hCompletionEvent) SetEvent(context->hCompletionEvent);
         return 1;
     }
 
@@ -1409,6 +1415,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
 
     // Mark as completed
     context->completed = TRUE;
+    if (context->hCompletionEvent) {
+        SetEvent(context->hCompletionEvent);
+    }
     context->completionTime = GetTickCount();
 
     ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread completed");

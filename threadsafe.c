@@ -1291,6 +1291,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     if (!context) {
         ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to allocate thread-safe context");
         legacyContext->completed = TRUE;
+        if (legacyContext->hCompletionEvent) SetEvent(legacyContext->hCompletionEvent);
         return 1;
     }
 
@@ -1299,6 +1300,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
         ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to initialize thread-safe context");
         SAFE_FREE(context);
         legacyContext->completed = TRUE;
+        if (legacyContext->hCompletionEvent) SetEvent(legacyContext->hCompletionEvent);
         return 1;
     }
 
@@ -1310,6 +1312,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
         CleanupThreadSafeSubprocessContext(context);
         SAFE_FREE(context);
         legacyContext->completed = TRUE;
+        if (legacyContext->hCompletionEvent) SetEvent(legacyContext->hCompletionEvent);
         return 1;
     }
 
@@ -1326,6 +1329,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
         CleanupThreadSafeSubprocessContext(context);
         SAFE_FREE(context);
         legacyContext->completed = TRUE;
+        if (legacyContext->hCompletionEvent) SetEvent(legacyContext->hCompletionEvent);
         return 1;
     }
 
@@ -1336,6 +1340,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
         CleanupThreadSafeSubprocessContext(context);
         SAFE_FREE(context);
         legacyContext->completed = TRUE;
+        if (legacyContext->hCompletionEvent) SetEvent(legacyContext->hCompletionEvent);
         return 1;
     }
 
@@ -1346,6 +1351,7 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
         CleanupThreadSafeSubprocessContext(context);
         SAFE_FREE(context);
         legacyContext->completed = TRUE;
+        if (legacyContext->hCompletionEvent) SetEvent(legacyContext->hCompletionEvent);
         return 1;
     }
 
@@ -1375,6 +1381,9 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     // Store result in legacy context
     legacyContext->result = result;
     legacyContext->completed = TRUE;
+    if (legacyContext->hCompletionEvent) {
+        SetEvent(legacyContext->hCompletionEvent);
+    }
     legacyContext->completionTime = GetTickCount();
 
     // Final progress update

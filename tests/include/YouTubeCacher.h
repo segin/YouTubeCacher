@@ -56,6 +56,7 @@ typedef struct {
     BOOL completed;
     DWORD completionTime;
     ThreadContext threadContext;
+    HANDLE hCompletionEvent;
 } SubprocessContext;
 
 extern ErrorHandler g_ErrorHandler;
