@@ -176,10 +176,12 @@ static inline DWORD GetTickCount(void) {
     return 0;
 }
 
+#ifndef CreateProcessW
 static inline BOOL CreateProcessW(LPCWSTR name, LPWSTR cmd, LPSECURITY_ATTRIBUTES psa, LPSECURITY_ATTRIBUTES tsa, BOOL inherit, DWORD flags, LPVOID env, LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) {
     (void)name; (void)cmd; (void)psa; (void)tsa; (void)inherit; (void)flags; (void)env; (void)dir; (void)si; (void)pi;
     return TRUE;
 }
+#endif
 
 static inline BOOL GetExitCodeProcess(HANDLE h, DWORD* code) {
     (void)h;
@@ -251,9 +253,8 @@ static inline int _wtoi(const wchar_t* str) {
     return (int)wcstol(str, NULL, 10);
 }
 
-#endif // MOCK_WINDOWS_H
-
-
+#ifndef _WCSNICMP_DEFINED
+#define _WCSNICMP_DEFINED
 static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
     if (n == 0) return 0;
     while (n > 0) {
@@ -269,3 +270,6 @@ static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
     }
     return 0;
 }
+#endif
+
+#endif // MOCK_WINDOWS_H
