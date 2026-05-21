@@ -4,29 +4,49 @@ BOOL IsYouTubeURL(const wchar_t* url) {
     if (url == NULL) {
         return FALSE;
     }
-    
-    // Check if URL begins with any of the YouTube URL prefixes
-    // Including: watch, shorts, playlist, and youtu.be
-    return (wcsncmp(url, L"https://www.youtube.com/watch", 29) == 0 ||
-            wcsncmp(url, L"https://www.youtube.com/shorts/", 31) == 0 ||
-            wcsncmp(url, L"https://www.youtube.com/playlist", 32) == 0 ||
-            wcsncmp(url, L"https://youtu.be/", 17) == 0 ||
-            wcsncmp(url, L"https://m.youtube.com/watch", 27) == 0 ||
-            wcsncmp(url, L"https://m.youtube.com/shorts/", 29) == 0 ||
-            wcsncmp(url, L"https://m.youtube.com/playlist", 30) == 0 ||
-            wcsncmp(url, L"https://youtube.com/watch", 25) == 0 ||
-            wcsncmp(url, L"https://youtube.com/shorts/", 27) == 0 ||
-            wcsncmp(url, L"https://youtube.com/playlist", 28) == 0 ||
-            wcsncmp(url, L"http://www.youtube.com/watch", 28) == 0 ||
-            wcsncmp(url, L"http://www.youtube.com/shorts/", 30) == 0 ||
-            wcsncmp(url, L"http://www.youtube.com/playlist", 31) == 0 ||
-            wcsncmp(url, L"http://youtu.be/", 16) == 0 ||
-            wcsncmp(url, L"http://m.youtube.com/watch", 26) == 0 ||
-            wcsncmp(url, L"http://m.youtube.com/shorts/", 28) == 0 ||
-            wcsncmp(url, L"http://m.youtube.com/playlist", 29) == 0 ||
-            wcsncmp(url, L"http://youtube.com/watch", 24) == 0 ||
-            wcsncmp(url, L"http://youtube.com/shorts/", 26) == 0 ||
-            wcsncmp(url, L"http://youtube.com/playlist", 27) == 0);
+
+    // Skip protocol
+    const wchar_t* domain = NULL;
+    if (wcsncmp(url, L"https://", 8) == 0) {
+        domain = url + 8;
+    } else if (wcsncmp(url, L"http://", 7) == 0) {
+        domain = url + 7;
+    } else {
+        return FALSE;
+    }
+
+    // Identify the end of the domain. Delimiters are /, ?, or #
+    const wchar_t* path = wcschr(domain, L'/');
+    const wchar_t* query = wcschr(domain, L'?');
+    const wchar_t* fragment = wcschr(domain, L'#');
+
+    const wchar_t* end = path;
+    if (query != NULL && (end == NULL || query < end)) end = query;
+    if (fragment != NULL && (end == NULL || fragment < end)) end = fragment;
+
+    size_t domainLen = end ? (size_t)(end - domain) : wcslen(domain);
+
+    // Common YouTube domains
+    const wchar_t* validDomains[] = {
+        L"www.youtube.com",
+        L"youtube.com",
+        L"m.youtube.com",
+        L"music.youtube.com",
+        L"youtu.be",
+        L"www.youtube-nocookie.com",
+        L"youtube-nocookie.com"
+    };
+
+    BOOL domainValid = FALSE;
+    for (size_t i = 0; i < sizeof(validDomains) / sizeof(validDomains[0]); i++) {
+        if (wcslen(validDomains[i]) == domainLen &&
+            _wcsnicmp(domain, validDomains[i], domainLen) == 0) {
+            domainValid = TRUE;
+            break;
+        }
+    }
+
+    return domainValid;
 }
 
 BOOL ContainsMultipleURLs(const wchar_t* input) {
@@ -70,14 +90,30 @@ BOOL IsYouTubePlaylistURL(const wchar_t* url) {
     
     // Check for playlist indicators in the URL
     // Playlists contain "list=" parameter, properly delimited by ? or &
-    if (wcsstr(url, L"?list=") != NULL || wcsstr(url, L"&list=") != NULL) {
-        return TRUE;
+    const wchar_t* listParam = wcsstr(url, L"?list=");
+    if (listParam == NULL) {
+        listParam = wcsstr(url, L"&list=");
+    }
+
+    if (listParam != NULL) {
+        // Ensure the list parameter is not empty and not just followed by other params
+        // listParam[6] is the character after 'list='
+        wchar_t nextChar = listParam[6];
+        if (nextChar != L'\0' && nextChar != L'&' && nextChar != L'#') {
+            return TRUE;
+        }
     }
     
     // Check for playlist-specific URL patterns
-    if (wcsstr(url, L"/playlist?") != NULL || wcsstr(url, L"/playlist/") != NULL) {
-        return TRUE;
+    const wchar_t* playlistPath = wcsstr(url, L"/playlist/");
+    if (playlistPath != NULL) {
+        // Ensure there is something after /playlist/
+        // playlistPath[10] is the character after '/playlist/'
+        wchar_t nextChar = playlistPath[10];
+        if (nextChar != L'\0' && nextChar != L'?' && nextChar != L'#') {
+            return TRUE;
+        }
     }
-    
+
     return FALSE;
 }
