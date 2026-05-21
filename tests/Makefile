@@ -5,7 +5,7 @@ CC = /mingw64/bin/gcc.exe
 CFLAGS = -Wall -Wextra -I. -DTEST_BUILD
 RM = /usr/bin/rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe test_settings
+all: test_cache_duration test_parser_classify test_uri test_uri_main test_base64 test_threadsafe test_settings
 
 test_cache_duration: test_cache_duration.c cache_duration.c
 	$(CC) $(CFLAGS) test_cache_duration.c cache_duration.c -o $@
@@ -42,6 +42,14 @@ uri_functions.c: ../uri.c
 	/usr/bin/sed -n '/BOOL IsYouTubePlaylistURL/,/^}/p' ../uri.c >> $@
 	/usr/bin/sed -n '/BOOL ContainsMultipleURLs/,/^}/p' ../uri.c >> $@
 
+test_uri_main: test_uri_main.c uri_main_functions.c
+	$(CC) $(CFLAGS) test_uri_main.c -o $@
+
+uri_main_functions.c: ../uri_main.c
+	/usr/bin/sed -n '/BOOL IsYouTubeURL/,/^}/p' ../uri_main.c > uri_main_functions.c
+	/usr/bin/sed -n '/BOOL IsYouTubePlaylistURL/,/^}/p' ../uri_main.c >> uri_main_functions.c
+	/usr/bin/sed -n '/BOOL ContainsMultipleURLs/,/^}/p' ../uri_main.c >> uri_main_functions.c
+
 test_base64: test_base64.c
 	$(CC) $(CFLAGS) test_base64.c -o $@
 
@@ -58,11 +66,12 @@ run: all
 	./test_cache_duration
 	./test_parser_classify
 	./test_uri
+	./test_uri_main
 	./test_base64
 	./test_threadsafe
 	./test_settings
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_uri_main uri_main_functions.c test_base64 test_threadsafe test_settings settings_logic.c
 
 .PHONY: all run clean

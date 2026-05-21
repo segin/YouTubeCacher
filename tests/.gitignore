@@ -1,1 +1,14 @@
 test_threadsafe
+test_cache_duration
+test_parser_classify
+test_uri
+test_uri_main
+test_base64
+test_settings
+cache_duration.c
+parser_types.h
+classify_logic.c
+uri_functions.c
+uri_main_functions.c
+settings_logic.c
+error_logic.c
