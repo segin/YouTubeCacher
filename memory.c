@@ -2313,21 +2313,8 @@ cleanup:
     return TRUE;
 }
 
-// Test function for memory error handling and reporting
-BOOL TestMemoryErrorHandling(void)
+static BOOL RunDoubleFreeTest(void)
 {
-    printf("=== TESTING MEMORY ERROR HANDLING ===\n");
-
-    // Test error callback system
-    printf("Testing error callback system...\n");
-
-    // Reset test counters
-    g_testErrorCount = 0;
-    g_lastErrorType = MEMORY_ERROR_ALLOCATION_FAILED;
-
-    SetMemoryErrorCallback(TestErrorCallback);
-
-    // Test double-free detection
     printf("Testing double-free detection...\n");
     EnableDoubleFreDetection(TRUE);
 
@@ -2354,8 +2341,11 @@ BOOL TestMemoryErrorHandling(void)
     }
 
     printf("Double-free detection working correctly\n");
+    return TRUE;
+}
 
-    // Test use-after-free detection
+static BOOL RunUseAfterFreeTest(void)
+{
     printf("Testing use-after-free detection...\n");
     EnableUseAfterFreeDetection(TRUE);
 
@@ -2367,7 +2357,7 @@ BOOL TestMemoryErrorHandling(void)
 
     SAFE_FREE(testPtr2);
 
-    oldErrorCount = g_testErrorCount;
+    int oldErrorCount = g_testErrorCount;
     BOOL isValid = ValidateMemoryAddress(testPtr2); // Should detect use-after-free
 
     if (isValid) {
@@ -2381,9 +2371,12 @@ BOOL TestMemoryErrorHandling(void)
     }
 
     printf("Use-after-free detection working correctly\n");
+    return TRUE;
+}
 
+static BOOL RunBufferOverrunTest(void)
+{
 #ifdef MEMORY_DEBUG
-    // Test buffer overrun detection
     printf("Testing buffer overrun detection...\n");
     EnableBufferOverrunDetection(TRUE);
 
@@ -2397,7 +2390,7 @@ BOOL TestMemoryErrorHandling(void)
     char* guardAfter = (char*)testPtr3 + 50;
     *guardAfter = 0xFF; // Corrupt the guard pattern
 
-    oldErrorCount = g_testErrorCount;
+    int oldErrorCount = g_testErrorCount;
     BOOL isIntact = ValidateAllocationIntegrity(testPtr3);
 
     if (isIntact) {
@@ -2413,11 +2406,15 @@ BOOL TestMemoryErrorHandling(void)
     }
 
     printf("Buffer overrun detection working correctly\n");
-
     // Don't free testPtr3 as it's corrupted and would cause issues
+#else
+    printf("Skipping buffer overrun test (MEMORY_DEBUG not defined)\n");
 #endif
+    return TRUE;
+}
 
-    // Test error configuration functions
+static BOOL RunErrorConfigurationTest(void)
+{
     printf("Testing error configuration functions...\n");
 
     EnableDoubleFreDetection(FALSE);
@@ -2444,6 +2441,28 @@ BOOL TestMemoryErrorHandling(void)
     EnableBufferOverrunDetection(TRUE);
 
     printf("Error configuration functions working correctly\n");
+    return TRUE;
+}
+
+// Test function for memory error handling and reporting
+BOOL TestMemoryErrorHandling(void)
+{
+    printf("=== TESTING MEMORY ERROR HANDLING ===\n");
+
+    // Test error callback system
+    printf("Testing error callback system...\n");
+
+    // Reset test counters
+    g_testErrorCount = 0;
+    g_lastErrorType = MEMORY_ERROR_ALLOCATION_FAILED;
+
+    SetMemoryErrorCallback(TestErrorCallback);
+
+    // Run individual tests
+    if (!RunDoubleFreeTest()) return FALSE;
+    if (!RunUseAfterFreeTest()) return FALSE;
+    if (!RunBufferOverrunTest()) return FALSE;
+    if (!RunErrorConfigurationTest()) return FALSE;
 
     // Test memory corruption check
     printf("Testing memory corruption check...\n");
