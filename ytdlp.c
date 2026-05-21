@@ -118,7 +118,7 @@ void InstallYtDlpWithWinget(HWND hParent) {
 // Function to validate that yt-dlp executable exists and is accessible
 BOOL ValidateYtDlpExecutable(const wchar_t* path) {
     // Check if path is empty
-    if (!path || wcslen(path) == 0) {
+    if (!path || path[0] == L'\0') {
         return FALSE;
     }
 
@@ -371,7 +371,7 @@ BOOL CreateYtDlpTempDirWithFallback(wchar_t* tempPath, size_t pathSize) {
 }
 
 BOOL CleanupTempDirectory(const wchar_t* tempDir) {
-    if (!tempDir || wcslen(tempDir) == 0) return FALSE;
+    if (!tempDir || tempDir[0] == L'\0') return FALSE;
 
     ThreadSafeDebugOutputF(L"Cleaning up temporary directory: %ls", tempDir);
 
@@ -444,7 +444,7 @@ wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, con
         wcscpy(userMessage, L"Access denied when running yt-dlp.\r\n\r\n"
                            L"This may be caused by antivirus software or insufficient permissions. "
                            L"Try running YouTubeCacher as administrator or add yt-dlp to your antivirus exclusions.");
-    } else if (output && wcslen(output) > 0) {
+    } else if (output && output[0] != L'\0') {
         // Analyze output for common error patterns
         if (wcsstr(output, L"Video unavailable") || wcsstr(output, L"Private video") ||
             wcsstr(output, L"This video is not available")) {
@@ -503,7 +503,7 @@ wchar_t* CreateUserFriendlyYtDlpError(DWORD exitCode, const wchar_t* output, con
 
 // Extract a simple, user-friendly error message from yt-dlp output
 wchar_t* ExtractSimpleErrorFromYtDlpOutput(const wchar_t* output) {
-    if (!output || wcslen(output) == 0) {
+    if (!output || output[0] == L'\0') {
         return NULL;
     }
 
@@ -607,7 +607,7 @@ YtDlpResult* ExecuteYtDlpRequest(const YtDlpConfig* config, const YtDlpRequest* 
     if (result) {
         // Save output to global buffer (clear previous run first) for backward compatibility
         ClearYtDlpOutputBuffer();
-        if (result->output && wcslen(result->output) > 0) {
+        if (result->output && result->output[0] != L'\0') {
             AppendToYtDlpOutputBuffer(result->output);
         }
 
@@ -922,7 +922,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     wchar_t* escapedUrl = NULL;
     wchar_t* escapedOutputPath = NULL;
 
-    if (url && wcslen(url) > 0) {
+    if (url && url[0] != L'\0') {
         escapedUrl = EscapeCommandLineArgument(url);
         if (!escapedUrl) goto cleanup;
     }
@@ -1144,7 +1144,7 @@ BOOL ParsePlaylistMetadataOutput(const wchar_t* output, PlaylistMetadata* playli
 
     while (line && index < lineCount) {
         // Skip empty lines
-        if (wcslen(line) == 0) {
+        if (line[0] == L'\0') {
             line = wcstok(NULL, L"\r\n", &context);
             continue;
         }
@@ -1256,7 +1256,7 @@ BOOL ParseVideoEndMarker(const wchar_t* line, wchar_t** videoId) {
         }
     }
 
-    return (*videoId != NULL && wcslen(*videoId) > 0);
+    return (*videoId != NULL && (*videoId)[0] != L'\0');
 }
 
 // Parse JSON output from yt-dlp to extract metadata
@@ -1563,21 +1563,21 @@ static BOOL ParsePipeDelimitedProgress(const wchar_t* line, ProgressInfo* progre
     while (token && tokenIndex < 4) {
         switch (tokenIndex) {
             case 0: { // Downloaded bytes
-                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                if (token[0] != L'\0' && wcscmp(token, L"N/A") != 0) {
                     downloadedBytes = wcstoll(token, NULL, 10);
                     progress->downloadedBytes = downloadedBytes;
                 }
                 break;
             }
             case 1: { // Total bytes
-                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                if (token[0] != L'\0' && wcscmp(token, L"N/A") != 0) {
                     totalBytes = wcstoll(token, NULL, 10);
                     progress->totalBytes = totalBytes;
                 }
                 break;
             }
             case 2: { // Speed in bytes per second (can be decimal)
-                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                if (token[0] != L'\0' && wcscmp(token, L"N/A") != 0) {
                     speedBytesPerSec = wcstod(token, NULL);
                     if (speedBytesPerSec > 0) {
                         // Convert to human-readable format for display
@@ -1597,7 +1597,7 @@ static BOOL ParsePipeDelimitedProgress(const wchar_t* line, ProgressInfo* progre
                 break;
             }
             case 3: { // ETA in seconds
-                if (wcslen(token) > 0 && wcscmp(token, L"N/A") != 0) {
+                if (token[0] != L'\0' && wcscmp(token, L"N/A") != 0) {
                     etaSeconds = wcstoll(token, NULL, 10);
                     if (etaSeconds > 0) {
                         // Convert seconds to human-readable format
@@ -1793,7 +1793,7 @@ OperationResult* StartNonBlockingGetInfoEx(HWND hDlg, const wchar_t* url, Cached
         return CreateOperationResult(FALSE, errorInfo);
     }
 
-    if (!url || wcslen(url) == 0) {
+    if (!url || url[0] == L'\0') {
         DetailedErrorInfo* errorInfo = CreateDetailedErrorInfo(
             ERROR_TYPE_INVALID_PARAMETERS, 0,
             L"StartNonBlockingGetInfoEx", L"URL is NULL or empty");
@@ -2550,7 +2550,7 @@ cleanup:
     memset(validationInfo, 0, sizeof(ValidationInfo));
 
     // Check if yt-dlp path is set and valid
-    if (wcslen(config->ytDlpPath) == 0) {
+    if (config->ytDlpPath[0] == L'\0') {
         validationInfo->result = VALIDATION_NOT_FOUND;
         validationInfo->errorDetails = SAFE_WCSDUP(L"yt-dlp path is not configured");
         validationInfo->suggestions = SAFE_WCSDUP(L"Please configure the yt-dlp path in File > Settings. If you don't have yt-dlp installed, you can install it via Help > Install yt-dlp");
@@ -2568,7 +2568,7 @@ cleanup:
     // Skip functionality test during startup - it will be tested when actually used
 
     // Validate temporary directory access
-    if (wcslen(config->defaultTempDir) > 0) {
+    if (config->defaultTempDir[0] != L'\0') {
         DWORD attributes = GetFileAttributesW(config->defaultTempDir);
         if (attributes == INVALID_FILE_ATTRIBUTES) {
             // Try to create the directory
@@ -2582,7 +2582,7 @@ cleanup:
     }
 
     // Validate custom arguments if present
-    if (wcslen(config->defaultArgs) > 0) {
+    if (config->defaultArgs[0] != L'\0') {
         if (!ValidateYtDlpArguments(config->defaultArgs)) {
             validationInfo->result = VALIDATION_PERMISSION_DENIED;
             validationInfo->errorDetails = SAFE_WCSDUP(L"Custom yt-dlp arguments contain potentially dangerous options");
@@ -2618,7 +2618,7 @@ BOOL MigrateYtDlpConfiguration(YtDlpConfig* config) {
     }
 
     // Ensure temp directory is set
-    if (wcslen(config->defaultTempDir) == 0) {
+    if (config->defaultTempDir[0] == L'\0') {
         DWORD result = GetTempPathW(MAX_EXTENDED_PATH, config->defaultTempDir);
         if (result == 0 || result >= MAX_EXTENDED_PATH) {
             wcscpy(config->defaultTempDir, L"C:\\Temp\\");
