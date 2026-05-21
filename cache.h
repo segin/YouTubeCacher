@@ -65,7 +65,6 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
                    wchar_t** subtitleFiles, int subtitleCount);
 BOOL RemoveCacheEntry(CacheManager* manager, const wchar_t* videoId);
 CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId);
-BOOL DeleteCacheEntryFiles(CacheManager* manager, const wchar_t* videoId);
 DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t* videoId);
 void FreeDeleteResult(DeleteResult* result);
 wchar_t* FormatDeleteErrorDetails(const DeleteResult* result);
