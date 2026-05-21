@@ -17,7 +17,7 @@ static const int base64_decode_table[128] = {
 };
 
 char* Base64Encode(const unsigned char* data, size_t input_length) {
-    if (!data || input_length == 0) return NULL;
+    if (!data || input_length == 0 || data[0] == '\0') return NULL;
 
     size_t output_length = 4 * ((input_length + 2) / 3);
     char* encoded_data = (char*)SAFE_MALLOC(output_length + 1);
@@ -46,13 +46,13 @@ char* Base64Encode(const unsigned char* data, size_t input_length) {
 }
 
 unsigned char* Base64Decode(const char* data, size_t* output_length) {
-    if (!data) return NULL;
-
-    size_t input_length = strlen(data);
-    if (input_length == 0) {
+    if (!data || data[0] == '\0') {
         if (output_length) *output_length = 0;
         return NULL;
     }
+
+    size_t padding_count = 0;
+    size_t input_length = strlen(data);
 
     if (input_length % 4 != 0) return NULL;
 
