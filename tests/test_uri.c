@@ -1,3 +1,4 @@
+#include "mock_windows.h"
 #include "mock_defs.h"
 
 // These will be extracted from uri.c and included via uri_functions.c
@@ -35,6 +36,15 @@ void test_playlist_detection() {
     assert_bool("URL with playlist= but no list=", FALSE, IsYouTubePlaylistURL(L"https://www.youtube.com/watch?v=abc&playlist=PL123"), L"https://www.youtube.com/watch?v=abc&playlist=PL123");
     assert_bool("URL with notlist=", FALSE, IsYouTubePlaylistURL(L"https://www.youtube.com/watch?v=abc&notlist=PL123"), L"https://www.youtube.com/watch?v=abc&notlist=PL123");
     assert_bool("Non-YouTube URL with list=", FALSE, IsYouTubePlaylistURL(L"https://example.com/watch?list=PL123"), L"https://example.com/watch?list=PL123");
+    assert_bool("YouTube Music playlist", TRUE, IsYouTubePlaylistURL(L"https://music.youtube.com/playlist?list=PL123"), L"https://music.youtube.com/playlist?list=PL123");
+    assert_bool("YouTube Music watch with list", TRUE, IsYouTubePlaylistURL(L"https://music.youtube.com/watch?v=abc&list=PL123"), L"https://music.youtube.com/watch?v=abc&list=PL123");
+    assert_bool("Empty list parameter", FALSE, IsYouTubePlaylistURL(L"https://www.youtube.com/playlist?list="), L"https://www.youtube.com/playlist?list=");
+    assert_bool("List parameter empty with more params", FALSE, IsYouTubePlaylistURL(L"https://www.youtube.com/watch?v=abc&list=&t=10"), L"https://www.youtube.com/watch?v=abc&list=&t=10");
+    assert_bool("Empty playlist path", FALSE, IsYouTubePlaylistURL(L"https://www.youtube.com/playlist/"), L"https://www.youtube.com/playlist/");
+    assert_bool("Empty playlist path with fragment", FALSE, IsYouTubePlaylistURL(L"https://www.youtube.com/playlist/#frag"), L"https://www.youtube.com/playlist/#frag");
+    assert_bool("Domain with query immediately", TRUE, IsYouTubePlaylistURL(L"https://youtube.com?list=PL123"), L"https://youtube.com?list=PL123");
+    assert_bool("Domain spoofing", FALSE, IsYouTubePlaylistURL(L"https://www.youtube.com.attacker.com/playlist?list=PL123"), L"https://www.youtube.com.attacker.com/playlist?list=PL123");
+    assert_bool("No-cookie domain", TRUE, IsYouTubePlaylistURL(L"https://www.youtube-nocookie.com/embed/abc?list=PL123"), L"https://www.youtube-nocookie.com/embed/abc?list=PL123");
 
     // Error conditions
     assert_bool("NULL input", FALSE, IsYouTubePlaylistURL(NULL), NULL);
