@@ -10,6 +10,12 @@
 #include <wctype.h>
 #include <stdarg.h>
 
+#ifndef MOCK_WINDOWS_H_GUARD
+#define MOCK_WINDOWS_H_GUARD
+
+#define windows_h
+#define _INC_WINDOWS
+
 #define WINAPI
 #define CALLBACK
 
@@ -18,6 +24,8 @@ typedef unsigned char BYTE;
 typedef unsigned short WORD;
 typedef uint32_t DWORD;
 typedef uint64_t DWORDLONG;
+typedef int32_t LONG;
+typedef uint32_t UINT;
 typedef void* HANDLE;
 typedef void* HWND;
 typedef wchar_t WCHAR;
@@ -25,6 +33,52 @@ typedef void* LPVOID;
 typedef void* LPWSTR;
 typedef const wchar_t* LPCWSTR;
 typedef intptr_t INT_PTR;
+typedef intptr_t LRESULT;
+typedef uintptr_t WPARAM;
+typedef intptr_t LPARAM;
+typedef void* HINSTANCE;
+typedef void* HBRUSH;
+typedef void* HMONITOR;
+typedef void* HFONT;
+typedef void* HICON;
+typedef uint32_t COLORREF;
+
+typedef LRESULT (CALLBACK *WNDPROC)(HWND, UINT, WPARAM, LPARAM);
+typedef INT_PTR (CALLBACK *DLGPROC)(HWND, UINT, WPARAM, LPARAM);
+
+typedef struct { long x; long y; } POINT;
+typedef struct { long left; long top; long right; long bottom; } RECT;
+
+typedef struct { DWORD LowPart; DWORD HighPart; } FILETIME;
+
+typedef union _LARGE_INTEGER {
+  struct {
+    DWORD LowPart;
+    LONG  HighPart;
+  };
+  struct {
+    DWORD LowPart;
+    LONG  HighPart;
+  } u;
+  long long QuadPart;
+} LARGE_INTEGER;
+
+typedef struct tagLOGFONTW {
+  LONG lfHeight;
+  LONG lfWidth;
+  LONG lfEscapement;
+  LONG lfOrientation;
+  LONG lfWeight;
+  BYTE lfItalic;
+  BYTE lfUnderline;
+  BYTE lfStrikeOut;
+  BYTE lfCharSet;
+  BYTE lfOutPrecision;
+  BYTE lfClipPrecision;
+  BYTE lfQuality;
+  BYTE lfPitchAndFamily;
+  WCHAR lfFaceName[32];
+} LOGFONTW;
 
 #define MAX_PATH 260
 
@@ -111,6 +165,11 @@ static inline DWORD GetLastError(void) {
 #define WAIT_OBJECT_0 0
 #define ERROR_BROKEN_PIPE 109
 
+#define GENERIC_READ 0x80000000
+#define FILE_SHARE_READ 0x00000001
+#define OPEN_EXISTING 3
+#define FILE_ATTRIBUTE_NORMAL 0x00000080
+
 typedef struct _SECURITY_ATTRIBUTES {
     DWORD  nLength;
     LPVOID lpSecurityDescriptor;
@@ -176,8 +235,24 @@ static inline DWORD GetTickCount(void) {
     return 0;
 }
 
-static inline BOOL CreateProcessW(LPCWSTR name, LPWSTR cmd, LPSECURITY_ATTRIBUTES psa, LPSECURITY_ATTRIBUTES tsa, BOOL inherit, DWORD flags, LPVOID env, LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) {
+static inline BOOL CreateProcessW(LPCWSTR name, LPWSTR cmd, LPSECURITY_ATTRIBUTES psa, LPSECURITY_ATTRIBUTES tsa, BOOL inherit, DWORD flags, LPVOID env, LPCWSTR dir, STARTUPINFOW* si, PROCESS_INFORMATION* pi) {
     (void)name; (void)cmd; (void)psa; (void)tsa; (void)inherit; (void)flags; (void)env; (void)dir; (void)si; (void)pi;
+    return TRUE;
+}
+
+static inline HANDLE CreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD creation, DWORD flags, HANDLE template) {
+    (void)name; (void)access; (void)share; (void)sa; (void)creation; (void)flags; (void)template;
+    return (HANDLE)1;
+}
+
+static inline BOOL GetFileTime(HANDLE h, FILETIME* creation, FILETIME* access, FILETIME* write) {
+    (void)h; (void)creation; (void)access; (void)write;
+    return TRUE;
+}
+
+static inline BOOL GetFileSizeEx(HANDLE h, LARGE_INTEGER* size) {
+    (void)h;
+    if (size) size->QuadPart = 0;
     return TRUE;
 }
 
@@ -233,12 +308,30 @@ static inline int MultiByteToWideChar(uint32_t cp, DWORD flags, const char* src,
     return 0;
 }
 
-// Memory macros
-#define SAFE_MALLOC(sz) malloc(sz)
-#define SAFE_FREE(ptr) free(ptr)
-#define SAFE_REALLOC(ptr, sz) realloc(ptr, sz)
+static inline int WideCharToMultiByte(uint32_t cp, DWORD flags, const wchar_t* src, int srclen, char* dst, int dstlen, const char* def, BOOL* used) {
+    (void)cp; (void)flags; (void)src; (void)srclen; (void)dst; (void)dstlen; (void)def; (void)used;
+    return 0;
+}
 
-static inline wchar_t* SAFE_WCSDUP(const wchar_t* str) {
+// Memory mocks to avoid redefinition issues and link failures
+#ifndef SAFE_MALLOC
+#define SAFE_MALLOC(sz) malloc(sz)
+#endif
+#ifndef SAFE_FREE
+#define SAFE_FREE(ptr) free(ptr)
+#endif
+#ifndef SAFE_REALLOC
+#define SAFE_REALLOC(ptr, sz) realloc(ptr, sz)
+#endif
+
+#ifndef TEST_THREADSAFE_C
+#define SafeMalloc(sz, file, line) malloc(sz)
+#define SafeFree(ptr, file, line) free(ptr)
+#define SafeRealloc(ptr, sz, file, line) realloc(ptr, sz)
+#define SafeWcsDup(str, file, line) _wcsdup_mock(str)
+#endif
+
+static inline wchar_t* _wcsdup_mock(const wchar_t* str) {
     if (!str) return NULL;
     size_t len = wcslen(str);
     wchar_t* dup = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
@@ -246,16 +339,31 @@ static inline wchar_t* SAFE_WCSDUP(const wchar_t* str) {
     return dup;
 }
 
+#ifndef SAFE_WCSDUP
+#define SAFE_WCSDUP(str) _wcsdup_mock(str)
+#endif
+
 static inline int _wtoi(const wchar_t* str) {
     if (!str) return 0;
     return (int)wcstol(str, NULL, 10);
 }
 
-#endif // MOCK_WINDOWS_H
-
+#define wcsicmp _wcsicmp
+static inline int _wcsicmp(const wchar_t* s1, const wchar_t* s2) {
+    if (!s1 || !s2) return s1 == s2 ? 0 : (s1 ? 1 : -1);
+    while (*s1 && *s2) {
+        wchar_t c1 = towlower(*s1);
+        wchar_t c2 = towlower(*s2);
+        if (c1 != c2) return (int)c1 - (int)c2;
+        s1++;
+        s2++;
+    }
+    return (int)towlower(*s1) - (int)towlower(*s2);
+}
 
 static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
     if (n == 0) return 0;
+    if (!s1 || !s2) return s1 == s2 ? 0 : (s1 ? 1 : -1);
     while (n > 0) {
         wchar_t c1 = towlower(*s1);
         wchar_t c2 = towlower(*s2);
@@ -269,3 +377,15 @@ static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
     }
     return 0;
 }
+
+// Other mocks
+#ifndef TEST_THREADSAFE_C
+#define ThreadSafeDebugOutputF ThreadSafeDebugOutputF_mock
+static inline void ThreadSafeDebugOutputF_mock(const wchar_t* format, ...) { (void)format; }
+#endif
+
+#define IsSubtitleFileExtension IsSubtitleFileExtension_mock
+static inline BOOL IsSubtitleFileExtension_mock(const wchar_t* extension) { (void)extension; return 0; }
+
+#endif // MOCK_WINDOWS_H_GUARD
+#endif // MOCK_WINDOWS_H

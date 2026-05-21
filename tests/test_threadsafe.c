@@ -1,3 +1,4 @@
+#define TEST_THREADSAFE_C
 #include "mock_windows.h"
 
 // Define macros to prevent inclusion of real headers
