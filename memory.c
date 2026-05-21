@@ -940,25 +940,24 @@ void AutoStringCleanup(AutoString* autoStr)
 
 void AutoArrayCleanup(AutoArray* autoArray)
 {
-    if (!autoArray) {
+    if (!autoArray || !autoArray->array) {
         return;
     }
 
-    if (autoArray->array) {
-        // Clean up individual elements if cleanup function is provided
-        if (autoArray->elementCleanup) {
-            for (size_t i = 0; i < autoArray->count; i++) {
-                if (autoArray->array[i]) {
-                    autoArray->elementCleanup(autoArray->array[i]);
-                }
+    // Clean up individual elements if cleanup function is provided
+    if (autoArray->elementCleanup) {
+        for (size_t i = 0; i < autoArray->count; i++) {
+            if (!autoArray->array[i]) {
+                continue;
             }
+            autoArray->elementCleanup(autoArray->array[i]);
         }
-
-        // Free the array itself
-        SafeFree(autoArray->array, autoArray->file, autoArray->line);
-        autoArray->array = NULL;
-        autoArray->count = 0;
     }
+
+    // Free the array itself
+    SafeFree(autoArray->array, autoArray->file, autoArray->line);
+    autoArray->array = NULL;
+    autoArray->count = 0;
 }
 
 // Generic cleanup wrapper for SafeFree
