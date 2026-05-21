@@ -1,5 +1,8 @@
 #include "YouTubeCacher.h"
 
+// Timer IDs
+#define IDT_PROGRESS_HIDE_TIMER 9998
+
 // Subclass procedure for text field to detect paste operations
 LRESULT CALLBACK TextFieldSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
@@ -1916,8 +1919,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                             UpdateMainProgressBar(hDlg, 0, L"Download cancelled");
 
                             // Hide progress bar after a brief delay
-                            Sleep(1000);
-                            ShowMainProgressBar(hDlg, FALSE);
+                            SetTimer(hDlg, IDT_PROGRESS_HIDE_TIMER, 1000, NULL);
 
                             ThreadSafeDebugOutput(L"YouTubeCacher: Download cancelled by user");
                         } else {
@@ -2685,6 +2687,12 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 ApplyModernThemeToDialog(hDlg);
                 return TRUE;
             }
+            // Handle progress bar auto-hide timer
+            if (wParam == IDT_PROGRESS_HIDE_TIMER) {
+                KillTimer(hDlg, IDT_PROGRESS_HIDE_TIMER);
+                ShowMainProgressBar(hDlg, FALSE);
+                return TRUE;
+            }
             return FALSE;
 
         case WM_SYSCOLORCHANGE:
@@ -2938,8 +2946,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     ClearActiveDownload();
                     SetDownloadUIState(hDlg, FALSE);
                     ShowVideoProgress(hDlg, FALSE);  // Hide video counter on failure
-                    Sleep(500);
-                    ShowMainProgressBar(hDlg, FALSE);
+                    SetTimer(hDlg, IDT_PROGRESS_HIDE_TIMER, 500, NULL);
                     break;
                 }
                 case 9: { // Playlist video progress (current, total in LPARAM)
