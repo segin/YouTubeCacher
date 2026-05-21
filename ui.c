@@ -2888,7 +2888,9 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 
                         // Debug: Log individual characters
                         ThreadSafeDebugOutput(L"YouTubeCacher: Message title character codes: ");
-                        for (size_t i = 0; i < min(wcslen(title), 20); i++) {
+                        size_t titleLen = wcslen(title);
+                        size_t limit = min(titleLen, 20);
+                        for (size_t i = 0; i < limit; i++) {
                             ThreadSafeDebugOutputF(L"U+%04X ", (unsigned int)title[i]);
                         }
                         ThreadSafeDebugOutput(L"");
