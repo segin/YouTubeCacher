@@ -343,6 +343,9 @@ typedef struct {
 
     // Thread-safe backend
     ThreadSafeSubprocessContext* threadSafeContext;
+
+    // Synchronization
+    HANDLE hCompletionEvent;
 } SubprocessContext;
 
 // Legacy context adapter functions for thread-safe subprocess handling

@@ -50,6 +50,7 @@ typedef struct {
     YtDlpResult* result;
     BOOL completed;
     DWORD completionTime;
+    HANDLE hCompletionEvent;
 } SubprocessContext;
 
 typedef struct {

@@ -2190,9 +2190,19 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
         return NULL;
     }
 
+    // Initialize completion event
+    context->hCompletionEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!context->hCompletionEvent) {
+        ThreadSafeDebugOutput(L"CreateSubprocessContext: Failed to create completion event");
+        CleanupThreadContext(&context->threadContext);
+        SAFE_FREE(context);
+        return NULL;
+    }
+
     // Deep copy configuration
     context->config = (YtDlpConfig*)SAFE_MALLOC(sizeof(YtDlpConfig));
     if (!context->config) {
+        if (context->hCompletionEvent) CloseHandle(context->hCompletionEvent);
         CleanupThreadContext(&context->threadContext);
         SAFE_FREE(context);
         return NULL;
@@ -2202,6 +2212,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
     // Deep copy request
     context->request = (YtDlpRequest*)SAFE_MALLOC(sizeof(YtDlpRequest));
     if (!context->request) {
+        if (context->hCompletionEvent) CloseHandle(context->hCompletionEvent);
         SAFE_FREE(context->config);
         CleanupThreadContext(&context->threadContext);
         SAFE_FREE(context);
@@ -2279,6 +2290,12 @@ void FreeSubprocessContext(SubprocessContext* context) {
 
     // Cleanup thread context
     CleanupThreadContext(&context->threadContext);
+
+    // Close completion event handle
+    if (context->hCompletionEvent) {
+        CloseHandle(context->hCompletionEvent);
+        context->hCompletionEvent = NULL;
+    }
 
     // Free deep-copied strings
     if (context->request) {
@@ -2416,10 +2433,15 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
         return ExecuteYtDlpRequestThreadSafe(config, request);
     }
 
-    // Wait for completion
+    // Wait for completion using synchronization event instead of busy waiting
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Waiting for enhanced execution to complete");
-    while (!enhancedContext->baseContext->completed) {
-        Sleep(100);
+    if (enhancedContext->baseContext->hCompletionEvent) {
+        WaitForSingleObject(enhancedContext->baseContext->hCompletionEvent, INFINITE);
+    } else {
+        // Fallback to busy waiting if event creation failed
+        while (!enhancedContext->baseContext->completed) {
+            Sleep(100);
+        }
     }
 
     // Get result

@@ -268,6 +268,7 @@ BOOL WaitForLegacySubprocessCompletion(SubprocessContext* legacyContext, DWORD t
         }
 
         legacyContext->completed = TRUE;
+        if (legacyContext->hCompletionEvent) SetEvent(legacyContext->hCompletionEvent);
         legacyContext->completionTime = GetTickCount();
     }
 
