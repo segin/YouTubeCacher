@@ -64,18 +64,18 @@ BOOL ContainsMultipleURLs(const wchar_t* input) {
 }
 
 BOOL IsYouTubePlaylistURL(const wchar_t* url) {
-    if (url == NULL) {
+    if (url == NULL || !IsYouTubeURL(url)) {
         return FALSE;
     }
     
     // Check for playlist indicators in the URL
-    // Playlists contain "list=" parameter
-    if (wcsstr(url, L"list=") != NULL) {
+    // Playlists contain "list=" parameter, properly delimited by ? or &
+    if (wcsstr(url, L"?list=") != NULL || wcsstr(url, L"&list=") != NULL) {
         return TRUE;
     }
     
     // Check for playlist-specific URL patterns
-    if (wcsstr(url, L"/playlist?") != NULL) {
+    if (wcsstr(url, L"/playlist?") != NULL || wcsstr(url, L"/playlist/") != NULL) {
         return TRUE;
     }
     
