@@ -1,1 +1,14 @@
+test_base64
+test_cache_duration
+test_parser_classify
+test_settings
 test_threadsafe
+test_uri
+test_ytdlp_cache
+cache_duration.c
+classify_logic.c
+parser_types.h
+settings_logic.c
+uri_functions.c
+ytdlp_cache_logic.c
+error_logic.c
