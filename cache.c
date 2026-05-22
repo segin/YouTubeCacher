@@ -730,16 +730,6 @@ CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId) {
     return NULL;
 }
 
-// Delete all files associated with a cache entry (simple version)
-BOOL DeleteCacheEntryFiles(CacheManager* manager, const wchar_t* videoId) {
-    DeleteResult* result = DeleteCacheEntryFilesDetailed(manager, videoId);
-    if (!result) return FALSE;
-    
-    BOOL success = (result->errorCount == 0);
-    FreeDeleteResult(result);
-    return success;
-}
-
 // Delete all files associated with a cache entry with detailed error reporting
 DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t* videoId) {
     if (!manager || !videoId) return NULL;
