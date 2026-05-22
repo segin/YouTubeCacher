@@ -81,3 +81,39 @@ BOOL IsYouTubePlaylistURL(const wchar_t* url) {
     
     return FALSE;
 }
+wchar_t* NormalizeURL(const wchar_t* input) {
+    if (input == NULL) {
+        return NULL;
+    }
+
+    // Find first non-space character
+    const wchar_t* start = input;
+    while (*start == L' ') {
+        start++;
+    }
+
+    if (*start == L'\0') {
+        // Only spaces, return empty string
+        return SAFE_WCSDUP(L"");
+    }
+
+    // Find last non-space character
+    const wchar_t* end = start + wcslen(start) - 1;
+    while (end > start && *end == L' ') {
+        end--;
+    }
+
+    // Length of normalized string
+    size_t length = end - start + 1;
+
+    // Allocate and copy
+    wchar_t* normalized = (wchar_t*)SAFE_MALLOC((length + 1) * sizeof(wchar_t));
+    if (normalized == NULL) {
+        return NULL;
+    }
+
+    wcsncpy(normalized, start, length);
+    normalized[length] = L'\0';
+
+    return normalized;
+}
