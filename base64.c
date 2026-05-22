@@ -54,9 +54,8 @@ unsigned char* Base64Decode(const char* data, size_t* output_length) {
     size_t input_length = strlen(data);
     if (input_length % 4 != 0) return NULL;
 
-    int padding_count = 0;
-    // Validate all characters are valid base64
     size_t padding_count = 0;
+    // Validate all characters are valid base64
     for (size_t i = 0; i < input_length; i++) {
         unsigned char c = (unsigned char)data[i];
         if (c == '=') {
