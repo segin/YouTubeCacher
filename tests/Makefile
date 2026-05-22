@@ -5,7 +5,7 @@ CC = /mingw64/bin/gcc.exe
 CFLAGS = -Wall -Wextra -I. -I./include -DTEST_BUILD
 RM = /usr/bin/rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess
+all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc
 
 test_memory: test_memory.c ../memory.c
 	$(CC) $(CFLAGS) test_memory.c -o $@
@@ -74,6 +74,9 @@ test_base64: test_base64.c
 test_threadsafe: test_threadsafe.c mock_windows.h ../threadsafe.c
 	$(CC) $(CFLAGS) test_threadsafe.c -o $@
 
+test_subproc: test_subproc.c mock_windows.h ../subproc.c
+	$(CC) $(CFLAGS) test_subproc.c -o $@
+
 test_error: test_error.c error_logic.c
 	$(CC) $(CFLAGS) test_error.c -o $@
 
@@ -97,8 +100,9 @@ run: all
 	./test_memory
 	./test_ytdlp_cache
 	./test_parser_postprocess
+	./test_subproc
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc
 
 .PHONY: all run clean

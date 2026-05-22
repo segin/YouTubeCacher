@@ -18,3 +18,4 @@ test_memory
 test_error
 test_ytdlp_cache
 test_uri_mem
+test_subproc
