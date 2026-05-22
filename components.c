@@ -944,6 +944,7 @@ ComponentValidationSummary* ValidateDialog(UIComponent** components, int count) 
     
     summary->count = count;
     summary->allValid = TRUE;
+    summary->firstInvalidIndex = -1;
     summary->results = (ComponentValidationResult*)SAFE_MALLOC(sizeof(ComponentValidationResult) * count);
     
     if (!summary->results) {
@@ -962,6 +963,9 @@ ComponentValidationSummary* ValidateDialog(UIComponent** components, int count) 
         if (!summary->results[i].isValid) {
             wcsncpy(summary->results[i].errorMessage, errorMsg, 255);
             summary->results[i].errorMessage[255] = L'\0';
+            if (summary->allValid) {
+                summary->firstInvalidIndex = i;
+            }
             summary->allValid = FALSE;
         }
     }
@@ -1199,6 +1203,40 @@ void SetEditValidationState(HWND hwndEdit, BOOL isInvalid) {
     }
 }
 
+
+
+// Set focus to the first invalid component in a summary
+static void FocusFirstInvalidComponent(ComponentValidationSummary* summary) {
+    if (!summary || summary->allValid || summary->firstInvalidIndex == -1) {
+        return;
+    }
+
+    // Start searching from firstInvalidIndex for the first focusable control
+    for (int i = summary->firstInvalidIndex; i < summary->count; i++) {
+        if (!summary->results[i].isValid && summary->results[i].component) {
+            // Check if it's a FileBrowserComponent
+            FileBrowserComponent* fileBrowser = (FileBrowserComponent*)summary->results[i].component;
+            if (fileBrowser && fileBrowser->hwndEdit) {
+                SetFocus(fileBrowser->hwndEdit);
+                return;
+            }
+
+            // Check if it's a FolderBrowserComponent
+            FolderBrowserComponent* folderBrowser = (FolderBrowserComponent*)summary->results[i].component;
+            if (folderBrowser && folderBrowser->hwndEdit) {
+                SetFocus(folderBrowser->hwndEdit);
+                return;
+            }
+
+            // Check if it's a LabeledTextInput
+            LabeledTextInput* textInput = (LabeledTextInput*)summary->results[i].component;
+            if (textInput && textInput->hwndEdit) {
+                SetFocus(textInput->hwndEdit);
+                return;
+            }
+        }
+    }
+}
 // Dialog validation integration
 
 // Validate dialog and prevent close if validation fails
@@ -1221,32 +1259,7 @@ BOOL ValidateDialogBeforeClose(HWND hDlg, UIComponent** components, int count) {
         ShowValidationErrors(hDlg, summary);
         
         // Set focus to first invalid control
-        for (int i = 0; i < summary->count; i++) {
-            if (!summary->results[i].isValid && summary->results[i].component) {
-                // Try to set focus to the invalid component's edit control
-                
-                // Check if it's a FileBrowserComponent
-                FileBrowserComponent* fileBrowser = (FileBrowserComponent*)summary->results[i].component;
-                if (fileBrowser && fileBrowser->hwndEdit) {
-                    SetFocus(fileBrowser->hwndEdit);
-                    break;
-                }
-                
-                // Check if it's a FolderBrowserComponent
-                FolderBrowserComponent* folderBrowser = (FolderBrowserComponent*)summary->results[i].component;
-                if (folderBrowser && folderBrowser->hwndEdit) {
-                    SetFocus(folderBrowser->hwndEdit);
-                    break;
-                }
-                
-                // Check if it's a LabeledTextInput
-                LabeledTextInput* textInput = (LabeledTextInput*)summary->results[i].component;
-                if (textInput && textInput->hwndEdit) {
-                    SetFocus(textInput->hwndEdit);
-                    break;
-                }
-            }
-        }
+        FocusFirstInvalidComponent(summary);
     }
     
     // Free validation summary
@@ -1311,32 +1324,7 @@ BOOL HandleDialogValidation(HWND hDlg, UIComponent** components, int count, BOOL
         ShowValidationErrors(hDlg, summary);
         
         // Set focus to first invalid control
-        for (int i = 0; i < summary->count; i++) {
-            if (!summary->results[i].isValid && summary->results[i].component) {
-                // Try to set focus to the invalid component's edit control
-                
-                // Check if it's a FileBrowserComponent
-                FileBrowserComponent* fileBrowser = (FileBrowserComponent*)summary->results[i].component;
-                if (fileBrowser && fileBrowser->hwndEdit) {
-                    SetFocus(fileBrowser->hwndEdit);
-                    break;
-                }
-                
-                // Check if it's a FolderBrowserComponent
-                FolderBrowserComponent* folderBrowser = (FolderBrowserComponent*)summary->results[i].component;
-                if (folderBrowser && folderBrowser->hwndEdit) {
-                    SetFocus(folderBrowser->hwndEdit);
-                    break;
-                }
-                
-                // Check if it's a LabeledTextInput
-                LabeledTextInput* textInput = (LabeledTextInput*)summary->results[i].component;
-                if (textInput && textInput->hwndEdit) {
-                    SetFocus(textInput->hwndEdit);
-                    break;
-                }
-            }
-        }
+        FocusFirstInvalidComponent(summary);
     } else if (closeOnSuccess) {
         // Close dialog if validation passed and closeOnSuccess is TRUE
         EndDialog(hDlg, IDOK);

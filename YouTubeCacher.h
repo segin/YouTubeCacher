@@ -660,6 +660,7 @@ typedef struct {
     ComponentValidationResult* results;
     int count;
     BOOL allValid;
+    int firstInvalidIndex;
 } ComponentValidationSummary;
 
 // Font management structures
