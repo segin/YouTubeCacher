@@ -5,7 +5,7 @@ CC = /mingw64/bin/gcc.exe
 CFLAGS = -Wall -Wextra -I. -DTEST_BUILD
 RM = /usr/bin/rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe test_settings test_memory
+all: test_cache_duration test_parser_classify test_uri test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache
 
 test_memory: test_memory.c ../memory.c
 	$(CC) $(CFLAGS) test_memory.c -o $@
@@ -57,6 +57,12 @@ test_error: test_error.c error_logic.c
 error_logic.c: ../error.c
 	/usr/bin/sed -n '/BOOL IsRecoverableError/,/^}/p' ../error.c > $@
 
+test_ytdlp_cache: test_ytdlp_cache.c ytdlp_cache_logic.c
+	$(CC) $(CFLAGS) test_ytdlp_cache.c -o $@
+
+ytdlp_cache_logic.c: ../ytdlp.c
+	/usr/bin/sed -n '/BOOL IsCachedMetadataValid/,/^}/p' ../ytdlp.c > $@
+
 run: all
 	./test_cache_duration
 	./test_parser_classify
@@ -65,8 +71,9 @@ run: all
 	./test_threadsafe
 	./test_settings
 	./test_memory
+	./test_ytdlp_cache
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c test_uri uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c
 
 .PHONY: all run clean
