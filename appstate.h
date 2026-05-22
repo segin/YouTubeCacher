@@ -115,11 +115,6 @@ void AppendToYtDlpSessionLog(const wchar_t* output);  // Appends to both "all" a
 const wchar_t* GetYtDlpSessionLogAll(void);
 const wchar_t* GetYtDlpSessionLogLast(void);
 
-// State change notification
-typedef void (*StateChangeCallback)(const char* stateType, void* newValue, void* userData);
-void RegisterStateChangeCallback(StateChangeCallback callback, void* userData);
-void NotifyStateChange(const char* stateType, void* newValue);
-
 // Brush type constants
 #define BRUSH_WHITE         0
 #define BRUSH_LIGHT_GREEN   1

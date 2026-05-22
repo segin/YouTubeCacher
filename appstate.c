@@ -3,15 +3,6 @@
 // Global application state instance
 static ApplicationState g_appState = {0};
 
-// State change callback structure
-typedef struct StateChangeCallbackNode {
-    StateChangeCallback callback;
-    void* userData;
-    struct StateChangeCallbackNode* next;
-} StateChangeCallbackNode;
-
-static StateChangeCallbackNode* g_callbackList = NULL;
-
 // Initialize the application state
 BOOL InitializeApplicationState(ApplicationState* state) {
     if (!state) return FALSE;
@@ -206,14 +197,8 @@ BOOL SetDownloadingState(BOOL isDownloading) {
     if (!state) return FALSE;
 
     EnterCriticalSection(&state->stateLock);
-    BOOL oldValue = state->isDownloading;
     state->isDownloading = isDownloading;
     LeaveCriticalSection(&state->stateLock);
-
-    // Notify state change
-    if (oldValue != isDownloading) {
-        NotifyStateChange("isDownloading", &isDownloading);
-    }
 
     return TRUE;
 }
@@ -237,8 +222,6 @@ void SetProgrammaticChangeFlag(BOOL flag) {
     EnterCriticalSection(&state->stateLock);
     state->programmaticChange = flag;
     LeaveCriticalSection(&state->stateLock);
-
-    NotifyStateChange("programmaticChange", &flag);
 }
 
 BOOL GetProgrammaticChangeFlag(void) {
@@ -260,8 +243,6 @@ void SetManualPasteFlag(BOOL flag) {
     EnterCriticalSection(&state->stateLock);
     state->manualPaste = flag;
     LeaveCriticalSection(&state->stateLock);
-
-    NotifyStateChange("manualPaste", &flag);
 }
 
 BOOL GetManualPasteFlag(void) {
@@ -276,32 +257,11 @@ BOOL GetManualPasteFlag(void) {
 }
 
 // Thread-safe debug state functions
-void SetDebugState(BOOL enableDebug, BOOL enableLogfile) {
-    ApplicationState* state = GetApplicationState();
-    if (!state) return;
-
-    EnterCriticalSection(&state->stateLock);
-    BOOL oldDebug = state->enableDebug;
-    BOOL oldLogfile = state->enableLogfile;
-    state->enableDebug = enableDebug;
-    state->enableLogfile = enableLogfile;
-    LeaveCriticalSection(&state->stateLock);
-
-    // Notify state changes
-    if (oldDebug != enableDebug) {
-        NotifyStateChange("enableDebug", &enableDebug);
-    }
-    if (oldLogfile != enableLogfile) {
-        NotifyStateChange("enableLogfile", &enableLogfile);
-    }
-}
 
 void GetDebugState(BOOL* enableDebug, BOOL* enableLogfile) {
     if (!enableDebug || !enableLogfile) return;
 
-    // Check if state is initialized without triggering initialization
     if (!g_appState.isInitialized) {
-        // Return default values during early initialization
         *enableDebug = FALSE;
         *enableLogfile = FALSE;
         return;
@@ -313,20 +273,23 @@ void GetDebugState(BOOL* enableDebug, BOOL* enableLogfile) {
     LeaveCriticalSection(&g_appState.stateLock);
 }
 
-// Thread-safe autopaste state functions
+void SetDebugState(BOOL enableDebug, BOOL enableLogfile) {
+    ApplicationState* state = GetApplicationState();
+    if (!state) return;
+
+    EnterCriticalSection(&state->stateLock);
+    state->enableDebug = enableDebug;
+    state->enableLogfile = enableLogfile;
+    LeaveCriticalSection(&state->stateLock);
+}
+
 void SetAutopasteState(BOOL enableAutopaste) {
     ApplicationState* state = GetApplicationState();
     if (!state) return;
 
     EnterCriticalSection(&state->stateLock);
-    BOOL oldValue = state->enableAutopaste;
     state->enableAutopaste = enableAutopaste;
     LeaveCriticalSection(&state->stateLock);
-
-    // Notify state change
-    if (oldValue != enableAutopaste) {
-        NotifyStateChange("enableAutopaste", &enableAutopaste);
-    }
 }
 
 BOOL GetAutopasteState(void) {
@@ -377,8 +340,6 @@ void SetCurrentBrush(HBRUSH brush) {
     EnterCriticalSection(&state->stateLock);
     state->hCurrentBrush = brush;
     LeaveCriticalSection(&state->stateLock);
-
-    NotifyStateChange("currentBrush", &brush);
 }
 
 HBRUSH GetCurrentBrush(void) {
@@ -423,7 +384,7 @@ void SetCommandLineURL(const wchar_t* url) {
     state->cmdLineURL[sizeof(state->cmdLineURL) / sizeof(wchar_t) - 1] = L'\0';
     LeaveCriticalSection(&state->stateLock);
 
-    NotifyStateChange("cmdLineURL", (void*)url);
+
 }
 
 const wchar_t* GetCommandLineURL(void) {
@@ -462,31 +423,6 @@ CachedVideoMetadata* GetCachedVideoMetadata(void) {
     return result;
 }
 
-// State change notification system
-void RegisterStateChangeCallback(StateChangeCallback callback, void* userData) {
-    if (!callback) return;
-
-    StateChangeCallbackNode* node = (StateChangeCallbackNode*)SAFE_MALLOC(sizeof(StateChangeCallbackNode));
-    if (!node) return;
-
-    node->callback = callback;
-    node->userData = userData;
-    node->next = g_callbackList;
-    g_callbackList = node;
-}
-
-void NotifyStateChange(const char* stateType, void* newValue) {
-    if (!stateType) return;
-
-    StateChangeCallbackNode* current = g_callbackList;
-    while (current) {
-        if (current->callback) {
-            current->callback(stateType, newValue, current->userData);
-        }
-        current = current->next;
-    }
-}
-
 // Thread-safe download-after-info flag functions
 BOOL SetDownloadAfterInfoFlag(BOOL flag) {
     ApplicationState* state = GetApplicationState();
@@ -495,8 +431,6 @@ BOOL SetDownloadAfterInfoFlag(BOOL flag) {
     EnterCriticalSection(&state->stateLock);
     state->downloadAfterInfo = flag;
     LeaveCriticalSection(&state->stateLock);
-
-    NotifyStateChange("downloadAfterInfo", &flag);
     return TRUE;
 }
 
