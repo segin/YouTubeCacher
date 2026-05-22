@@ -235,10 +235,12 @@ static inline DWORD GetTickCount(void) {
     return 0;
 }
 
-static inline BOOL CreateProcessW(LPCWSTR name, LPWSTR cmd, LPSECURITY_ATTRIBUTES psa, LPSECURITY_ATTRIBUTES tsa, BOOL inherit, DWORD flags, LPVOID env, LPCWSTR dir, STARTUPINFOW* si, PROCESS_INFORMATION* pi) {
+#ifndef CreateProcessW
+static inline BOOL CreateProcessW(LPCWSTR name, LPWSTR cmd, LPSECURITY_ATTRIBUTES psa, LPSECURITY_ATTRIBUTES tsa, BOOL inherit, DWORD flags, LPVOID env, LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) {
     (void)name; (void)cmd; (void)psa; (void)tsa; (void)inherit; (void)flags; (void)env; (void)dir; (void)si; (void)pi;
     return TRUE;
 }
+#endif
 
 static inline HANDLE CreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD creation, DWORD flags, HANDLE template) {
     (void)name; (void)access; (void)share; (void)sa; (void)creation; (void)flags; (void)template;
@@ -360,6 +362,9 @@ static inline int _wcsicmp(const wchar_t* s1, const wchar_t* s2) {
     }
     return (int)towlower(*s1) - (int)towlower(*s2);
 }
+
+#ifndef _WCSNICMP_DEFINED
+#define _WCSNICMP_DEFINED
 static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
     if (n == 0) return 0;
     if (!s1 || !s2) return s1 == s2 ? 0 : (s1 ? 1 : -1);
@@ -376,6 +381,7 @@ static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
     }
     return 0;
 }
+#endif
 
 // Other mocks
 #ifndef TEST_THREADSAFE_C

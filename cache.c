@@ -1,4 +1,5 @@
 #include "YouTubeCacher.h"
+#include "ytdlp.h"
 
 // Forward declarations
 static DWORD WINAPI CacheSaveWorkerThread(LPVOID lpParam);
@@ -1009,15 +1010,31 @@ BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t
         return FALSE;
     }
     
+    // Escape arguments to prevent command injection
+    wchar_t* escapedPlayerPath = EscapeCommandLineArgument(playerPath);
+    wchar_t* escapedVideoFile = EscapeCommandLineArgument(entry->mainVideoFile);
+
+    if (!escapedPlayerPath || !escapedVideoFile) {
+        SAFE_FREE(escapedPlayerPath);
+        SAFE_FREE(escapedVideoFile);
+        LeaveCriticalSection(&manager->lock);
+        return FALSE;
+    }
+
     // Build command line to launch player
-    size_t cmdLineLen = wcslen(playerPath) + wcslen(entry->mainVideoFile) + 10;
+    size_t cmdLineLen = wcslen(escapedPlayerPath) + wcslen(escapedVideoFile) + 2;
     wchar_t* cmdLine = (wchar_t*)SAFE_MALLOC(cmdLineLen * sizeof(wchar_t));
     if (!cmdLine) {
+        SAFE_FREE(escapedPlayerPath);
+        SAFE_FREE(escapedVideoFile);
         LeaveCriticalSection(&manager->lock);
         return FALSE;
     }
     
-    swprintf(cmdLine, cmdLineLen, L"\"%ls\" \"%ls\"", playerPath, entry->mainVideoFile);
+    swprintf(cmdLine, cmdLineLen, L"%ls %ls", escapedPlayerPath, escapedVideoFile);
+
+    SAFE_FREE(escapedPlayerPath);
+    SAFE_FREE(escapedVideoFile);
     
     LeaveCriticalSection(&manager->lock);
     
