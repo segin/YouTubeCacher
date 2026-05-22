@@ -55,6 +55,7 @@ unsigned char* Base64Decode(const char* data, size_t* output_length) {
     if (input_length % 4 != 0) return NULL;
 
     size_t padding_count = 0;
+
     // Validate all characters are valid base64
     for (size_t i = 0; i < input_length; i++) {
         unsigned char c = (unsigned char)data[i];
@@ -181,3 +182,4 @@ wchar_t* Base64DecodeWide(const wchar_t* input) {
 
     return wide_result;
 }
+

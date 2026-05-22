@@ -57,6 +57,9 @@ void test_base64_decode_wide_invalid() {
     assert(Base64DecodeWide(L"====") == NULL);
     assert(Base64DecodeWide(L"A===") == NULL);
 
+    // Invalid characters (from task)
+    assert(Base64DecodeWide(L"SGVsbG8=!") == NULL);
+
     printf("Passed!\n");
 }
 
