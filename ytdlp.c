@@ -257,9 +257,7 @@ void FreeYtDlpRequest(YtDlpRequest* request) {
     SAFE_FREE(request);
 }
 
-BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize) {
-    (void)config; // Unused parameter
-
+BOOL CreateTempDirectory(wchar_t* tempDir, size_t tempDirSize) {
     // Get system temp directory
     DWORD result = GetTempPathW((DWORD)tempDirSize, tempDir);
     if (result == 0 || result >= tempDirSize) {
@@ -2039,7 +2037,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
     // Create temp directory
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Creating temp directory");
     wchar_t tempDir[MAX_EXTENDED_PATH];
-    if (!CreateTempDirectory(&config, tempDir, MAX_EXTENDED_PATH)) {
+    if (!CreateTempDirectory(tempDir, MAX_EXTENDED_PATH)) {
         ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Primary temp dir failed, trying fallback");
         if (!CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH)) {
             ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Fallback temp dir also failed");

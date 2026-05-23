@@ -68,7 +68,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
                                           ProgressCallback progressCallback, void* callbackUserData, HWND parentWindow);
 
 // Temporary directory functions
-BOOL CreateTempDirectory(const YtDlpConfig* config, wchar_t* tempDir, size_t tempDirSize);
+BOOL CreateTempDirectory(wchar_t* tempDir, size_t tempDirSize);
 
 // REMOVED: ProgressDialog functions - these create popup dialogs which are prohibited
 // Use main window progress controls instead: UpdateMainProgressBar, SetProgressBarMarquee
