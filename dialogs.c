@@ -3318,7 +3318,32 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     if (!allText) return TRUE;
                     GetWindowTextW(GetDlgItem(hDlg, IDC_MULTI_URL_EDIT), allText, textLen + 1);
 
-                    capacity = 32;
+                    // First pass: count lines
+                    capacity = 0;
+                    {
+                        const wchar_t* p = allText;
+                        while (*p != L'\0') {
+                            while (*p != L'\0' && (*p == L'\r' || *p == L'\n')) p++;
+                            if (*p == L'\0') break;
+
+                            const wchar_t* lineStart = p;
+                            while (*p != L'\0' && *p != L'\r' && *p != L'\n') p++;
+                            const wchar_t* lineEnd = p;
+
+                            const wchar_t* s = lineStart;
+                            while (s < lineEnd && (*s == L' ' || *s == L'\t')) s++;
+                            const wchar_t* e = lineEnd;
+                            while (e > s && (e[-1] == L' ' || e[-1] == L'\t')) e--;
+
+                            if (e > s) capacity++;
+                        }
+                    }
+
+                    if (capacity == 0) {
+                        SAFE_FREE(allText);
+                        return TRUE;
+                    }
+
                     items = (MultiDlItem*)SAFE_MALLOC(sizeof(MultiDlItem) * capacity);
                     count = 0;
 
@@ -3338,13 +3363,6 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                         }
 
                         if (len > 0) {
-                            if (count >= capacity) {
-                                MultiDlItem* newItems;
-                                capacity *= 2;
-                                newItems = (MultiDlItem*)realloc(items, sizeof(MultiDlItem) * capacity);
-                                if (!newItems) break;
-                                items = newItems;
-                            }
                             memset(&items[count], 0, sizeof(MultiDlItem));
                             wcsncpy(items[count].url, line, MAX_URL_LENGTH - 1);
                             items[count].status = MULTI_DL_PENDING;
