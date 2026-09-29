@@ -510,6 +510,7 @@ typedef struct {
     volatile LONG completedCount;
     volatile LONG failedCount;
     int maxConcurrent;           // Default 3
+    int expandedCount;           // Playlist items replaced by their videos (guarded by itemLock)
 } MultiDownloadContext;
 
 // Multi-download worker thread functions

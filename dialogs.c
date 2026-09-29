@@ -3015,6 +3015,102 @@ void ShowLogViewerDialog(HWND parent) {
 static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx);
 static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url);
 
+// Helper: Free a playlist result and the strings it owns
+static void MultiDl_FreePlaylistResult(MultiDlPlaylistResult* plResult) {
+    int i;
+
+    if (!plResult) return;
+    if (plResult->urls) {
+        for (i = 0; i < plResult->urlCount; i++) {
+            SAFE_FREE(plResult->urls[i]);
+        }
+        SAFE_FREE(plResult->urls);
+    }
+    if (plResult->titles) {
+        for (i = 0; i < plResult->urlCount; i++) {
+            SAFE_FREE(plResult->titles[i]);
+        }
+        SAFE_FREE(plResult->titles);
+    }
+    SAFE_FREE(plResult);
+}
+
+// Helper: Record an item's final status and tell the dialog about it
+static void MultiDl_FinishItem(MultiDownloadContext* ctx, int itemIndex, const wchar_t* url,
+                               BOOL success, const wchar_t* title, const wchar_t* filePath) {
+    MultiDlItemResult* itemResult;
+
+    // Update the counts before posting so the dialog sees them
+    EnterCriticalSection(&ctx->itemLock);
+    ctx->items[itemIndex].status = success ? MULTI_DL_COMPLETE : MULTI_DL_FAILED;
+    LeaveCriticalSection(&ctx->itemLock);
+
+    if (success) InterlockedIncrement(&ctx->completedCount);
+    else InterlockedIncrement(&ctx->failedCount);
+
+    itemResult = (MultiDlItemResult*)SAFE_MALLOC(sizeof(MultiDlItemResult));
+    if (itemResult) {
+        memset(itemResult, 0, sizeof(MultiDlItemResult));
+        itemResult->itemIndex = itemIndex;
+        itemResult->success = success;
+        if (url) {
+            wcsncpy(itemResult->url, url, MAX_URL_LENGTH - 1);
+        }
+        if (title) {
+            wcsncpy(itemResult->title, title, 511);
+        }
+        if (filePath) {
+            wcsncpy(itemResult->filePath, filePath, MAX_EXTENDED_PATH - 1);
+        }
+        if (!PostMessageW(ctx->hDialog, WM_MULTI_DL_ITEM_DONE, 0, (LPARAM)itemResult)) {
+            SAFE_FREE(itemResult);
+        }
+    }
+}
+
+// Helper: Replace a playlist item with its videos in the download queue.
+// Runs on the resolver thread so the videos are queued before downloads start.
+static BOOL MultiDl_QueuePlaylistVideos(MultiDownloadContext* ctx, const MultiDlPlaylistResult* plResult) {
+    BOOL queued = FALSE;
+    int needed;
+
+    EnterCriticalSection(&ctx->itemLock);
+
+    needed = ctx->itemCount + plResult->urlCount;
+    if (needed > ctx->itemCapacity) {
+        int newCap = needed * 2;
+        MultiDlItem* newItems = (MultiDlItem*)SAFE_REALLOC(ctx->items, sizeof(MultiDlItem) * newCap);
+        if (newItems) {
+            ctx->items = newItems;
+            ctx->itemCapacity = newCap;
+        }
+    }
+
+    if (ctx->itemCapacity >= needed) {
+        int addIdx;
+        for (addIdx = 0; addIdx < plResult->urlCount; addIdx++) {
+            int idx = ctx->itemCount;
+            memset(&ctx->items[idx], 0, sizeof(MultiDlItem));
+            if (plResult->urls[addIdx]) {
+                wcsncpy(ctx->items[idx].url, plResult->urls[addIdx], MAX_URL_LENGTH - 1);
+            }
+            if (plResult->titles[addIdx]) {
+                wcsncpy(ctx->items[idx].title, plResult->titles[addIdx], 511);
+            }
+            ctx->items[idx].status = MULTI_DL_PENDING;
+            ctx->itemCount++;
+        }
+
+        // The playlist itself is done, but it is not a download: its videos are counted instead
+        ctx->items[plResult->originalIndex].status = MULTI_DL_COMPLETE;
+        ctx->expandedCount++;
+        queued = TRUE;
+    }
+
+    LeaveCriticalSection(&ctx->itemLock);
+    return queued;
+}
+
 // Playlist resolver thread - runs --flat-playlist on background thread
 DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
     MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)lpParam;
@@ -3077,13 +3173,18 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
                             playlist.videos[pi].title ? playlist.videos[pi].title : L"Unknown");
                     }
 
-                    // Post result to dialog (UI thread will handle insertion)
-                    PostMessageW(ctx->hDialog, WM_MULTI_DL_PLAYLIST_RESOLVED, 0, (LPARAM)plResult);
+                    // Queue the videos now; the dialog only updates its URL list
+                    if (MultiDl_QueuePlaylistVideos(ctx, plResult) &&
+                        PostMessageW(ctx->hDialog, WM_MULTI_DL_PLAYLIST_RESOLVED, 0, (LPARAM)plResult)) {
+                        plResult = NULL;
+                    }
                 } else {
+                    // Only the pointer arrays that were allocated are freed below
                     SAFE_FREE(plResult->urls);
                     SAFE_FREE(plResult->titles);
-                    SAFE_FREE(plResult);
+                    plResult->urlCount = 0;
                 }
+                MultiDl_FreePlaylistResult(plResult);
             }
         }
         FreePlaylistMetadata(&playlist);
@@ -3107,51 +3208,315 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
     return 0;
 }
 
+// Helper: Find the downloaded video file for a URL and add it to the cache.
+// Returns TRUE and fills filePath if a video file was found.
+static BOOL MultiDl_AddDownloadToCache(const wchar_t* url, const wchar_t* downloadPath,
+                                       const wchar_t* title, wchar_t* filePath, size_t filePathSize) {
+    wchar_t* videoId = ExtractVideoIdFromUrl(url);
+    wchar_t* videoPattern;
+    WIN32_FIND_DATAW findData;
+    HANDLE hFind;
+    FILETIME latestTime = {0};
+    BOOL found = FALSE;
+
+    if (!videoId) return FALSE;
+
+    videoPattern = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+    if (!videoPattern) {
+        SAFE_FREE(videoId);
+        return FALSE;
+    }
+
+    swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\*%ls*", downloadPath, videoId);
+    hFind = FindFirstFileW(videoPattern, &findData);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                wchar_t* ext = wcsrchr(findData.cFileName, L'.');
+                // Select the most recent video file (in case of multiple formats)
+                if (ext && IsVideoFileExtension(ext) &&
+                    (!found || CompareFileTime(&findData.ftLastWriteTime, &latestTime) > 0)) {
+                    swprintf(filePath, filePathSize, L"%ls\\%ls", downloadPath, findData.cFileName);
+                    latestTime = findData.ftLastWriteTime;
+                    found = TRUE;
+                }
+            }
+        } while (FindNextFileW(hFind, &findData));
+        FindClose(hFind);
+    }
+
+    if (found) {
+        wchar_t** subtitleFiles = NULL;
+        int subtitleCount = 0;
+        wchar_t* fileName = NULL;
+        int i;
+
+        FindSubtitleFiles(filePath, &subtitleFiles, &subtitleCount);
+        if (!title || !title[0]) {
+            fileName = ExtractFileNameFromPath(filePath);
+        }
+
+        AddCacheEntry(GetCacheManager(), videoId,
+                      (title && title[0]) ? title : (fileName ? fileName : filePath),
+                      L"Unknown", filePath, subtitleFiles, subtitleCount);
+
+        if (subtitleFiles) {
+            for (i = 0; i < subtitleCount; i++) {
+                SAFE_FREE(subtitleFiles[i]);
+            }
+            SAFE_FREE(subtitleFiles);
+        }
+        SAFE_FREE(fileName);
+    }
+
+    SAFE_FREE(videoPattern);
+    SAFE_FREE(videoId);
+    return found;
+}
+
+// Single download thread - downloads one URL
+DWORD WINAPI MultiDlSingleDownloadThread(LPVOID lpParam) {
+    MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)lpParam;
+    MultiDownloadContext* ctx;
+    int itemIndex;
+    wchar_t url[MAX_URL_LENGTH];
+    wchar_t title[512];
+    wchar_t* downloadPath = NULL;
+    wchar_t* tempDir = NULL;
+    wchar_t* filePath = NULL;
+    YtDlpConfig* config = NULL;
+    YtDlpRequest* request = NULL;
+    YtDlpResult* result = NULL;
+    BOOL configReady = FALSE;
+    BOOL tempDirReady = FALSE;
+    BOOL success = FALSE;
+    BOOL cached = FALSE;
+
+    if (!workerCtx || !workerCtx->batchCtx) {
+        SAFE_FREE(workerCtx);
+        return 1;
+    }
+
+    ctx = workerCtx->batchCtx;
+    itemIndex = workerCtx->itemIndex;
+    SAFE_FREE(workerCtx);
+
+    // Wait if paused, and don't start once a stop has been requested
+    WaitForSingleObject(ctx->hPauseEvent, INFINITE);
+    if (InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) {
+        return 1;
+    }
+
+    // Get URL from item
+    EnterCriticalSection(&ctx->itemLock);
+    wcsncpy(url, ctx->items[itemIndex].url, MAX_URL_LENGTH - 1); url[MAX_URL_LENGTH - 1] = L'\0';
+    wcsncpy(title, ctx->items[itemIndex].title, 511); title[511] = L'\0';
+    ctx->items[itemIndex].status = MULTI_DL_DOWNLOADING;
+    LeaveCriticalSection(&ctx->itemLock);
+
+    // Post progress update
+    {
+        MultiDlProgressData* progData = (MultiDlProgressData*)SAFE_MALLOC(sizeof(MultiDlProgressData));
+        if (progData) {
+            progData->itemIndex = itemIndex;
+            progData->percentage = 0;
+            swprintf(progData->status, 256, L"Starting download...");
+            if (!PostMessageW(ctx->hDialog, WM_MULTI_DL_PROGRESS, 0, (LPARAM)progData)) {
+                SAFE_FREE(progData);
+            }
+        }
+    }
+
+    ThreadSafeDebugOutputF(L"MultiDlSingleDownloadThread: Downloading item %d: %ls", itemIndex, url);
+
+    // Path buffers are large, so keep them off the thread's stack
+    config = (YtDlpConfig*)SAFE_MALLOC(sizeof(YtDlpConfig));
+    downloadPath = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+    tempDir = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+    filePath = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+
+    if (config && downloadPath && tempDir && filePath) {
+        memset(config, 0, sizeof(YtDlpConfig));
+        configReady = InitializeYtDlpConfig(config);
+    }
+
+    if (configReady) {
+        if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+            GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+        }
+
+        if (CreateDownloadDirectoryIfNeeded(downloadPath)) {
+            request = CreateYtDlpRequest(YTDLP_OP_DOWNLOAD, url, downloadPath);
+        }
+
+        if (request) {
+            tempDirReady = CreateTempDirectory(config, tempDir, MAX_EXTENDED_PATH) ||
+                           CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH);
+        }
+
+        if (tempDirReady) {
+            request->tempDir = SAFE_WCSDUP(tempDir);
+
+            // Execute download (blocking - fine on worker thread)
+            result = ExecuteYtDlpRequestThreadSafe(config, request);
+            success = (result && result->success);
+
+            if (success) {
+                filePath[0] = L'\0';
+                cached = MultiDl_AddDownloadToCache(url, downloadPath, title, filePath, MAX_EXTENDED_PATH);
+            }
+
+            CleanupTempDirectory(tempDir);
+        }
+    }
+
+    MultiDl_FinishItem(ctx, itemIndex, url, success, title, cached ? filePath : NULL);
+
+    if (result) FreeYtDlpResult(result);
+    if (request) FreeYtDlpRequest(request);
+    if (configReady) CleanupYtDlpConfig(config);
+    SAFE_FREE(config);
+    SAFE_FREE(downloadPath);
+    SAFE_FREE(tempDir);
+    SAFE_FREE(filePath);
+    return success ? 0 : 1;
+}
+
+// Coordinator thread - resolves playlists, then runs the downloads
 DWORD WINAPI MultiDlCoordinatorThread(LPVOID lpParam) {
     MultiDownloadContext* ctx = (MultiDownloadContext*)lpParam;
-    int i;
+    int i, t, nextItem, activeCount, itemToStart, maxConcurrent, itemCount;
+    HANDLE* activeThreads;
 
     if (!ctx) return 1;
 
     ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: Starting");
 
     // Phase 1: Resolve any playlist URLs first
-    for (i = 0; i < ctx->itemCount; i++) {
+    for (i = 0; ; i++) {
+        BOOL isPlaylist;
+
         if (InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) break;
 
         EnterCriticalSection(&ctx->itemLock);
-        {
-            BOOL isPlaylist = IsYouTubePlaylistURL(ctx->items[i].url);
-            if (isPlaylist) {
-                ctx->items[i].status = MULTI_DL_RESOLVING;
+        itemCount = ctx->itemCount;
+        isPlaylist = (i < itemCount) && IsYouTubePlaylistURL(ctx->items[i].url);
+        if (isPlaylist) {
+            ctx->items[i].status = MULTI_DL_RESOLVING;
+        }
+        LeaveCriticalSection(&ctx->itemLock);
+
+        if (i >= itemCount) break;
+
+        if (isPlaylist) {
+            wchar_t* statusMsg = SAFE_WCSDUP(L"Resolving playlist...");
+            if (statusMsg && !PostMessageW(ctx->hDialog, WM_MULTI_DL_STATUS, 0, (LPARAM)statusMsg)) {
+                SAFE_FREE(statusMsg);
             }
-            LeaveCriticalSection(&ctx->itemLock);
 
-            if (isPlaylist) {
-                wchar_t* statusMsg = SAFE_WCSDUP(L"Resolving playlist...");
-                if (statusMsg) {
-                    PostMessageW(ctx->hDialog, WM_MULTI_DL_STATUS, 0, (LPARAM)statusMsg);
-                }
-
-                {
-                    MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
-                    if (workerCtx) {
-                        HANDLE hThread;
-                        workerCtx->batchCtx = ctx;
-                        workerCtx->itemIndex = i;
-                        hThread = CreateThread(NULL, 0, MultiDlPlaylistResolverThread, workerCtx, 0, NULL);
-                        if (hThread) {
-                            WaitForSingleObject(hThread, INFINITE);
-                            CloseHandle(hThread);
-                        } else {
-                            SAFE_FREE(workerCtx);
-                        }
+            {
+                MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
+                if (workerCtx) {
+                    HANDLE hThread;
+                    workerCtx->batchCtx = ctx;
+                    workerCtx->itemIndex = i;
+                    hThread = CreateThread(NULL, 0, MultiDlPlaylistResolverThread, workerCtx, 0, NULL);
+                    if (hThread) {
+                        WaitForSingleObject(hThread, INFINITE);
+                        CloseHandle(hThread);
+                    } else {
+                        SAFE_FREE(workerCtx);
                     }
                 }
-                Sleep(100);
             }
         }
     }
+
+    // Phase 2: Download all pending items in parallel (up to maxConcurrent)
+    maxConcurrent = ctx->maxConcurrent > 0 ? ctx->maxConcurrent : 1;
+    activeThreads = (HANDLE*)SAFE_MALLOC(sizeof(HANDLE) * maxConcurrent);
+    if (!activeThreads) {
+        ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: Out of memory");
+        PostMessageW(ctx->hDialog, WM_MULTI_DL_ALL_DONE, 0, 0);
+        return 1;
+    }
+    memset(activeThreads, 0, sizeof(HANDLE) * maxConcurrent);
+    activeCount = 0;
+    nextItem = 0;
+
+    while (!InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) {
+        // While paused, start nothing new; active downloads carry on
+        WaitForSingleObject(ctx->hPauseEvent, INFINITE);
+        if (InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) break;
+
+        // Clean up finished threads
+        for (t = 0; t < maxConcurrent; t++) {
+            if (activeThreads[t] && WaitForSingleObject(activeThreads[t], 0) == WAIT_OBJECT_0) {
+                CloseHandle(activeThreads[t]);
+                activeThreads[t] = NULL;
+                activeCount--;
+            }
+        }
+
+        // Find the next pending item, but only when a slot is free
+        itemToStart = -1;
+        if (activeCount < maxConcurrent) {
+            EnterCriticalSection(&ctx->itemLock);
+            while (nextItem < ctx->itemCount) {
+                if (ctx->items[nextItem++].status == MULTI_DL_PENDING) {
+                    itemToStart = nextItem - 1;
+                    break;
+                }
+            }
+            LeaveCriticalSection(&ctx->itemLock);
+        }
+
+        if (itemToStart >= 0) {
+            MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
+            HANDLE hThread = NULL;
+
+            if (workerCtx) {
+                workerCtx->batchCtx = ctx;
+                workerCtx->itemIndex = itemToStart;
+                hThread = CreateThread(NULL, 0, MultiDlSingleDownloadThread, workerCtx, 0, NULL);
+                if (!hThread) SAFE_FREE(workerCtx);
+            }
+
+            if (hThread) {
+                for (t = 0; t < maxConcurrent; t++) {
+                    if (!activeThreads[t]) {
+                        activeThreads[t] = hThread;
+                        activeCount++;
+                        break;
+                    }
+                }
+            } else {
+                wchar_t failedUrl[MAX_URL_LENGTH];
+                EnterCriticalSection(&ctx->itemLock);
+                wcsncpy(failedUrl, ctx->items[itemToStart].url, MAX_URL_LENGTH - 1);
+                failedUrl[MAX_URL_LENGTH - 1] = L'\0';
+                LeaveCriticalSection(&ctx->itemLock);
+                MultiDl_FinishItem(ctx, itemToStart, failedUrl, FALSE, NULL, NULL);
+            }
+            continue;
+        }
+
+        // No more items to start and no active threads = done
+        if (activeCount == 0) {
+            break;
+        }
+
+        Sleep(200);
+    }
+
+    // Wait for every download thread: they all use ctx
+    for (t = 0; t < maxConcurrent; t++) {
+        if (activeThreads[t]) {
+            WaitForSingleObject(activeThreads[t], INFINITE);
+            CloseHandle(activeThreads[t]);
+        }
+    }
+    SAFE_FREE(activeThreads);
 
     ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: All done");
     PostMessageW(ctx->hDialog, WM_MULTI_DL_ALL_DONE, 0, 0);
@@ -3167,7 +3532,9 @@ static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx) {
     if (!ctx) return;
     completed = InterlockedCompareExchange(&ctx->completedCount, 0, 0);
     failed = InterlockedCompareExchange(&ctx->failedCount, 0, 0);
-    remaining = ctx->itemCount - (int)completed - (int)failed;
+    EnterCriticalSection(&ctx->itemLock);
+    remaining = ctx->itemCount - ctx->expandedCount - (int)completed - (int)failed;
+    LeaveCriticalSection(&ctx->itemLock);
     if (remaining < 0) remaining = 0;
 
     swprintf(status, 256, L"Status: %d completed, %d failed, %d remaining",
@@ -3562,6 +3929,12 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                         MultiDl_RemoveUrlLineFromEdit(hDlg, itemResult->url);
                     }
 
+                    // A download was added to the cache: refresh the main window's list
+                    if (itemResult->success && itemResult->filePath[0] && ctx->hMainWindow) {
+                        RefreshCacheList(GetDlgItem(ctx->hMainWindow, IDC_LIST), GetCacheManager());
+                        UpdateCacheListStatus(ctx->hMainWindow, GetCacheManager());
+                    }
+
                     MultiDl_UpdateStatusLabel(hDlg, ctx);
                 }
                 SAFE_FREE(itemResult);
@@ -3609,45 +3982,17 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
                 if (ctx && plResult->urlCount > 0) {
                     wchar_t origUrl[MAX_URL_LENGTH] = {0};
+                    int downloadCount = 0;
 
+                    // The resolver thread has already queued the videos; show them in the list
                     EnterCriticalSection(&ctx->itemLock);
-
                     if (plResult->originalIndex >= 0 && plResult->originalIndex < ctx->itemCount) {
                         wcsncpy(origUrl, ctx->items[plResult->originalIndex].url, MAX_URL_LENGTH - 1); origUrl[MAX_URL_LENGTH - 1] = L'\0';
-                        ctx->items[plResult->originalIndex].status = MULTI_DL_COMPLETE;
-                        InterlockedIncrement(&ctx->completedCount);
                     }
-
-                    {
-                        int needed = ctx->itemCount + plResult->urlCount;
-                        if (needed > ctx->itemCapacity) {
-                            int newCap = needed * 2;
-                            MultiDlItem* newItems = (MultiDlItem*)SAFE_REALLOC(ctx->items, sizeof(MultiDlItem) * newCap);
-                            if (newItems) {
-                                ctx->items = newItems;
-                                ctx->itemCapacity = newCap;
-                            }
-                        }
-
-                        if (ctx->itemCapacity >= needed) {
-                            int addIdx;
-                            for (addIdx = 0; addIdx < plResult->urlCount; addIdx++) {
-                                int idx = ctx->itemCount;
-                                memset(&ctx->items[idx], 0, sizeof(MultiDlItem));
-                                if (plResult->urls[addIdx]) {
-                                    wcsncpy(ctx->items[idx].url, plResult->urls[addIdx], MAX_URL_LENGTH - 1);
-                                }
-                                if (plResult->titles[addIdx]) {
-                                    wcsncpy(ctx->items[idx].title, plResult->titles[addIdx], 511);
-                                }
-                                ctx->items[idx].status = MULTI_DL_PENDING;
-                                ctx->itemCount++;
-                            }
-                            SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETRANGE32, 0, ctx->itemCount);
-                        }
-                    }
-
+                    downloadCount = ctx->itemCount - ctx->expandedCount;
                     LeaveCriticalSection(&ctx->itemLock);
+
+                    SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETRANGE32, 0, downloadCount);
 
                     if (origUrl[0]) {
                         MultiDl_RemoveUrlLineFromEdit(hDlg, origUrl);
@@ -3671,22 +4016,7 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     MultiDl_UpdateStatusLabel(hDlg, ctx);
                 }
 
-                {
-                    int freeIdx;
-                    if (plResult->urls) {
-                        for (freeIdx = 0; freeIdx < plResult->urlCount; freeIdx++) {
-                            SAFE_FREE(plResult->urls[freeIdx]);
-                        }
-                        SAFE_FREE(plResult->urls);
-                    }
-                    if (plResult->titles) {
-                        for (freeIdx = 0; freeIdx < plResult->urlCount; freeIdx++) {
-                            SAFE_FREE(plResult->titles[freeIdx]);
-                        }
-                        SAFE_FREE(plResult->titles);
-                    }
-                }
-                SAFE_FREE(plResult);
+                MultiDl_FreePlaylistResult(plResult);
             }
             return TRUE;
         }
