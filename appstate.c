@@ -602,14 +602,18 @@ void AppendToYtDlpOutputBuffer(const wchar_t* output) {
     LeaveCriticalSection(&state->ytdlpOutputLock);
 }
 
-const wchar_t* GetYtDlpOutputBuffer(void) {
+// Returns a copy of the output buffer taken under its lock, because other
+// threads may reallocate the buffer. The caller frees it with SAFE_FREE.
+wchar_t* CopyYtDlpOutputBuffer(void) {
     ApplicationState* state = GetApplicationState();
-    if (!state || !state->ytdlpOutputBuffer) return L"";
+    wchar_t* copy;
+    if (!state) return NULL;
 
-    // Note: This returns a pointer to the buffer. The caller should not modify it
-    // and should be aware that the content may change if other threads call
-    // AppendToYtDlpOutputBuffer or ClearYtDlpOutputBuffer
-    return state->ytdlpOutputBuffer;
+    EnterCriticalSection(&state->ytdlpOutputLock);
+    copy = SAFE_WCSDUP(state->ytdlpOutputBuffer ? state->ytdlpOutputBuffer : L"");
+    LeaveCriticalSection(&state->ytdlpOutputLock);
+
+    return copy;
 }
 
 size_t GetYtDlpOutputBufferSize(void) {
@@ -702,14 +706,27 @@ void AppendToYtDlpSessionLog(const wchar_t* output) {
     }
 }
 
-const wchar_t* GetYtDlpSessionLogAll(void) {
+// Returns a copy, taken under the lock, of the "all" log or (if lastRun) the
+// "last run" log, starting at character fromOffset. If the log is now shorter
+// than fromOffset (it was cleared), the whole log is copied. *totalLength
+// receives the log's full length. The caller frees the copy with SAFE_FREE.
+wchar_t* CopyYtDlpSessionLog(BOOL lastRun, size_t fromOffset, size_t* totalLength) {
     ApplicationState* state = GetApplicationState();
-    if (!state || !state->ytdlpSessionLogAll) return L"";
-    return state->ytdlpSessionLogAll;
-}
+    const wchar_t* log;
+    wchar_t* copy;
+    size_t len;
 
-const wchar_t* GetYtDlpSessionLogLast(void) {
-    ApplicationState* state = GetApplicationState();
-    if (!state || !state->ytdlpSessionLogLast) return L"";
-    return state->ytdlpSessionLogLast;
+    if (totalLength) *totalLength = 0;
+    if (!state) return NULL;
+
+    EnterCriticalSection(&state->ytdlpSessionLogLock);
+    log = lastRun ? state->ytdlpSessionLogLast : state->ytdlpSessionLogAll;
+    if (!log) log = L"";
+    len = wcslen(log);
+    if (fromOffset > len) fromOffset = 0;
+    copy = SAFE_WCSDUP(log + fromOffset);
+    LeaveCriticalSection(&state->ytdlpSessionLogLock);
+
+    if (totalLength) *totalLength = len;
+    return copy;
 }

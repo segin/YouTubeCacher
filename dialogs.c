@@ -2731,9 +2731,10 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 TabCtrl_SetCurSel(hTabControl, 0);
             }
             
-            // Load log content from application state
-            const wchar_t* allLogs = GetYtDlpSessionLogAll();
-            const wchar_t* lastLog = GetYtDlpSessionLogLast();
+            // Load log content from application state (copies taken under its lock)
+            size_t allLen = 0, lastLen = 0;
+            wchar_t* allLogs = CopyYtDlpSessionLog(FALSE, 0, &allLen);
+            wchar_t* lastLog = CopyYtDlpSessionLog(TRUE, 0, &lastLen);
             
             if (allLogs && wcslen(allLogs) > 0) {
                 SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, allLogs);
@@ -2748,8 +2749,10 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             }
             
             // Store initial text lengths to track what's been displayed
-            SetPropW(hDlg, L"AllLogsLength", (HANDLE)(size_t)wcslen(allLogs ? allLogs : L""));
-            SetPropW(hDlg, L"LastLogLength", (HANDLE)(size_t)wcslen(lastLog ? lastLog : L""));
+            SetPropW(hDlg, L"AllLogsLength", (HANDLE)(allLogs ? allLen : 0));
+            SetPropW(hDlg, L"LastLogLength", (HANDLE)(lastLog ? lastLen : 0));
+            SAFE_FREE(allLogs);
+            SAFE_FREE(lastLog);
             
             // Show the "All Logs" tab by default
             ShowWindow(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), SW_SHOW);
@@ -2795,10 +2798,6 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 TabCtrl_SetItem(hTabControl, 1, &tie);
             }
             
-            // Get current log content
-            const wchar_t* allLogs = GetYtDlpSessionLogAll();
-            const wchar_t* lastLog = GetYtDlpSessionLogLast();
-            
             HWND hAllText = GetDlgItem(hDlg, IDC_LOG_ALL_TEXT);
             HWND hLastText = GetDlgItem(hDlg, IDC_LOG_LAST_TEXT);
             
@@ -2806,12 +2805,15 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             size_t prevAllLen = (size_t)GetPropW(hDlg, L"AllLogsLength");
             size_t prevLastLen = (size_t)GetPropW(hDlg, L"LastLogLength");
             
-            size_t currentAllLen = allLogs ? wcslen(allLogs) : 0;
-            size_t currentLastLen = lastLog ? wcslen(lastLog) : 0;
+            // Copy the text added since then, under the log lock. A log that is now
+            // shorter than before was cleared, and is then copied whole.
+            size_t currentAllLen = 0, currentLastLen = 0;
+            wchar_t* allLogs = CopyYtDlpSessionLog(FALSE, prevAllLen, &currentAllLen);
+            wchar_t* lastLog = CopyYtDlpSessionLog(TRUE, prevLastLen, &currentLastLen);
             
             // Update "All Logs" tab - only append new text
             if (currentAllLen > prevAllLen && allLogs) {
-                const wchar_t* newText = allLogs + prevAllLen;
+                const wchar_t* newText = allLogs;
                 
                 // Move to end of text
                 int textLen = GetWindowTextLengthW(hAllText);
@@ -2829,7 +2831,7 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             
             // Update "Current Run" / "Last Run" tab - only append new text
             if (currentLastLen > prevLastLen && lastLog) {
-                const wchar_t* newText = lastLog + prevLastLen;
+                const wchar_t* newText = lastLog;
                 
                 // Move to end of text
                 int textLen = GetWindowTextLengthW(hLastText);
@@ -2843,9 +2845,9 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 
                 // Update stored length
                 SetPropW(hDlg, L"LastLogLength", (HANDLE)currentLastLen);
-            } else if (currentLastLen < prevLastLen) {
+            } else if (currentLastLen < prevLastLen && lastLog) {
                 // Log was cleared (new invocation started), replace entire content
-                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog ? lastLog : L"");
+                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog);
                 SetPropW(hDlg, L"LastLogLength", (HANDLE)currentLastLen);
                 
                 // Scroll to bottom
@@ -2854,6 +2856,8 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 SendMessageW(hLastText, EM_SCROLLCARET, 0, 0);
             }
             
+            SAFE_FREE(allLogs);
+            SAFE_FREE(lastLog);
             return TRUE;
         }
         
