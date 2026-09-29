@@ -962,8 +962,9 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
     BOOL success = TRUE;
 
     // Accumulator for incomplete UTF-8 sequences
-    static char utf8Accumulator[8] = {0};
-    static size_t accumulatorLength = 0;
+    // Local to this thread: concurrent readers must not share line state
+    char utf8Accumulator[8] = {0};
+    size_t accumulatorLength = 0;
 
     while (success) {
         // Check for cancellation
