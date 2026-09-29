@@ -847,7 +847,7 @@ BOOL RemoveCacheEntry(CacheManager* manager, const wchar_t* videoId) {
     return FALSE;
 }
 
-// Find a cache entry by video ID
+// Find a cache entry by video ID (caller must hold manager->lock)
 CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId) {
     if (!manager || !videoId) return NULL;
     
@@ -861,6 +861,30 @@ CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId) {
     }
     
     return NULL;
+}
+
+// Return a heap copy of an entry's title (NULL if not found); takes the cache lock
+wchar_t* GetCacheEntryTitleCopy(CacheManager* manager, const wchar_t* videoId) {
+    if (!manager || !videoId) return NULL;
+    
+    EnterCriticalSection(&manager->lock);
+    CacheEntry* entry = FindCacheEntry(manager, videoId);
+    wchar_t* title = (entry && entry->title) ? SAFE_WCSDUP(entry->title) : NULL;
+    LeaveCriticalSection(&manager->lock);
+    
+    return title;
+}
+
+// Return a heap copy of an entry's main video path (NULL if not found); takes the cache lock
+wchar_t* GetCacheEntryVideoFileCopy(CacheManager* manager, const wchar_t* videoId) {
+    if (!manager || !videoId) return NULL;
+    
+    EnterCriticalSection(&manager->lock);
+    CacheEntry* entry = FindCacheEntry(manager, videoId);
+    wchar_t* path = (entry && entry->mainVideoFile) ? SAFE_WCSDUP(entry->mainVideoFile) : NULL;
+    LeaveCriticalSection(&manager->lock);
+    
+    return path;
 }
 
 // Delete all files associated with a cache entry with detailed error reporting
@@ -1002,19 +1026,21 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
         }
     }
     
+    // Build the removal log line while the entry is still protected by the lock
+    wchar_t logMsg[512];
+    if (entry->title) {
+        swprintf(logMsg, 512, L"Removed cache entry for video: %ls (ID: %ls)", 
+                entry->title, videoId);
+    } else {
+        swprintf(logMsg, 512, L"Removed cache entry for video ID: %ls", videoId);
+    }
+    
     LeaveCriticalSection(&manager->lock);
     SAFE_FREE(downloadFolder);
     
     // Remove from cache if all files were deleted successfully
     if (result->errorCount == 0) {
         // Log cache entry removal
-        wchar_t logMsg[512];
-        if (entry->title) {
-            swprintf(logMsg, 512, L"Removed cache entry for video: %ls (ID: %ls)", 
-                    entry->title, videoId);
-        } else {
-            swprintf(logMsg, 512, L"Removed cache entry for video ID: %ls", videoId);
-        }
         WriteToLogfile(logMsg);
         
         RemoveCacheEntry(manager, videoId);
