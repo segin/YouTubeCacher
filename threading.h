@@ -114,9 +114,9 @@ BOOL InitializeThreadContext(ThreadContext* threadContext);
 void CleanupThreadContext(ThreadContext* threadContext);
 
 // Enhanced thread management functions
+// context must already be initialized with InitializeThreadContext
 BOOL CreateManagedThread(ThreadContext* context, LPTHREAD_START_ROUTINE function, LPVOID data, const wchar_t* name, DWORD timeoutMs);
 BOOL WaitForThreadCompletion(ThreadContext* context, DWORD timeoutMs);
-void ForceTerminateThread(ThreadContext* context);
 
 // Thread synchronization functions
 BOOL SetCancellationFlag(ThreadContext* threadContext);

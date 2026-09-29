@@ -44,10 +44,12 @@ void CleanupThreadContext(ThreadContext* threadContext) {
         // Wait for graceful shutdown with timeout handling
         DWORD waitResult = WaitForSingleObject(threadContext->hThread, timeout);
         if (waitResult == WAIT_TIMEOUT) {
-            // Log timeout and force terminate if thread doesn't respond
-            ThreadSafeDebugOutputF(L"Thread '%ls' (ID: %lu) timed out during cleanup, forcing termination", threadContext->threadName, threadContext->threadId);
+            // Never use TerminateThread: it can leave the heap or a lock held and
+            // deadlock the whole process. The caller frees state this thread still
+            // uses once we return, so keep waiting for it to finish on its own.
+            ThreadSafeDebugOutputF(L"Thread '%ls' (ID: %lu) timed out during cleanup, still waiting for it to exit", threadContext->threadName, threadContext->threadId);
 
-            TerminateThread(threadContext->hThread, 1);
+            WaitForSingleObject(threadContext->hThread, INFINITE);
         }
 
         // Proper resource cleanup for thread handles
@@ -943,9 +945,10 @@ BOOL SendBatchMetadataUpdate(IPCContext* context, HWND targetWindow, const wchar
 BOOL CreateManagedThread(ThreadContext* context, LPTHREAD_START_ROUTINE function, LPVOID data, const wchar_t* name, DWORD timeoutMs) {
     if (!context || !function) return FALSE;
 
-    // Initialize the thread context if not already done
-    if (!InitializeThreadContext(context)) {
-        return FALSE;
+    // The caller must already have called InitializeThreadContext on this context;
+    // initializing it again would re-create (and leak) its critical section
+    if (context->hThread) {
+        return FALSE; // Already has a thread
     }
 
     // Set thread name and timeout
@@ -998,26 +1001,4 @@ BOOL WaitForThreadCompletion(ThreadContext* context, DWORD timeoutMs) {
         // Wait failed for some other reason
         return FALSE;
     }
-}
-
-// Force terminate an unresponsive thread
-void ForceTerminateThread(ThreadContext* context) {
-    if (!context || !context->hThread) return;
-
-    // Log the forced termination
-    ThreadSafeDebugOutputF(L"Force terminating unresponsive thread '%ls' (ID: %lu)", context->threadName, context->threadId);
-
-    // Terminate the thread forcefully
-    TerminateThread(context->hThread, 1);
-
-    // Update state
-    EnterCriticalSection(&context->criticalSection);
-    context->isRunning = FALSE;
-    context->cancelRequested = TRUE;
-    LeaveCriticalSection(&context->criticalSection);
-
-    // Clean up thread handle
-    CloseHandle(context->hThread);
-    context->hThread = NULL;
-    context->threadId = 0;
 }
