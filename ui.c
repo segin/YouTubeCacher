@@ -1092,7 +1092,8 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         return TRUE;
                     }
 
-                    // Validate all components before saving
+                    // Validate all components before saving. The component paths
+                    // follow their edit boxes (EN_CHANGE), so typed paths are checked.
                     UIComponent* componentArray[3];
                     int componentCount = 0;
 
@@ -1100,22 +1101,24 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         componentArray[componentCount++] = (UIComponent*)components->ytdlpBrowser;
                     }
                     if (components->downloadFolderBrowser) {
+                        // Create the download folder if it is new (as downloads do), so it validates
+                        const wchar_t* folderPath = GetFolderBrowserPath(components->downloadFolderBrowser);
+                        if (folderPath && folderPath[0] != L'\0') {
+                            CreateDownloadDirectoryIfNeeded(folderPath);
+                        }
                         componentArray[componentCount++] = (UIComponent*)components->downloadFolderBrowser;
                     }
                     if (components->playerBrowser) {
-                        componentArray[componentCount++] = (UIComponent*)components->playerBrowser;
+                        // The media player is optional; validate it only when one is given
+                        const wchar_t* playerPathToCheck = GetFileBrowserPath(components->playerBrowser);
+                        if (playerPathToCheck && playerPathToCheck[0] != L'\0') {
+                            componentArray[componentCount++] = (UIComponent*)components->playerBrowser;
+                        }
                     }
 
-                    // Validate all components
-                    ComponentValidationSummary* validationSummary = ValidateDialog(componentArray, componentCount);
-                    if (validationSummary && !validationSummary->allValid) {
-                        // Show validation errors
-                        ShowValidationErrors(hDlg, validationSummary);
-                        FreeValidationSummary(validationSummary);
+                    // Validate all components; on failure show the errors and focus the first one
+                    if (!ValidateDialogBeforeClose(hDlg, componentArray, componentCount)) {
                         return TRUE;
-                    }
-                    if (validationSummary) {
-                        FreeValidationSummary(validationSummary);
                     }
 
                     // Read and validate the custom yt-dlp arguments
@@ -1153,6 +1156,9 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         }
                         if (playerPath && wcslen(playerPath) > 0) {
                             RegSetValueExW(hKey, REG_PLAYER_PATH, 0, REG_SZ, (const BYTE*)playerPath, (DWORD)((wcslen(playerPath) + 1) * sizeof(wchar_t)));
+                        } else {
+                            // An emptied player field clears the configured player
+                            RegDeleteValueW(hKey, REG_PLAYER_PATH);
                         }
 
                         // Save checkbox settings

@@ -86,6 +86,50 @@ void DestroyComponentRegistry(ComponentRegistry* registry) {
     SAFE_FREE(registry);
 }
 
+// Component hooks: adapt the typed destroy/validate functions to UIComponent
+static void DestroyFileBrowserHook(UIComponent* component) {
+    DestroyFileBrowser((FileBrowserComponent*)component);
+}
+
+static BOOL ValidateFileBrowserHook(UIComponent* component, wchar_t* errorMsg, size_t errorMsgSize) {
+    return ValidateFileBrowser((FileBrowserComponent*)component, errorMsg, errorMsgSize);
+}
+
+static void DestroyFolderBrowserHook(UIComponent* component) {
+    DestroyFolderBrowser((FolderBrowserComponent*)component);
+}
+
+static BOOL ValidateFolderBrowserHook(UIComponent* component, wchar_t* errorMsg, size_t errorMsgSize) {
+    return ValidateFolderBrowser((FolderBrowserComponent*)component, errorMsg, errorMsgSize);
+}
+
+static void DestroyLabeledTextInputHook(UIComponent* component) {
+    DestroyLabeledTextInput((LabeledTextInput*)component);
+}
+
+static BOOL ValidateLabeledTextInputHook(UIComponent* component, wchar_t* errorMsg, size_t errorMsgSize) {
+    return ValidateLabeledTextInput((LabeledTextInput*)component, errorMsg, errorMsgSize);
+}
+
+// Only a LabeledTextInput has an error label; the browsers keep their button at that offset
+static BOOL IsLabeledTextInput(UIComponent* component) {
+    return component && component->validate == ValidateLabeledTextInputHook;
+}
+
+// Replace a component's stored path with the current text of its edit box
+static void UpdatePathFromEdit(HWND hwndEdit, wchar_t** currentPath) {
+    SAFE_FREE(*currentPath);
+    *currentPath = NULL;
+
+    int length = GetWindowTextLengthW(hwndEdit);
+    if (length > 0) {
+        *currentPath = (wchar_t*)SAFE_MALLOC((size_t)(length + 1) * sizeof(wchar_t));
+        if (*currentPath) {
+            GetWindowTextW(hwndEdit, *currentPath, length + 1);
+        }
+    }
+}
+
 // File browser component implementation
 
 // Handle browse button click
@@ -136,6 +180,12 @@ BOOL HandleFileBrowserCommand(FileBrowserComponent* component, WPARAM wParam, LP
         HandleFileBrowseClick(component);
         return TRUE;
     }
+
+    // Keep the stored path in step with what is typed in the edit box
+    if (controlId == (component->controlId + 1) && notificationCode == EN_CHANGE) {
+        UpdatePathFromEdit(component->hwndEdit, &component->currentPath);
+        return TRUE;
+    }
     
     return FALSE;
 }
@@ -156,6 +206,8 @@ FileBrowserComponent* CreateFileBrowser(HWND parent, int x, int y, int width,
     
     ZeroMemory(component, sizeof(FileBrowserComponent));
     component->controlId = controlId;
+    component->base.destroy = DestroyFileBrowserHook;
+    component->base.validate = ValidateFileBrowserHook;
     
     // Allocate and copy label
     size_t labelLen = wcslen(label) + 1;
@@ -239,6 +291,8 @@ FileBrowserComponent* CreateFileBrowserEx(HWND parent, int editX, int editY,
     
     ZeroMemory(component, sizeof(FileBrowserComponent));
     component->controlId = controlId;
+    component->base.destroy = DestroyFileBrowserHook;
+    component->base.validate = ValidateFileBrowserHook;
     
     // Allocate and copy label
     size_t labelLen = wcslen(label) + 1;
@@ -386,6 +440,7 @@ void SetFileBrowserPath(FileBrowserComponent* component, const wchar_t* path) {
     
     // Free old path
     SAFE_FREE(component->currentPath);
+    component->currentPath = NULL;
     
     // Allocate and copy new path
     if (path && path[0] != L'\0') {
@@ -447,6 +502,12 @@ BOOL HandleFolderBrowserCommand(FolderBrowserComponent* component, WPARAM wParam
         HandleFolderBrowseClick(component);
         return TRUE;
     }
+
+    // Keep the stored path in step with what is typed in the edit box
+    if (controlId == (component->controlId + 1) && notificationCode == EN_CHANGE) {
+        UpdatePathFromEdit(component->hwndEdit, &component->currentPath);
+        return TRUE;
+    }
     
     return FALSE;
 }
@@ -467,6 +528,8 @@ FolderBrowserComponent* CreateFolderBrowser(HWND parent, int x, int y, int width
     
     ZeroMemory(component, sizeof(FolderBrowserComponent));
     component->controlId = controlId;
+    component->base.destroy = DestroyFolderBrowserHook;
+    component->base.validate = ValidateFolderBrowserHook;
     
     // Allocate and copy label
     size_t labelLen = wcslen(label) + 1;
@@ -532,6 +595,8 @@ FolderBrowserComponent* CreateFolderBrowserEx(HWND parent, int editX, int editY,
     
     ZeroMemory(component, sizeof(FolderBrowserComponent));
     component->controlId = controlId;
+    component->base.destroy = DestroyFolderBrowserHook;
+    component->base.validate = ValidateFolderBrowserHook;
     
     // Allocate and copy label
     size_t labelLen = wcslen(label) + 1;
@@ -662,6 +727,7 @@ void SetFolderBrowserPath(FolderBrowserComponent* component, const wchar_t* path
     
     // Free old path
     SAFE_FREE(component->currentPath);
+    component->currentPath = NULL;
     
     // Allocate and copy new path
     if (path && path[0] != L'\0') {
@@ -694,6 +760,8 @@ LabeledTextInput* CreateLabeledTextInput(HWND parent, int x, int y, int width,
     
     ZeroMemory(component, sizeof(LabeledTextInput));
     component->controlId = controlId;
+    component->base.destroy = DestroyLabeledTextInputHook;
+    component->base.validate = ValidateLabeledTextInputHook;
     component->validationType = validation;
     component->isRequired = (validation == VALIDATION_REQUIRED);
     
@@ -1007,7 +1075,7 @@ void ShowValidationErrors(HWND hDlg, ComponentValidationSummary* summary) {
             }
             
             // Check if it's a LabeledTextInput
-            LabeledTextInput* textInput = (LabeledTextInput*)result->component;
+            LabeledTextInput* textInput = IsLabeledTextInput(result->component) ? (LabeledTextInput*)result->component : NULL;
             if (textInput) {
                 // Show error message
                 if (textInput->hwndError) {
@@ -1036,7 +1104,7 @@ void ShowValidationErrors(HWND hDlg, ComponentValidationSummary* summary) {
             }
             
             // Check if it's a LabeledTextInput
-            LabeledTextInput* textInput = (LabeledTextInput*)result->component;
+            LabeledTextInput* textInput = IsLabeledTextInput(result->component) ? (LabeledTextInput*)result->component : NULL;
             if (textInput) {
                 if (textInput->hwndError) {
                     ClearControlErrorMessage(textInput->hwndError);
@@ -1048,21 +1116,17 @@ void ShowValidationErrors(HWND hDlg, ComponentValidationSummary* summary) {
         }
     }
     
-    // If there are multiple errors, show a summary message box
-    if (!summary->allValid && summary->count > 1) {
-        int errorCount = 0;
+    // Show the error messages, so the reason is visible even for a single error
+    if (!summary->allValid) {
+        wchar_t summaryMsg[1024] = L"Please correct the following before continuing:\n";
         for (int i = 0; i < summary->count; i++) {
             if (!summary->results[i].isValid) {
-                errorCount++;
+                size_t used = wcslen(summaryMsg);
+                _snwprintf(summaryMsg + used, 1024 - used, L"\n%ls", summary->results[i].errorMessage);
+                summaryMsg[1023] = L'\0';
             }
         }
-        
-        if (errorCount > 1) {
-            wchar_t summaryMsg[512];
-            _snwprintf(summaryMsg, 512, L"Please correct %d validation errors before continuing.", errorCount);
-            summaryMsg[511] = L'\0';
-            MessageBoxW(hDlg, summaryMsg, L"Validation Errors", MB_OK | MB_ICONWARNING);
-        }
+        MessageBoxW(hDlg, summaryMsg, L"Validation Errors", MB_OK | MB_ICONWARNING);
     }
 }
 
@@ -1229,7 +1293,7 @@ static void FocusFirstInvalidComponent(ComponentValidationSummary* summary) {
             }
 
             // Check if it's a LabeledTextInput
-            LabeledTextInput* textInput = (LabeledTextInput*)summary->results[i].component;
+            LabeledTextInput* textInput = IsLabeledTextInput(summary->results[i].component) ? (LabeledTextInput*)summary->results[i].component : NULL;
             if (textInput && textInput->hwndEdit) {
                 SetFocus(textInput->hwndEdit);
                 return;
@@ -1292,7 +1356,7 @@ void ClearDialogValidationErrors(UIComponent** components, int count) {
         }
         
         // Check if it's a LabeledTextInput
-        LabeledTextInput* textInput = (LabeledTextInput*)components[i];
+        LabeledTextInput* textInput = IsLabeledTextInput(components[i]) ? (LabeledTextInput*)components[i] : NULL;
         if (textInput) {
             if (textInput->hwndError) {
                 ClearControlErrorMessage(textInput->hwndError);
