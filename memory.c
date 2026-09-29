@@ -46,6 +46,23 @@ static void CleanupFreedMemoryList(void);
 #ifdef MEMORY_DEBUG
 static void FillMemoryPattern(void* ptr, size_t size, DWORD pattern);
 static BOOL CheckMemoryPattern(void* ptr, size_t size, DWORD pattern);
+
+// Every debug block is laid out as header | front guard | user data | back guard.
+// The header records the user size and marks the block as ours, so free and
+// realloc can find the raw pointer whether or not the block is tracked.
+#define DEBUG_BLOCK_MAGIC     0x59544342
+#define DEBUG_HEADER_SIZE     16
+#define DEBUG_BLOCK_OVERHEAD  (DEBUG_HEADER_SIZE + 2 * GUARD_SIZE)
+
+typedef struct {
+    size_t size;
+    DWORD magic;
+} DebugBlockHeader;
+
+_Static_assert(sizeof(DebugBlockHeader) <= DEBUG_HEADER_SIZE, "debug block header too large");
+
+static void* InitDebugBlock(void* rawPtr, size_t size);
+static DebugBlockHeader* GetDebugBlockHeader(void* userPtr);
 #endif
 static void CaptureStackTrace(void** stackTrace, int* stackDepth);
 
@@ -138,13 +155,8 @@ void* SafeMalloc(size_t size, const char* file, int line)
     }
 
 #ifdef MEMORY_DEBUG
-    // In debug builds, allocate extra space for guard patterns
-    size_t totalSize = size;
-    if (g_bufferOverrunDetectionEnabled) {
-        totalSize = size + (2 * GUARD_SIZE); // Guard before and after
-    }
-
-    void* rawPtr = malloc(totalSize);
+    // In debug builds, allocate extra space for the header and guard patterns
+    void* rawPtr = size <= SIZE_MAX - DEBUG_BLOCK_OVERHEAD ? malloc(size + DEBUG_BLOCK_OVERHEAD) : NULL;
     if (!rawPtr) {
         // Use standardized error reporting system
         wchar_t errorMsg[512];
@@ -173,25 +185,10 @@ void* SafeMalloc(size_t size, const char* file, int line)
         return NULL;
     }
 
-    void* userPtr = rawPtr;
-    if (g_bufferOverrunDetectionEnabled) {
-        // Set up guard patterns
-        char* guardBefore = (char*)rawPtr;
-        char* userArea = guardBefore + GUARD_SIZE;
-        char* guardAfter = userArea + size;
-
-        // Fill guard areas with pattern
-        FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
-        FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
-
-        // Fill user area with uninitialized pattern
-        FillMemoryPattern(userArea, size, UNINITIALIZED_PATTERN);
-
-        userPtr = userArea;
-    } else {
-        // Fill with uninitialized pattern even without guards
-        FillMemoryPattern(rawPtr, size, UNINITIALIZED_PATTERN);
-    }
+    // Set up the header and guard patterns, and fill the user area with the
+    // uninitialized pattern
+    void* userPtr = InitDebugBlock(rawPtr, size);
+    FillMemoryPattern(userPtr, size, UNINITIALIZED_PATTERN);
 #else
     // In release builds, just allocate normally
     void* rawPtr = malloc(size);
@@ -267,13 +264,9 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
     size_t totalSize = count * size;
 
 #ifdef MEMORY_DEBUG
-    // In debug builds, allocate extra space for guard patterns
-    size_t allocSize = totalSize;
-    if (g_bufferOverrunDetectionEnabled) {
-        allocSize = totalSize + (2 * GUARD_SIZE); // Guard before and after
-    }
-
-    void* rawPtr = calloc(1, allocSize); // Use calloc(1, allocSize) to zero entire block
+    // In debug builds, allocate extra space for the header and guard patterns
+    void* rawPtr = totalSize <= SIZE_MAX - DEBUG_BLOCK_OVERHEAD ?
+        calloc(1, totalSize + DEBUG_BLOCK_OVERHEAD) : NULL; // Zero the entire block
     if (!rawPtr) {
         // Use standardized error reporting system
         wchar_t errorMsg[512];
@@ -302,20 +295,8 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
         return NULL;
     }
 
-    void* userPtr = rawPtr;
-    if (g_bufferOverrunDetectionEnabled) {
-        // Set up guard patterns (calloc already zeroed everything)
-        char* guardBefore = (char*)rawPtr;
-        char* userArea = guardBefore + GUARD_SIZE;
-        char* guardAfter = userArea + totalSize;
-
-        // Fill guard areas with pattern (overwriting the zeros)
-        FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
-        FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
-
-        // User area remains zeroed from calloc
-        userPtr = userArea;
-    }
+    // Set up the header and guard patterns; the user area stays zeroed
+    void* userPtr = InitDebugBlock(rawPtr, totalSize);
 #else
     // In release builds, just allocate normally
     void* rawPtr = calloc(count, size);
@@ -396,18 +377,22 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
     }
 
 #ifdef MEMORY_DEBUG
-    // Handle buffer overrun detection - need to adjust pointers and sizes
-    void* rawPtr = ptr;
-    size_t totalSize = size;
-
-    if (g_bufferOverrunDetectionEnabled && wasTracked) {
-        // Convert user pointer back to raw pointer
-        rawPtr = (char*)ptr - GUARD_SIZE;
-        // Add space for guard patterns
-        totalSize = size + (2 * GUARD_SIZE);
+    // Find the raw block from its header, whether or not it was tracked
+    DebugBlockHeader* header = GetDebugBlockHeader(ptr);
+    if (!header) {
+        if (wasTracked) {
+            EnterCriticalSection(&g_memoryManager.lock);
+            AddAllocationRecord(ptr, oldSize, file, line);
+            LeaveCriticalSection(&g_memoryManager.lock);
+        }
+        ReportMemoryError(MEMORY_ERROR_INVALID_ADDRESS, ptr, size, file, line,
+                         L"realloc() of a block not allocated by SafeMalloc");
+        return NULL;
     }
+    size_t oldBlockSize = header->size;
 
-    void* newRawPtr = realloc(rawPtr, totalSize);
+    void* newRawPtr = size <= SIZE_MAX - DEBUG_BLOCK_OVERHEAD ?
+        realloc(header, size + DEBUG_BLOCK_OVERHEAD) : NULL;
     if (!newRawPtr) {
         // Realloc failed, need to restore the old allocation record
         if (wasTracked) {
@@ -418,26 +403,12 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
         return NULL;
     }
 
-    void* newPtr = newRawPtr;
-    if (g_bufferOverrunDetectionEnabled && wasTracked) {
-        // Set up guard patterns in the new allocation
-        char* guardBefore = (char*)newRawPtr;
-        char* userArea = guardBefore + GUARD_SIZE;
-        char* guardAfter = userArea + size;
+    // Rewrite the header and guard patterns for the new size
+    void* newPtr = InitDebugBlock(newRawPtr, size);
 
-        // Fill guard areas with pattern
-        FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
-        FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
-
-        // If we're expanding, fill new area with uninitialized pattern
-        if (size > oldSize) {
-            FillMemoryPattern(userArea + oldSize, size - oldSize, UNINITIALIZED_PATTERN);
-        }
-
-        newPtr = userArea;
-    } else if (size > oldSize) {
-        // Fill expanded area with uninitialized pattern
-        FillMemoryPattern((char*)newPtr + oldSize, size - oldSize, UNINITIALIZED_PATTERN);
+    // If we're expanding, fill new area with uninitialized pattern
+    if (size > oldBlockSize) {
+        FillMemoryPattern((char*)newPtr + oldBlockSize, size - oldBlockSize, UNINITIALIZED_PATTERN);
     }
 #else
     void* newPtr = realloc(ptr, size);
@@ -560,12 +531,15 @@ void SafeFree(void* ptr, const char* file, int line)
     }
 
 #ifdef MEMORY_DEBUG
-    // In debug builds, we need to free the raw pointer (with guards)
-    void* rawPtr = ptr;
-    if (g_bufferOverrunDetectionEnabled && wasTracked) {
-        rawPtr = (char*)ptr - GUARD_SIZE;
+    // In debug builds, free the raw block (with header and guards), found from
+    // its header whether or not it was tracked; a block without one is freed as is
+    DebugBlockHeader* header = GetDebugBlockHeader(ptr);
+    if (header) {
+        header->magic = 0;
+        free(header);
+    } else {
+        free(ptr);
     }
-    free(rawPtr);
 #else
     free(ptr);
 #endif
@@ -1798,6 +1772,30 @@ static void FillMemoryPattern(void* ptr, size_t size, DWORD pattern)
             bytePtr[i] = patternBytes[i % sizeof(DWORD)];
         }
     }
+}
+
+// Write the header and guard patterns of a debug block; returns the user pointer
+static void* InitDebugBlock(void* rawPtr, size_t size)
+{
+    DebugBlockHeader* header = (DebugBlockHeader*)rawPtr;
+    header->size = size;
+    header->magic = DEBUG_BLOCK_MAGIC;
+
+    char* guardBefore = (char*)rawPtr + DEBUG_HEADER_SIZE;
+    char* userArea = guardBefore + GUARD_SIZE;
+    char* guardAfter = userArea + size;
+
+    FillMemoryPattern(guardBefore, GUARD_SIZE, GUARD_PATTERN);
+    FillMemoryPattern(guardAfter, GUARD_SIZE, GUARD_PATTERN);
+
+    return userArea;
+}
+
+// Get the header of a debug block, or NULL if the pointer is not one
+static DebugBlockHeader* GetDebugBlockHeader(void* userPtr)
+{
+    DebugBlockHeader* header = (DebugBlockHeader*)((char*)userPtr - GUARD_SIZE - DEBUG_HEADER_SIZE);
+    return header->magic == DEBUG_BLOCK_MAGIC ? header : NULL;
 }
 
 static BOOL CheckMemoryPattern(void* ptr, size_t size, DWORD pattern)
