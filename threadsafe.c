@@ -295,17 +295,20 @@ BOOL CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     // Stop the child and the reader while the context is still initialized:
     // the cancel, wait and kill functions do nothing on an uninitialized context
 
-    // Only cancel if the process is still running
-    // If it's already completed, no need to cancel
+    // Only stop the process if it is still running
+    // If it's already completed, no need to stop it
     if (!context->processCompleted) {
-        // Cancel any running process
-        CancelThreadSafeSubprocess(context);
+        EnterCriticalSection(&context->processStateLock);
+        HANDLE hProcess = context->hProcess;
+        LeaveCriticalSection(&context->processStateLock);
 
-        // Wait for process to complete with timeout
-        WaitForThreadSafeSubprocessCompletion(context, 5000);
-
-        // Force terminate if still running
+        // There is no graceful stop to try first: a GUI process has no console
+        // to deliver Ctrl+C to a CREATE_NO_WINDOW child. Terminate it, then
+        // wait for it to exit (TerminateProcess is asynchronous).
         ForceKillThreadSafeSubprocess(context);
+        if (hProcess) {
+            WaitForSingleObject(hProcess, 5000);
+        }
     }
 
     // Join the output reader thread before anything it uses is freed.
@@ -794,13 +797,8 @@ BOOL CancelThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
         SetEvent(context->cancellationEvent);
     }
 
-    // Try graceful termination - but don't crash if we can't get the lock
-    // The process will be force-killed later in cleanup anyway
-    if (context->processRunning && context->hProcess) {
-        // Try to send CTRL+C without using the lock
-        // This might race but it's better than crashing
-        GenerateConsoleCtrlEvent(CTRL_C_EVENT, context->processId);
-    }
+    // No Ctrl+C is sent: GenerateConsoleCtrlEvent cannot reach a CREATE_NO_WINDOW
+    // child from a GUI process with no console. Cleanup terminates the process.
 
     return TRUE;
 }

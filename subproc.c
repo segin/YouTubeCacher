@@ -91,11 +91,7 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     if (!WaitForThreadSafeSubprocessWithOutputCompletion(context, timeoutMs)) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Subprocess did not complete within timeout");
 
-        // Try to cancel and cleanup
-        CancelThreadSafeSubprocess(context);
-        WaitForThreadSafeSubprocessCompletion(context, 5000); // Wait 5 seconds for graceful shutdown
-        ForceKillThreadSafeSubprocess(context); // Force kill if needed
-
+        // Cleanup terminates the process, waits for it and joins the reader
         if (CleanupThreadSafeSubprocessContext(context)) {
             SAFE_FREE(context);
         }
