@@ -295,20 +295,28 @@ static inline BOOL DuplicateHandle(HANDLE hsrc, HANDLE hsh, HANDLE hdst, HANDLE*
     return TRUE;
 }
 
+// A test can supply its own pipe and conversion behaviour by defining these
+// names as macros before including this header
+#ifndef PeekNamedPipe
 static inline BOOL PeekNamedPipe(HANDLE h, LPVOID buf, DWORD bufsz, DWORD* read, DWORD* avail, DWORD* message) {
     (void)h; (void)buf; (void)bufsz; (void)read; (void)avail; (void)message;
     return TRUE;
 }
+#endif
 
+#ifndef ReadFile
 static inline BOOL ReadFile(HANDLE h, LPVOID buf, DWORD bufsz, DWORD* read, LPVOID overlap) {
     (void)h; (void)buf; (void)bufsz; (void)read; (void)overlap;
     return TRUE;
 }
+#endif
 
+#ifndef MultiByteToWideChar
 static inline int MultiByteToWideChar(uint32_t cp, DWORD flags, const char* src, int srclen, wchar_t* dst, int dstlen) {
     (void)cp; (void)flags; (void)src; (void)srclen; (void)dst; (void)dstlen;
     return 0;
 }
+#endif
 
 static inline int WideCharToMultiByte(uint32_t cp, DWORD flags, const wchar_t* src, int srclen, char* dst, int dstlen, const char* def, BOOL* used) {
     (void)cp; (void)flags; (void)src; (void)srclen; (void)dst; (void)dstlen; (void)def; (void)used;

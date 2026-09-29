@@ -946,6 +946,87 @@ BOOL ForceKillThreadSafeSubprocess(ThreadSafeSubprocessContext* context) {
 // Thread-safe subprocess output collection implementation
 
 /**
+ * Append raw bytes to a reader thread's growable line buffer
+ */
+static BOOL AppendToLineBuffer(char** line, size_t* length, size_t* capacity, const char* data, size_t count) {
+    if (count == 0) {
+        return TRUE;
+    }
+
+    if (*length + count > *capacity) {
+        size_t newCapacity = (*capacity > 0) ? *capacity : 1024;
+        while (newCapacity < *length + count) {
+            newCapacity *= 2;
+        }
+
+        char* newLine = (char*)SAFE_REALLOC(*line, newCapacity);
+        if (!newLine) {
+            return FALSE;
+        }
+
+        *line = newLine;
+        *capacity = newCapacity;
+    }
+
+    memcpy(*line + *length, data, count);
+    *length += count;
+    return TRUE;
+}
+
+/**
+ * Convert one complete UTF-8 output line (without its '\n') and deliver it to
+ * the output buffer, the session log and the progress callback
+ */
+static void ProcessSubprocessOutputLine(ThreadSafeSubprocessContext* context, const char* line, size_t lineLength) {
+    // Remove \r if present (Windows line endings)
+    if (lineLength > 0 && line[lineLength - 1] == '\r') {
+        lineLength--;
+    }
+
+    if (lineLength == 0 || lineLength > 0x7FFFFFFF) {
+        return;
+    }
+
+    // Convert UTF-8 line to wide characters, sized for the whole line
+    int wideLength = MultiByteToWideChar(CP_UTF8, 0, line, (int)lineLength, NULL, 0);
+    if (wideLength <= 0) {
+        return;
+    }
+
+    wchar_t* wideLine = (wchar_t*)SAFE_MALLOC(((size_t)wideLength + 3) * sizeof(wchar_t));
+    if (!wideLine) {
+        ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Failed to allocate line buffer");
+        return;
+    }
+
+    int converted = MultiByteToWideChar(CP_UTF8, 0, line, (int)lineLength, wideLine, wideLength);
+    if (converted > 0) {
+        // Append to output buffer with Windows line endings
+        wideLine[converted] = L'\r';
+        wideLine[converted + 1] = L'\n';
+        wideLine[converted + 2] = L'\0';
+
+        if (!AppendToThreadSafeSubprocessOutput(context, wideLine, (size_t)converted + 2)) {
+            ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Failed to append output");
+        }
+
+        // Also append to session log (in-memory only, separate from disk logging)
+        AppendToYtDlpSessionLog(wideLine);
+
+        // Call progress callback if available
+        wideLine[converted] = L'\0';
+        if (context->progressCallback) {
+            // Parse progress information from the line if it looks like progress
+            if (wcsstr(wideLine, L"%") || wcsstr(wideLine, L"download") || wcsstr(wideLine, L"Downloading")) {
+                context->progressCallback(-1, wideLine, context->callbackUserData);
+            }
+        }
+    }
+
+    SAFE_FREE(wideLine);
+}
+
+/**
  * Worker thread function for collecting subprocess output
  * Runs in background to continuously read from subprocess output pipe
  */
@@ -959,24 +1040,28 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
 
     char buffer[4096];
     DWORD bytesRead;
-    BOOL success = TRUE;
 
-    // Accumulator for incomplete UTF-8 sequences
-    // Local to this thread: concurrent readers must not share line state
-    char utf8Accumulator[8] = {0};
-    size_t accumulatorLength = 0;
+    // Bytes of the current line that has no '\n' yet. Local to this thread
+    // (concurrent readers must not share line state) and grown as needed, so a
+    // line of any length is kept whole across any number of reads.
+    char* line = NULL;
+    size_t lineLength = 0;
+    size_t lineCapacity = 0;
 
-    while (success) {
+    BOOL processExited = FALSE;
+
+    while (TRUE) {
         // Check for cancellation
         if (context->cancellationRequested) {
             ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Cancellation requested, exiting");
             break;
         }
 
-        // Check if process is still running
-        if (!IsThreadSafeSubprocessRunning(context)) {
-            ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Process no longer running");
-            break;
+        // Note an exit before peeking: by then everything the process wrote is
+        // in the pipe, so a later empty peek means the pipe is drained
+        if (!processExited && !IsThreadSafeSubprocessRunning(context)) {
+            ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Process no longer running, draining pipe");
+            processExited = TRUE;
         }
 
         // Read from output pipe with timeout
@@ -996,6 +1081,9 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
             if (error == ERROR_BROKEN_PIPE) {
                 ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Pipe broken, process ended");
                 break;
+            } else if (processExited) {
+                ThreadSafeDebugOutputF(L"SubprocessOutputReaderThread: PeekNamedPipe failed with error %lu after exit", error);
+                break;
             } else {
                 ThreadSafeDebugOutputF(L"SubprocessOutputReaderThread: PeekNamedPipe failed with error %lu", error);
                 Sleep(100); // Wait a bit before retrying
@@ -1004,110 +1092,65 @@ static DWORD WINAPI SubprocessOutputReaderThread(LPVOID lpParam) {
         }
 
         if (bytesAvailable == 0) {
+            if (processExited) {
+                ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Pipe drained after process exit");
+                break;
+            }
             Sleep(50); // No data available, wait a bit
             continue;
         }
 
         // Read available data
-        success = ReadFile(hOutputRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL);
-        if (!success) {
+        if (!ReadFile(hOutputRead, buffer, sizeof(buffer), &bytesRead, NULL)) {
             DWORD error = GetLastError();
             if (error == ERROR_BROKEN_PIPE) {
                 ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Pipe broken during read, process ended");
-                break;
             } else {
                 ThreadSafeDebugOutputF(L"SubprocessOutputReaderThread: ReadFile failed with error %lu", error);
-                break;
             }
+            break;
         }
 
         if (bytesRead == 0) {
             continue; // No data read, continue loop
         }
 
-        buffer[bytesRead] = '\0'; // Null-terminate
-
-        // Combine with any accumulated bytes from previous incomplete UTF-8 sequences
-        size_t totalBytes = accumulatorLength + bytesRead;
-        char* processBuffer = buffer;
-        
-        if (accumulatorLength > 0) {
-            // We have incomplete UTF-8 from previous read
-            if (totalBytes < sizeof(utf8Accumulator)) {
-                memcpy(utf8Accumulator + accumulatorLength, buffer, bytesRead);
-                utf8Accumulator[totalBytes] = '\0';
-                processBuffer = utf8Accumulator;
-                bytesRead = (DWORD)totalBytes;
-                accumulatorLength = 0; // Reset accumulator
-            } else {
-                // Too much data, process what we have and continue
-                accumulatorLength = 0;
-            }
-        }
-
-        // Process complete lines only to avoid partial UTF-8 sequences
-        char* lineStart = processBuffer;
-        char* lineEnd;
-        
-        while ((lineEnd = strchr(lineStart, '\n')) != NULL) {
-            *lineEnd = '\0'; // Null-terminate the line
-            
-            // Remove \r if present (Windows line endings)
-            size_t lineLength = lineEnd - lineStart;
-            if (lineLength > 0 && lineStart[lineLength - 1] == '\r') {
-                lineStart[lineLength - 1] = '\0';
-                lineLength--;
+        // Deliver each complete line; keep the unterminated tail for the next read.
+        // Lines are split on '\n' only, so UTF-8 sequences are never cut apart.
+        DWORD segmentStart = 0;
+        for (DWORD i = 0; i < bytesRead; i++) {
+            if (buffer[i] != '\n') {
+                continue;
             }
 
-            // Convert UTF-8 line to wide characters
             if (lineLength > 0) {
-                wchar_t wideBuffer[2048];
-                int converted = MultiByteToWideChar(CP_UTF8, 0, lineStart, (int)lineLength, wideBuffer, 2047);
-                if (converted > 0) {
-                    wideBuffer[converted] = L'\0';
-                    
-                    // Append to output buffer with Windows line endings
-                    wchar_t lineWithEnding[2050];
-                    swprintf(lineWithEnding, 2050, L"%ls\r\n", wideBuffer);
-                    
-                    if (!AppendToThreadSafeSubprocessOutput(context, lineWithEnding, wcslen(lineWithEnding))) {
-                        ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Failed to append output");
-                    }
-                    
-                    // Also append to session log (in-memory only, separate from disk logging)
-                    AppendToYtDlpSessionLog(lineWithEnding);
-
-                    // Call progress callback if available
-                    if (context->progressCallback) {
-                        // Parse progress information from the line if it looks like progress
-                        if (wcsstr(wideBuffer, L"%") || wcsstr(wideBuffer, L"download") || wcsstr(wideBuffer, L"Downloading")) {
-                            context->progressCallback(-1, wideBuffer, context->callbackUserData);
-                        }
-                    }
+                // The line started in an earlier read
+                if (AppendToLineBuffer(&line, &lineLength, &lineCapacity, buffer + segmentStart, i - segmentStart)) {
+                    ProcessSubprocessOutputLine(context, line, lineLength);
+                } else {
+                    ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Failed to grow line buffer, line dropped");
                 }
+                lineLength = 0;
+            } else {
+                ProcessSubprocessOutputLine(context, buffer + segmentStart, i - segmentStart);
             }
 
-            lineStart = lineEnd + 1; // Move to next line
+            segmentStart = i + 1;
         }
 
-        // Handle any remaining incomplete line (save for next iteration)
-        size_t remainingLength = strlen(lineStart);
-        if (remainingLength > 0 && remainingLength < sizeof(utf8Accumulator)) {
-            memcpy(utf8Accumulator, lineStart, remainingLength);
-            utf8Accumulator[remainingLength] = '\0';
-            accumulatorLength = remainingLength;
+        if (segmentStart < bytesRead &&
+            !AppendToLineBuffer(&line, &lineLength, &lineCapacity, buffer + segmentStart, bytesRead - segmentStart)) {
+            ThreadSafeDebugOutput(L"SubprocessOutputReaderThread: Failed to grow line buffer, partial line dropped");
+            lineLength = 0;
         }
     }
 
-    // Process any final accumulated data
-    if (accumulatorLength > 0) {
-        wchar_t wideBuffer[2048];
-        int converted = MultiByteToWideChar(CP_UTF8, 0, utf8Accumulator, (int)accumulatorLength, wideBuffer, 2047);
-        if (converted > 0) {
-            wideBuffer[converted] = L'\0';
-            AppendToThreadSafeSubprocessOutput(context, wideBuffer, converted);
-        }
-        accumulatorLength = 0;
+    // Deliver a final line that had no terminator
+    if (lineLength > 0) {
+        ProcessSubprocessOutputLine(context, line, lineLength);
+    }
+    if (line) {
+        SAFE_FREE(line);
     }
 
     // Mark output as complete
