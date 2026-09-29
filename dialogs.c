@@ -3626,6 +3626,7 @@ static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url) {
 // Multi-Download Dialog Procedure
 INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     static const wchar_t* PROP_CTX = L"MultiDlCtx";
+    static const wchar_t* PROP_CLOSING = L"MultiDlClosing";
 
     switch (message) {
         case WM_INITDIALOG: {
@@ -3841,6 +3842,13 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
                     ctx->hCoordinatorThread = CreateThread(NULL, 0, MultiDlCoordinatorThread, ctx, 0, NULL);
                     if (!ctx->hCoordinatorThread) {
+                        // No thread uses ctx, so it can be freed right away
+                        RemovePropW(hDlg, PROP_CTX);
+                        DeleteCriticalSection(&ctx->itemLock);
+                        if (ctx->hPauseEvent) CloseHandle(ctx->hPauseEvent);
+                        SAFE_FREE(ctx->items);
+                        SAFE_FREE(ctx);
+
                         SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Failed to start downloads");
                         EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), TRUE);
                         EnableWindow(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), FALSE);
@@ -3883,18 +3891,17 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
                 case IDCANCEL: {
                     MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
-                    if (ctx && ctx->hCoordinatorThread) {
+                    if (ctx) {
+                        // Worker threads still use ctx. Ask them to stop and hide the
+                        // dialog; WM_MULTI_DL_ALL_DONE frees ctx and ends the dialog
+                        // once the coordinator has joined every thread.
+                        HWND hOwner = GetWindow(hDlg, GW_OWNER);
                         InterlockedExchange(&ctx->stopRequested, 1);
                         SetEvent(ctx->hPauseEvent);
-                        WaitForSingleObject(ctx->hCoordinatorThread, 5000);
-                        CloseHandle(ctx->hCoordinatorThread);
-                        ctx->hCoordinatorThread = NULL;
-
-                        DeleteCriticalSection(&ctx->itemLock);
-                        if (ctx->hPauseEvent) CloseHandle(ctx->hPauseEvent);
-                        SAFE_FREE(ctx->items);
-                        SAFE_FREE(ctx);
-                        RemovePropW(hDlg, PROP_CTX);
+                        SetPropW(hDlg, PROP_CLOSING, (HANDLE)1);
+                        ShowWindow(hDlg, SW_HIDE);
+                        if (hOwner) EnableWindow(hOwner, TRUE);
+                        return TRUE;
                     }
                     EndDialog(hDlg, IDCANCEL);
                     return TRUE;
@@ -3959,7 +3966,10 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
                 MultiDl_UpdateStatusLabel(hDlg, ctx);
 
+                // The coordinator posts this as its last act, after joining every
+                // worker, so this wait is brief; afterwards no thread uses ctx.
                 if (ctx->hCoordinatorThread) {
+                    WaitForSingleObject(ctx->hCoordinatorThread, INFINITE);
                     CloseHandle(ctx->hCoordinatorThread);
                     ctx->hCoordinatorThread = NULL;
                 }
@@ -3976,6 +3986,12 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 SAFE_FREE(ctx->items);
                 SAFE_FREE(ctx);
                 RemovePropW(hDlg, PROP_CTX);
+            }
+
+            // The user closed the dialog while threads were still running
+            if (RemovePropW(hDlg, PROP_CLOSING)) {
+                EndDialog(hDlg, IDCANCEL);
+                return TRUE;
             }
 
             EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), TRUE);
