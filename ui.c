@@ -903,7 +903,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 ytdlpBtnPt.x, buttonWidth, buttonHeight,
                 L"yt-dlp Executable Path:",
                 L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0",
-                IDC_YTDLP_PATH
+                IDC_YTDLP_COMPONENT
             );
             if (components->ytdlpBrowser) {
                 RegisterComponent(components->registry, (UIComponent*)components->ytdlpBrowser);
@@ -915,7 +915,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 editWidth, editHeight,
                 folderBtnPt.x, buttonWidth, buttonHeight,
                 L"Download Folder:",
-                IDC_FOLDER_PATH
+                IDC_FOLDER_COMPONENT
             );
             if (components->downloadFolderBrowser) {
                 RegisterComponent(components->registry, (UIComponent*)components->downloadFolderBrowser);
@@ -928,7 +928,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 playerBtnPt.x, buttonWidth, buttonHeight,
                 L"Media Player Path:",
                 L"Executable Files\0*.exe\0All Files\0*.*\0",
-                IDC_PLAYER_PATH
+                IDC_PLAYER_COMPONENT
             );
             if (components->playerBrowser) {
                 RegisterComponent(components->registry, (UIComponent*)components->playerBrowser);
@@ -996,30 +996,27 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             SetControlAccessibility(GetDlgItem(hDlg, IDOK), L"OK", L"Save settings and close dialog");
             SetControlAccessibility(GetDlgItem(hDlg, IDCANCEL), L"Cancel", L"Close dialog without saving");
 
-            // Configure tab order
+            // Configure tab order over the visible controls (component edits and
+            // buttons, not the hidden resource controls they replace)
+            static const int tabOrderIds[] = {
+                IDC_YTDLP_EDIT, IDC_YTDLP_BUTTON,
+                IDC_FOLDER_EDIT, IDC_FOLDER_BUTTON,
+                IDC_PLAYER_EDIT, IDC_PLAYER_BUTTON,
+                IDC_CUSTOM_ARGS_FIELD,
+                IDC_ENABLE_DEBUG, IDC_ENABLE_LOGFILE, IDC_ENABLE_AUTOPASTE,
+                IDOK, IDCANCEL
+            };
+            const int tabOrderCount = (int)(sizeof(tabOrderIds) / sizeof(tabOrderIds[0]));
             TabOrderConfig tabConfig;
-            TabOrderEntry entries[6];
-            entries[0].controlId = IDC_YTDLP_PATH + 1; // Edit control of first component
-            entries[0].tabOrder = 0;
-            entries[0].isTabStop = TRUE;
-            entries[1].controlId = IDC_FOLDER_PATH + 1; // Edit control of second component
-            entries[1].tabOrder = 1;
-            entries[1].isTabStop = TRUE;
-            entries[2].controlId = IDC_PLAYER_PATH + 1; // Edit control of third component
-            entries[2].tabOrder = 2;
-            entries[2].isTabStop = TRUE;
-            entries[3].controlId = IDC_ENABLE_DEBUG;
-            entries[3].tabOrder = 3;
-            entries[3].isTabStop = TRUE;
-            entries[4].controlId = IDOK;
-            entries[4].tabOrder = 4;
-            entries[4].isTabStop = TRUE;
-            entries[5].controlId = IDCANCEL;
-            entries[5].tabOrder = 5;
-            entries[5].isTabStop = TRUE;
+            TabOrderEntry entries[sizeof(tabOrderIds) / sizeof(tabOrderIds[0])];
+            for (int i = 0; i < tabOrderCount; i++) {
+                entries[i].controlId = tabOrderIds[i];
+                entries[i].tabOrder = i;
+                entries[i].isTabStop = TRUE;
+            }
 
             tabConfig.entries = entries;
-            tabConfig.count = 6;
+            tabConfig.count = tabOrderCount;
             SetDialogTabOrder(hDlg, &tabConfig);
 
             // Apply DPI-aware positioning (similar to error dialog)

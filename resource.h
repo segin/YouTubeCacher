@@ -47,6 +47,19 @@
 #define IDC_PLAYER_PATH   1020
 #define IDC_PLAYER_BROWSE 1021
 
+// Settings Dialog browser components, created at runtime in place of the
+// hidden resource controls above. Each component uses its base ID + 1 for
+// the edit box and base ID + 2 for the "..." button.
+#define IDC_YTDLP_COMPONENT    1100
+#define IDC_YTDLP_EDIT         (IDC_YTDLP_COMPONENT + 1)
+#define IDC_YTDLP_BUTTON       (IDC_YTDLP_COMPONENT + 2)
+#define IDC_FOLDER_COMPONENT   1103
+#define IDC_FOLDER_EDIT        (IDC_FOLDER_COMPONENT + 1)
+#define IDC_FOLDER_BUTTON      (IDC_FOLDER_COMPONENT + 2)
+#define IDC_PLAYER_COMPONENT   1106
+#define IDC_PLAYER_EDIT        (IDC_PLAYER_COMPONENT + 1)
+#define IDC_PLAYER_BUTTON      (IDC_PLAYER_COMPONENT + 2)
+
 // Color buttons
 #define IDC_COLOR_GREEN   1023
 #define IDC_COLOR_TEAL    1024
