@@ -21,3 +21,5 @@ test_uri_mem
 test_subproc
 parser_output_logic.c
 test_parser_output
+ytdlp_args_logic.c
+test_ytdlp_args

@@ -133,16 +133,12 @@ BOOL ValidateYtDlpExecutable(const wchar_t* path) {
         return FALSE;
     }
 
-    // Check if it's an executable file (has .exe, .cmd, .bat, .py, or .ps1 extension)
+    // Accept only .exe: CreateProcessW hands .bat and .cmd files to cmd.exe,
+    // which would parse the URL and other arguments as shell syntax, and it
+    // can't run .py or .ps1 files at all
     const wchar_t* ext = wcsrchr(path, L'.');
-    if (ext != NULL) {
-        if (_wcsicmp(ext, L".exe") == 0 ||
-            _wcsicmp(ext, L".cmd") == 0 ||
-            _wcsicmp(ext, L".bat") == 0 ||
-            _wcsicmp(ext, L".py") == 0 ||
-            _wcsicmp(ext, L".ps1") == 0) {
-            return TRUE;
-        }
+    if (ext != NULL && _wcsicmp(ext, L".exe") == 0) {
+        return TRUE;
     }
 
     return FALSE;
@@ -918,6 +914,13 @@ wchar_t* EscapeCommandLineArgument(const wchar_t* arg) {
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath,
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
+
+    // Every yt-dlp command line is built here, so refuse to build one for an
+    // executable that CreateProcessW would hand to a command interpreter
+    if (config && !ValidateYtDlpExecutable(config->ytDlpPath)) {
+        ThreadSafeDebugOutput(L"GetYtDlpArgsForOperation: yt-dlp path is not an existing .exe file");
+        return FALSE;
+    }
 
     wchar_t* escapedUrl = NULL;
     wchar_t* escapedOutputPath = NULL;
@@ -2481,6 +2484,11 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
 
 BOOL TestYtDlpFunctionality(const wchar_t* path) {
     VALIDATE_STRING_PARAM(path, L"path", 256, cleanup);
+
+    // Only launch a file type that CreateProcessW runs without cmd.exe
+    if (!ValidateYtDlpExecutable(path)) {
+        return FALSE;
+    }
 
     // Build command line to test yt-dlp version
     size_t cmdLineLen = wcslen(path) + 20;
