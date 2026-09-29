@@ -8,7 +8,7 @@ CFLAGS ?= -Wall -Wextra
 override CFLAGS += -I. -I./include -DTEST_BUILD
 RM ?= rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc
+all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc test_cache_validation test_delete_errors
 
 test_memory: test_memory.c ../memory.c
 	$(CC) $(CFLAGS) test_memory.c -o $@
@@ -33,6 +33,20 @@ cache_duration.c: ../cache.c
 	echo '#include <wchar.h>' > $@
 	echo '#include <stdio.h>' >> $@
 	sed -n '/int ParseDurationToSeconds/,/^}/p' ../cache.c >> $@
+
+test_cache_validation: test_cache_validation.c cache_validation_logic.c
+	$(CC) $(CFLAGS) test_cache_validation.c -o $@
+
+cache_validation_logic.c: ../cache.c ../cache.h
+	grep '#define MAX_CACHE_SUBTITLES' ../cache.h > $@
+	sed -n '/static BOOL ParseSubtitleCount/,/^}/p' ../cache.c >> $@
+	sed -n '/static BOOL IsPathWithinFolder/,/^}/p' ../cache.c >> $@
+
+test_delete_errors: test_delete_errors.c delete_errors_logic.c
+	$(CC) $(CFLAGS) test_delete_errors.c -o $@
+
+delete_errors_logic.c: ../ui.c
+	sed -n '/static BOOL AppendDeleteErrorDetails/,/^}/p' ../ui.c > $@
 
 test_parser_classify: test_parser_classify.c parser_types.h classify_logic.c
 	$(CC) $(CFLAGS) test_parser_classify.c -o $@
@@ -104,8 +118,10 @@ run: all
 	./test_ytdlp_cache
 	./test_parser_postprocess
 	./test_subproc
+	./test_cache_validation
+	./test_delete_errors
 
 clean:
-	$(RM) *.o test_error error_logic.c test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc
+	$(RM) *.o test_error error_logic.c test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc test_cache_validation cache_validation_logic.c test_delete_errors delete_errors_logic.c
 
 .PHONY: all run clean

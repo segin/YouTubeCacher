@@ -1309,6 +1309,49 @@ INT_PTR CALLBACK ProgressDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
     return FALSE;
 }
 
+// Append one video's delete-error details to the combined error text. The buffer is
+// grown to exactly the size needed and every write is bounded by that size. On
+// allocation failure the existing text is kept and FALSE is returned.
+static BOOL AppendDeleteErrorDetails(wchar_t** combined, size_t* combinedLen,
+                                     const wchar_t* title, const wchar_t* videoId,
+                                     const wchar_t* errorDetails) {
+    if (!combined || !combinedLen || !errorDetails) return FALSE;
+
+    // Pieces to append: header (first time only), video identifier, details
+    const wchar_t* parts[] = {
+        *combinedLen == 0 ? L"Multiple Delete Operation Results:\n"
+                            L"=====================================\n\n" : L"",
+        title ? L"Video: " : L"Video ID: ",
+        title ? title : (videoId ? videoId : L""),
+        L"\n",
+        errorDetails,
+        L"\n"
+    };
+    const size_t partCount = sizeof(parts) / sizeof(parts[0]);
+
+    // Size the buffer for exactly what is appended, plus the terminator
+    size_t newSize = *combinedLen + 1;
+    for (size_t p = 0; p < partCount; p++) {
+        newSize += wcslen(parts[p]);
+    }
+
+    wchar_t* newCombined = (wchar_t*)SAFE_REALLOC(*combined, newSize * sizeof(wchar_t));
+    if (!newCombined) return FALSE;
+    *combined = newCombined;
+
+    // Append each piece, bounded by the allocated size
+    size_t used = *combinedLen;
+    for (size_t p = 0; p < partCount; p++) {
+        size_t partLen = wcslen(parts[p]);
+        if (used + partLen >= newSize) break;
+        memcpy(newCombined + used, parts[p], partLen * sizeof(wchar_t));
+        used += partLen;
+    }
+    newCombined[used] = L'\0';
+    *combinedLen = used;
+    return TRUE;
+}
+
 // Dialog procedure function
 INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
@@ -1770,23 +1813,25 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     HWND hListView = GetDlgItem(hDlg, IDC_LIST);
                     wchar_t* videoId = GetSelectedVideoId(hListView);
                     if (videoId) {
-                        CacheEntry* entry = FindCacheEntry(GetCacheManager(), videoId);
-                        if (entry && entry->title) {
+                        // Copy under the cache lock, then use the copy
+                        wchar_t* title = GetCacheEntryTitleCopy(GetCacheManager(), videoId);
+                        if (title) {
                             // Copy title to clipboard
                             if (OpenClipboard(hDlg)) {
                                 EmptyClipboard();
-                                size_t len = wcslen(entry->title);
+                                size_t len = wcslen(title);
                                 HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
                                 if (hMem) {
                                     wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
                                     if (pMem) {
-                                        wcscpy(pMem, entry->title);
+                                        wcscpy(pMem, title);
                                         GlobalUnlock(hMem);
                                         SetClipboardData(CF_UNICODETEXT, hMem);
                                     }
                                 }
                                 CloseClipboard();
                             }
+                            SAFE_FREE(title);
                         }
                         SAFE_FREE(videoId);
                     }
@@ -1797,23 +1842,25 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     HWND hListView = GetDlgItem(hDlg, IDC_LIST);
                     wchar_t* videoId = GetSelectedVideoId(hListView);
                     if (videoId) {
-                        CacheEntry* entry = FindCacheEntry(GetCacheManager(), videoId);
-                        if (entry && entry->mainVideoFile) {
+                        // Copy under the cache lock, then use the copy
+                        wchar_t* filePath = GetCacheEntryVideoFileCopy(GetCacheManager(), videoId);
+                        if (filePath) {
                             // Copy file path to clipboard
                             if (OpenClipboard(hDlg)) {
                                 EmptyClipboard();
-                                size_t len = wcslen(entry->mainVideoFile);
+                                size_t len = wcslen(filePath);
                                 HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
                                 if (hMem) {
                                     wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
                                     if (pMem) {
-                                        wcscpy(pMem, entry->mainVideoFile);
+                                        wcscpy(pMem, filePath);
                                         GlobalUnlock(hMem);
                                         SetClipboardData(CF_UNICODETEXT, hMem);
                                     }
                                 }
                                 CloseClipboard();
                             }
+                            SAFE_FREE(filePath);
                         }
                         SAFE_FREE(videoId);
                     }
@@ -2386,12 +2433,13 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     wchar_t confirmMsg[1024];
                     if (selectedCount == 1) {
                         // Single video - show title if available
-                        CacheEntry* entry = FindCacheEntry(GetCacheManager(), selectedVideoIds[0]);
-                        if (entry && entry->title) {
+                        wchar_t* title = GetCacheEntryTitleCopy(GetCacheManager(), selectedVideoIds[0]);
+                        if (title) {
                             swprintf(confirmMsg, 1024,
                                     L"Are you sure you want to delete \"%ls\"?\r\n\r\n"
                                     L"This will permanently delete the video file and any associated subtitle files.",
-                                    entry->title);
+                                    title);
+                            SAFE_FREE(title);
                         } else {
                             wcscpy(confirmMsg, L"Are you sure you want to delete the selected video?\r\n\r\n"
                                              L"This will permanently delete the video file and any associated subtitle files.");
@@ -2412,10 +2460,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                     if (result == IDYES) {
                         // Log the start of delete operation
                         if (selectedCount == 1) {
-                            CacheEntry* entry = FindCacheEntry(GetCacheManager(), selectedVideoIds[0]);
-                            if (entry && entry->title) {
+                            wchar_t* title = GetCacheEntryTitleCopy(GetCacheManager(), selectedVideoIds[0]);
+                            if (title) {
                                 ThreadSafeDebugOutputF(L"Starting delete operation for video: %ls (ID: %ls)",
-                                        entry->title, selectedVideoIds[0]);
+                                        title, selectedVideoIds[0]);
+                                SAFE_FREE(title);
                             } else {
                                 ThreadSafeDebugOutputF(L"Starting delete operation for video ID: %ls", selectedVideoIds[0]);
                             }
@@ -2441,36 +2490,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                                     // Combine error details
                                     wchar_t* errorDetails = FormatDeleteErrorDetails(deleteResult);
                                     if (errorDetails) {
-                                        size_t errorLen = wcslen(errorDetails);
-                                        size_t newSize = combinedErrorSize + errorLen + 100; // Extra space for headers
-
-                                        wchar_t* newCombined = (wchar_t*)SAFE_REALLOC(combinedErrorDetails, newSize * sizeof(wchar_t));
-                                        if (newCombined) {
-                                            combinedErrorDetails = newCombined;
-
-                                            if (combinedErrorSize == 0) {
-                                                wcscpy(combinedErrorDetails, L"Multiple Delete Operation Results:\n");
-                                                wcscpy(combinedErrorDetails + wcslen(combinedErrorDetails), L"=====================================\n\n");
-                                            }
-
-                                            // Add video identifier
-                                            CacheEntry* entry = FindCacheEntry(GetCacheManager(), selectedVideoIds[i]);
-                                            if (entry && entry->title) {
-                                                swprintf(combinedErrorDetails + wcslen(combinedErrorDetails),
-                                                        newSize - wcslen(combinedErrorDetails),
-                                                        L"Video: %ls\n", entry->title);
-                                            } else {
-                                                swprintf(combinedErrorDetails + wcslen(combinedErrorDetails),
-                                                        newSize - wcslen(combinedErrorDetails),
-                                                        L"Video ID: %ls\n", selectedVideoIds[i]);
-                                            }
-
-                                            wcscat(combinedErrorDetails, errorDetails);
-                                            wcscat(combinedErrorDetails, L"\n");
-
-                                            combinedErrorSize = wcslen(combinedErrorDetails);
-                                        }
-
+                                        wchar_t* title = GetCacheEntryTitleCopy(GetCacheManager(), selectedVideoIds[i]);
+                                        AppendDeleteErrorDetails(&combinedErrorDetails, &combinedErrorSize,
+                                                                 title, selectedVideoIds[i], errorDetails);
+                                        SAFE_FREE(title);
                                         SAFE_FREE(errorDetails);
                                     }
                                 }

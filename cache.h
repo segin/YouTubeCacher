@@ -40,6 +40,7 @@ typedef struct {
 #define CACHE_FILE_NAME         L"cache_index.txt"
 #define CACHE_VERSION           L"1.0"
 #define MAX_CACHE_LINE_LENGTH   2048
+#define MAX_CACHE_SUBTITLES     100    // Index records with more subtitles are rejected
 
 // File deletion error information
 typedef struct {
@@ -64,7 +65,9 @@ BOOL AddCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t*
                    const wchar_t* duration, const wchar_t* mainVideoFile, 
                    wchar_t** subtitleFiles, int subtitleCount);
 BOOL RemoveCacheEntry(CacheManager* manager, const wchar_t* videoId);
-CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId);
+CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId); // Caller must hold manager->lock
+wchar_t* GetCacheEntryTitleCopy(CacheManager* manager, const wchar_t* videoId);     // Caller frees
+wchar_t* GetCacheEntryVideoFileCopy(CacheManager* manager, const wchar_t* videoId); // Caller frees
 DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t* videoId);
 void FreeDeleteResult(DeleteResult* result);
 wchar_t* FormatDeleteErrorDetails(const DeleteResult* result);
