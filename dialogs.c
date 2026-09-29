@@ -3073,6 +3073,12 @@ static void MultiDl_FinishItem(MultiDownloadContext* ctx, int itemIndex, const w
 static BOOL MultiDl_QueuePlaylistVideos(MultiDownloadContext* ctx, const MultiDlPlaylistResult* plResult) {
     BOOL queued = FALSE;
     int needed;
+    int i;
+
+    // A video URL that could not be allocated fails the whole playlist
+    for (i = 0; i < plResult->urlCount; i++) {
+        if (!plResult->urls[i]) return FALSE;
+    }
 
     EnterCriticalSection(&ctx->itemLock);
 
@@ -3121,16 +3127,11 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
 
     MultiDownloadContext* ctx = workerCtx->batchCtx;
     int itemIndex = workerCtx->itemIndex;
+    BOOL queued = FALSE;
+    YtDlpRequest* request = NULL;
+    YtDlpResult* result = NULL;
 
     ThreadSafeDebugOutputF(L"MultiDlPlaylistResolverThread: Resolving playlist for item %d", itemIndex);
-
-    // Initialize config
-    YtDlpConfig config = {0};
-    if (!InitializeYtDlpConfig(&config)) {
-        ThreadSafeDebugOutput(L"MultiDlPlaylistResolverThread: Failed to init config");
-        SAFE_FREE(workerCtx);
-        return 1;
-    }
 
     // Get URL from item
     EnterCriticalSection(&ctx->itemLock);
@@ -3138,16 +3139,22 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
     wcsncpy(url, ctx->items[itemIndex].url, MAX_URL_LENGTH - 1); url[MAX_URL_LENGTH - 1] = L'\0';
     LeaveCriticalSection(&ctx->itemLock);
 
+    // Initialize config
+    YtDlpConfig config = {0};
+    BOOL configReady = InitializeYtDlpConfig(&config);
+    if (!configReady) {
+        ThreadSafeDebugOutput(L"MultiDlPlaylistResolverThread: Failed to init config");
+    }
+
     // Create request for flat-playlist
-    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_PLAYLIST_INFO, url, NULL);
-    if (!request) {
-        CleanupYtDlpConfig(&config);
-        SAFE_FREE(workerCtx);
-        return 1;
+    if (configReady) {
+        request = CreateYtDlpRequest(YTDLP_OP_GET_PLAYLIST_INFO, url, NULL);
     }
 
     // Execute on this worker thread (blocking is fine - we're not on UI thread)
-    YtDlpResult* result = ExecuteYtDlpRequestThreadSafe(&config, request);
+    if (request) {
+        result = ExecuteYtDlpRequestThreadSafe(&config, request);
+    }
 
     if (result && result->success && result->output) {
         // Parse the playlist output
@@ -3174,8 +3181,8 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
                     }
 
                     // Queue the videos now; the dialog only updates its URL list
-                    if (MultiDl_QueuePlaylistVideos(ctx, plResult) &&
-                        PostMessageW(ctx->hDialog, WM_MULTI_DL_PLAYLIST_RESOLVED, 0, (LPARAM)plResult)) {
+                    queued = MultiDl_QueuePlaylistVideos(ctx, plResult);
+                    if (queued && PostMessageW(ctx->hDialog, WM_MULTI_DL_PLAYLIST_RESOLVED, 0, (LPARAM)plResult)) {
                         plResult = NULL;
                     }
                 } else {
@@ -3188,24 +3195,19 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
             }
         }
         FreePlaylistMetadata(&playlist);
-    } else {
-        // Playlist resolution failed - mark item as failed
-        MultiDlItemResult* itemResult = (MultiDlItemResult*)SAFE_MALLOC(sizeof(MultiDlItemResult));
-        if (itemResult) {
-            memset(itemResult, 0, sizeof(MultiDlItemResult));
-            itemResult->itemIndex = itemIndex;
-            itemResult->success = FALSE;
-            wcsncpy(itemResult->url, url, MAX_URL_LENGTH - 1); itemResult->url[MAX_URL_LENGTH - 1] = L'\0';
-            wcscpy(itemResult->title, L"Playlist resolution failed");
-            PostMessageW(ctx->hDialog, WM_MULTI_DL_ITEM_DONE, 0, (LPARAM)itemResult);
-        }
+    }
+
+    // Resolving or queuing failed: the playlist counts as one failed item
+    if (!queued) {
+        ThreadSafeDebugOutputF(L"MultiDlPlaylistResolverThread: Failed to resolve or queue item %d", itemIndex);
+        MultiDl_FinishItem(ctx, itemIndex, url, FALSE, L"Playlist resolution failed", NULL);
     }
 
     if (result) FreeYtDlpResult(result);
-    FreeYtDlpRequest(request);
-    CleanupYtDlpConfig(&config);
+    if (request) FreeYtDlpRequest(request);
+    if (configReady) CleanupYtDlpConfig(&config);
     SAFE_FREE(workerCtx);
-    return 0;
+    return queued ? 0 : 1;
 }
 
 // Helper: Find the downloaded video file for a URL and add it to the cache.
@@ -3416,17 +3418,24 @@ DWORD WINAPI MultiDlCoordinatorThread(LPVOID lpParam) {
 
             {
                 MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
+                HANDLE hThread = NULL;
                 if (workerCtx) {
-                    HANDLE hThread;
                     workerCtx->batchCtx = ctx;
                     workerCtx->itemIndex = i;
                     hThread = CreateThread(NULL, 0, MultiDlPlaylistResolverThread, workerCtx, 0, NULL);
-                    if (hThread) {
-                        WaitForSingleObject(hThread, INFINITE);
-                        CloseHandle(hThread);
-                    } else {
-                        SAFE_FREE(workerCtx);
-                    }
+                    if (!hThread) SAFE_FREE(workerCtx);
+                }
+                if (hThread) {
+                    WaitForSingleObject(hThread, INFINITE);
+                    CloseHandle(hThread);
+                } else {
+                    // The resolver never ran: count the playlist as failed
+                    wchar_t failedUrl[MAX_URL_LENGTH];
+                    EnterCriticalSection(&ctx->itemLock);
+                    wcsncpy(failedUrl, ctx->items[i].url, MAX_URL_LENGTH - 1);
+                    failedUrl[MAX_URL_LENGTH - 1] = L'\0';
+                    LeaveCriticalSection(&ctx->itemLock);
+                    MultiDl_FinishItem(ctx, i, failedUrl, FALSE, L"Playlist resolution failed", NULL);
                 }
             }
         }
