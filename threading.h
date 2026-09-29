@@ -19,7 +19,7 @@ typedef enum {
     IPC_MSG_DOWNLOAD_COMPLETE = 7,
     IPC_MSG_DOWNLOAD_FAILED = 8,
     IPC_MSG_OPERATION_CANCELLED = 9,
-    IPC_MSG_VIDEO_INFO_COMPLETE = 10,
+    IPC_MSG_VIDEO_INFO_COMPLETE = 10,   // Reserved: never sent or handled; kept so the numbering stays stable
     IPC_MSG_METADATA_COMPLETE = 11
 } IPCMessageType;
 
