@@ -419,9 +419,23 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             }
         }
         
+        // Skip duplicate IDs (older index files may hold several copies of each entry)
+        if (!entry->videoId || FindCacheEntry(manager, entry->videoId)) {
+            FreeCacheEntry(entry);
+            SAFE_FREE(wideLine);
+            invalidEntries++;
+            continue;
+        }
+
         // Add entry to cache (file info will be populated by background thread)
         entry->next = manager->entries;
         manager->entries = entry;
+
+        // Add to hash map so FindCacheEntry can locate it
+        unsigned int hash = GetCacheHash(entry->videoId);
+        entry->hashNext = manager->hashBuckets[hash];
+        manager->hashBuckets[hash] = entry;
+
         manager->totalEntries++;
         validEntries++;
         
