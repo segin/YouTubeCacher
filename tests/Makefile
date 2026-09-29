@@ -21,6 +21,7 @@ test_settings_registry: test_settings_registry.c settings_registry_logic.c
 
 settings_registry_logic.c: ../settings.c
 	sed -n '/^BOOL LoadSettingFromRegistry/,/^}/p' ../settings.c > $@
+	sed -n '/^BOOL LoadBoolSettingFromRegistry/,/^}/p' ../settings.c >> $@
 
 settings_logic.c: ../settings.c
 	echo '#include "mock_windows.h"' > $@

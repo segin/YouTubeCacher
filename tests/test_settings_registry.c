@@ -147,7 +147,44 @@ static void test_load_string_setting(void) {
     printf("All LoadSettingFromRegistry tests passed!\n");
 }
 
+static void test_load_bool_setting(void) {
+    printf("Running LoadBoolSettingFromRegistry tests...\n");
+
+    DWORD dw;
+
+    // REG_DWORD, the type the Settings dialog writes
+    dw = 1;
+    SetMockValue(REG_DWORD, &dw, sizeof(dw));
+    assert(LoadBoolSettingFromRegistry(L"v", FALSE) == TRUE);
+    dw = 0;
+    SetMockValue(REG_DWORD, &dw, sizeof(dw));
+    assert(LoadBoolSettingFromRegistry(L"v", TRUE) == FALSE);
+
+    // REG_SZ "0"/"1" left by older versions
+    SetMockValue(REG_SZ, L"1", 2 * sizeof(wchar_t));
+    assert(LoadBoolSettingFromRegistry(L"v", FALSE) == TRUE);
+    SetMockValue(REG_SZ, L"0", 2 * sizeof(wchar_t));
+    assert(LoadBoolSettingFromRegistry(L"v", TRUE) == FALSE);
+
+    // Unterminated REG_SZ "1"
+    SetMockValue(REG_SZ, L"1", 1 * sizeof(wchar_t));
+    assert(LoadBoolSettingFromRegistry(L"v", FALSE) == TRUE);
+
+    // Missing value, oversized value and unexpected types fall back to the default
+    g_valueExists = FALSE;
+    assert(LoadBoolSettingFromRegistry(L"v", TRUE) == TRUE);
+    assert(LoadBoolSettingFromRegistry(L"v", FALSE) == FALSE);
+    SetMockValue(REG_SZ, L"11111111111111111111", 21 * sizeof(wchar_t));
+    assert(LoadBoolSettingFromRegistry(L"v", TRUE) == TRUE);
+    BYTE bin[2] = {1, 0};
+    SetMockValue(REG_BINARY, bin, sizeof(bin));
+    assert(LoadBoolSettingFromRegistry(L"v", TRUE) == TRUE);
+
+    printf("All LoadBoolSettingFromRegistry tests passed!\n");
+}
+
 int main(void) {
     test_load_string_setting();
+    test_load_bool_setting();
     return 0;
 }

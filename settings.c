@@ -228,6 +228,54 @@ BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bu
     return result;
 }
 
+// Function to load a boolean setting from the registry
+// Booleans are stored as REG_DWORD; REG_SZ "0"/"1" values left by older versions are also accepted
+BOOL LoadBoolSettingFromRegistry(const wchar_t* valueName, BOOL defaultValue) {
+    HKEY hKey;
+    DWORD dataType;
+    union {
+        DWORD dword;
+        wchar_t text[16];
+    } data;
+    DWORD dataSize = sizeof(data);
+    BOOL result = defaultValue;
+
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        if (RegQueryValueExW(hKey, valueName, NULL, &dataType, (LPBYTE)&data, &dataSize) == ERROR_SUCCESS) {
+            if (dataType == REG_DWORD && dataSize == sizeof(DWORD)) {
+                result = (data.dword != 0);
+            } else if (dataType == REG_SZ) {
+                DWORD charCount = dataSize / sizeof(wchar_t);
+                if (charCount >= sizeof(data.text) / sizeof(wchar_t)) {
+                    charCount = sizeof(data.text) / sizeof(wchar_t) - 1;
+                }
+                data.text[charCount] = L'\0';
+                result = (wcscmp(data.text, L"1") == 0);
+            }
+        }
+        RegCloseKey(hKey);
+    }
+
+    return result;
+}
+
+// Function to save a boolean setting to the registry as REG_DWORD
+BOOL SaveBoolSettingToRegistry(const wchar_t* valueName, BOOL value) {
+    HKEY hKey;
+    BOOL result = FALSE;
+    DWORD data = value ? 1 : 0;
+
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, NULL, REG_OPTION_NON_VOLATILE,
+                       KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+        if (RegSetValueExW(hKey, valueName, 0, REG_DWORD, (const BYTE*)&data, sizeof(DWORD)) == ERROR_SUCCESS) {
+            result = TRUE;
+        }
+        RegCloseKey(hKey);
+    }
+
+    return result;
+}
+
 // Function to save a setting to the registry
 BOOL SaveSettingToRegistry(const wchar_t* valueName, const wchar_t* value) {
     HKEY hKey;
@@ -287,45 +335,18 @@ void LoadSettings(HWND hDlg) {
     }
     
     // Load debug setting
-    if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
-        BOOL enableDebug = (wcscmp(buffer, L"1") == 0);
-        CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
-        BOOL enableLogfile;
-        GetDebugState(&enableLogfile, &enableLogfile);  // Get current logfile state
-        SetDebugState(enableDebug, enableLogfile);
-    } else {
-        // Default to unchecked
-        CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, BST_UNCHECKED);
-        BOOL enableLogfile;
-        GetDebugState(&enableLogfile, &enableLogfile);  // Get current logfile state
-        SetDebugState(FALSE, enableLogfile);
-    }
+    BOOL enableDebug = LoadBoolSettingFromRegistry(REG_ENABLE_DEBUG, FALSE);
+    CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
     
     // Load logfile setting
-    if (LoadSettingFromRegistry(REG_ENABLE_LOGFILE, buffer, MAX_EXTENDED_PATH)) {
-        BOOL enableLogfile = (wcscmp(buffer, L"1") == 0);
-        CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, enableLogfile ? BST_CHECKED : BST_UNCHECKED);
-        BOOL enableDebug;
-        GetDebugState(&enableDebug, &enableDebug);  // Get current debug state
-        SetDebugState(enableDebug, enableLogfile);
-    } else {
-        // Default to unchecked
-        CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, BST_UNCHECKED);
-        BOOL enableDebug;
-        GetDebugState(&enableDebug, &enableDebug);  // Get current debug state
-        SetDebugState(enableDebug, FALSE);
-    }
+    BOOL enableLogfile = LoadBoolSettingFromRegistry(REG_ENABLE_LOGFILE, FALSE);
+    CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, enableLogfile ? BST_CHECKED : BST_UNCHECKED);
+    SetDebugState(enableDebug, enableLogfile);
     
-    // Load autopaste setting
-    if (LoadSettingFromRegistry(REG_ENABLE_AUTOPASTE, buffer, MAX_EXTENDED_PATH)) {
-        BOOL enableAutopaste = (wcscmp(buffer, L"1") == 0);
-        CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, enableAutopaste ? BST_CHECKED : BST_UNCHECKED);
-        SetAutopasteState(enableAutopaste);
-    } else {
-        // Default to checked (enabled)
-        CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, BST_CHECKED);
-        SetAutopasteState(TRUE);
-    }
+    // Load autopaste setting (defaults to enabled)
+    BOOL enableAutopaste = LoadBoolSettingFromRegistry(REG_ENABLE_AUTOPASTE, TRUE);
+    CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, enableAutopaste ? BST_CHECKED : BST_UNCHECKED);
+    SetAutopasteState(enableAutopaste);
 }
 
 // Function to save settings from dialog controls to registry
@@ -383,7 +404,7 @@ void SaveSettings(HWND hDlg) {
     
     // Save debug setting
     BOOL enableDebug = (IsDlgButtonChecked(hDlg, IDC_ENABLE_DEBUG) == BST_CHECKED);
-    SaveSettingToRegistry(REG_ENABLE_DEBUG, enableDebug ? L"1" : L"0");
+    SaveBoolSettingToRegistry(REG_ENABLE_DEBUG, enableDebug);
     
     // Save logfile setting
     BOOL enableLogfile = (IsDlgButtonChecked(hDlg, IDC_ENABLE_LOGFILE) == BST_CHECKED);
@@ -395,11 +416,11 @@ void SaveSettings(HWND hDlg) {
         WriteSessionEndToLogfile(L"Logging disabled by user");
     }
     
-    SaveSettingToRegistry(REG_ENABLE_LOGFILE, enableLogfile ? L"1" : L"0");
+    SaveBoolSettingToRegistry(REG_ENABLE_LOGFILE, enableLogfile);
     SetDebugState(enableDebug, enableLogfile);
     
     // Save autopaste setting
     BOOL enableAutopaste = (IsDlgButtonChecked(hDlg, IDC_ENABLE_AUTOPASTE) == BST_CHECKED);
-    SaveSettingToRegistry(REG_ENABLE_AUTOPASTE, enableAutopaste ? L"1" : L"0");
+    SaveBoolSettingToRegistry(REG_ENABLE_AUTOPASTE, enableAutopaste);
     SetAutopasteState(enableAutopaste);
 }

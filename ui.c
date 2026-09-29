@@ -972,22 +972,13 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 SetFileBrowserPath(components->playerBrowser, playerPath);
             }
 
-            // Load other settings (checkboxes, etc.) using existing LoadSettings function
-            // But we need to load checkboxes manually since we're not using the old controls
-            if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-                DWORD enableDebug = 0, enableLogfile = 0, enableAutopaste = 0;
-                DWORD dataSize = sizeof(DWORD);
-
-                RegQueryValueExW(hKey, REG_ENABLE_DEBUG, NULL, NULL, (LPBYTE)&enableDebug, &dataSize);
-                RegQueryValueExW(hKey, REG_ENABLE_LOGFILE, NULL, NULL, (LPBYTE)&enableLogfile, &dataSize);
-                RegQueryValueExW(hKey, REG_ENABLE_AUTOPASTE, NULL, NULL, (LPBYTE)&enableAutopaste, &dataSize);
-
-                CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
-                CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, enableLogfile ? BST_CHECKED : BST_UNCHECKED);
-                CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, enableAutopaste ? BST_CHECKED : BST_UNCHECKED);
-
-                RegCloseKey(hKey);
-            }
+            // Load checkbox settings with the same reader and defaults that startup uses
+            CheckDlgButton(hDlg, IDC_ENABLE_DEBUG,
+                           LoadBoolSettingFromRegistry(REG_ENABLE_DEBUG, FALSE) ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE,
+                           LoadBoolSettingFromRegistry(REG_ENABLE_LOGFILE, FALSE) ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE,
+                           LoadBoolSettingFromRegistry(REG_ENABLE_AUTOPASTE, TRUE) ? BST_CHECKED : BST_UNCHECKED);
 
             // Set accessible names for controls
             SetControlAccessibility(GetDlgItem(hDlg, IDC_ENABLE_DEBUG), L"Enable debug mode", L"Show debug information in the main window");
@@ -1144,13 +1135,10 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         BOOL enableLogfile = (IsDlgButtonChecked(hDlg, IDC_ENABLE_LOGFILE) == BST_CHECKED);
                         BOOL enableAutopaste = (IsDlgButtonChecked(hDlg, IDC_ENABLE_AUTOPASTE) == BST_CHECKED);
 
-                        DWORD debugValue = enableDebug ? 1 : 0;
-                        DWORD logfileValue = enableLogfile ? 1 : 0;
-                        DWORD autopasteValue = enableAutopaste ? 1 : 0;
-
-                        RegSetValueExW(hKey, REG_ENABLE_DEBUG, 0, REG_DWORD, (const BYTE*)&debugValue, sizeof(DWORD));
-                        RegSetValueExW(hKey, REG_ENABLE_LOGFILE, 0, REG_DWORD, (const BYTE*)&logfileValue, sizeof(DWORD));
-                        RegSetValueExW(hKey, REG_ENABLE_AUTOPASTE, 0, REG_DWORD, (const BYTE*)&autopasteValue, sizeof(DWORD));
+                        // Booleans are stored as REG_DWORD, the type every reader expects
+                        SaveBoolSettingToRegistry(REG_ENABLE_DEBUG, enableDebug);
+                        SaveBoolSettingToRegistry(REG_ENABLE_LOGFILE, enableLogfile);
+                        SaveBoolSettingToRegistry(REG_ENABLE_AUTOPASTE, enableAutopaste);
 
                         RegCloseKey(hKey);
                     }
@@ -1348,19 +1336,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             HWND hListView = GetDlgItem(hDlg, IDC_LIST);
             InitializeCacheListView(hListView);
 
-            // Load debug settings from registry
-            wchar_t buffer[MAX_EXTENDED_PATH];
-            BOOL enableDebug = FALSE, enableLogfile = FALSE, enableAutopaste = TRUE;
-
-            if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
-                enableDebug = (wcscmp(buffer, L"1") == 0);
-            }
-            if (LoadSettingFromRegistry(REG_ENABLE_LOGFILE, buffer, MAX_EXTENDED_PATH)) {
-                enableLogfile = (wcscmp(buffer, L"1") == 0);
-            }
-            if (LoadSettingFromRegistry(REG_ENABLE_AUTOPASTE, buffer, MAX_EXTENDED_PATH)) {
-                enableAutopaste = (wcscmp(buffer, L"1") == 0);
-            }
+            // Load debug settings from registry (REG_DWORD, or REG_SZ "0"/"1" from older versions)
+            BOOL enableDebug = LoadBoolSettingFromRegistry(REG_ENABLE_DEBUG, FALSE);
+            BOOL enableLogfile = LoadBoolSettingFromRegistry(REG_ENABLE_LOGFILE, FALSE);
+            BOOL enableAutopaste = LoadBoolSettingFromRegistry(REG_ENABLE_AUTOPASTE, TRUE);
 
             // Set the state using the application state functions
             SetDebugState(enableDebug, enableLogfile);
