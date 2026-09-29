@@ -2,7 +2,7 @@ CC ?= gcc
 CFLAGS ?= -Wall -Wextra -I. -I./include -DTEST_BUILD
 RM ?= rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc
+all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc test_parser_output
 
 test_memory: test_memory.c ../memory.c
 	$(CC) $(CFLAGS) test_memory.c -o $@
@@ -53,6 +53,12 @@ postprocess_logic.c: ../parser.c
 	/usr/bin/sed -n '/BOOL ParsePostProcessingLine/,/^}/p' ../parser.c >> $@
 	echo '#endif // POSTPROCESS_LOGIC_C' >> $@
 
+test_parser_output: test_parser_output.c parser_output_logic.c
+	$(CC) $(CFLAGS) test_parser_output.c -o $@
+
+parser_output_logic.c: ../parser.c
+	/usr/bin/sed -n '/static void AppendAccumulatedOutput/,/^}/p' ../parser.c > $@
+
 test_uri: test_uri.c uri_functions.c
 	$(CC) $(CFLAGS) test_uri.c -o $@
 
@@ -98,8 +104,9 @@ run: all
 	./test_ytdlp_cache
 	./test_parser_postprocess
 	./test_subproc
+	./test_parser_output
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc test_parser_output parser_output_logic.c
 
 .PHONY: all run clean

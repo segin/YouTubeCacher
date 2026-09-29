@@ -19,3 +19,5 @@ test_error
 test_ytdlp_cache
 test_uri_mem
 test_subproc
+parser_output_logic.c
+test_parser_output

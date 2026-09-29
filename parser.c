@@ -1032,6 +1032,34 @@ BOOL StartEnhancedSubprocessExecution(EnhancedSubprocessContext* context) {
     return TRUE;
 }
 
+// Append text, and optionally a newline, to the accumulated subprocess output.
+// The buffer is grown before writing, and its recorded size changes only after
+// a successful realloc; if growing fails, the text is dropped.
+static void AppendAccumulatedOutput(SubprocessContext* context, const wchar_t* text, BOOL addNewline) {
+    if (!context || !context->accumulatedOutput || !text) return;
+
+    size_t currentLen = wcslen(context->accumulatedOutput);
+    size_t textLen = wcslen(text);
+    size_t needed = currentLen + textLen + (addNewline ? 1 : 0) + 1;
+
+    if (needed > context->outputBufferSize) {
+        size_t newSize = needed * 2;
+        wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(context->accumulatedOutput, newSize * sizeof(wchar_t));
+        if (!newBuffer) {
+            return;
+        }
+        context->accumulatedOutput = newBuffer;
+        context->outputBufferSize = newSize;
+    }
+
+    memcpy(context->accumulatedOutput + currentLen, text, textLen * sizeof(wchar_t));
+    currentLen += textLen;
+    if (addNewline) {
+        context->accumulatedOutput[currentLen++] = L'\n';
+    }
+    context->accumulatedOutput[currentLen] = L'\0';
+}
+
 // Enhanced subprocess worker thread
 DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread started");
@@ -1290,23 +1318,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                             LeaveCriticalSection(&enhancedContext->progressLock);
 
                             // Add to accumulated output
-                            if (context->accumulatedOutput) {
-                                size_t currentLen = wcslen(context->accumulatedOutput);
-                                size_t newLen = currentLen + converted + 2;
-                                if (newLen >= context->outputBufferSize) {
-                                    context->outputBufferSize = newLen * 2;
-                                    wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(context->accumulatedOutput,
-                                                                          context->outputBufferSize * sizeof(wchar_t));
-                                    if (newBuffer) {
-                                        context->accumulatedOutput = newBuffer;
-                                    }
-                                }
-
-                                if (context->accumulatedOutput) {
-                                    wcscat(context->accumulatedOutput, wideLineBuffer);
-                                    wcscat(context->accumulatedOutput, L"\n");
-                                }
-                            }
+                            AppendAccumulatedOutput(context, wideLineBuffer, TRUE);
 
                             // Update progress callback with enhanced information
                             if (context->progressCallback) {
@@ -1358,9 +1370,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
             ProcessYtDlpOutputLine(wideLineBuffer, progress);
             LeaveCriticalSection(&enhancedContext->progressLock);
 
-            if (context->accumulatedOutput) {
-                wcscat(context->accumulatedOutput, wideLineBuffer);
-            }
+            AppendAccumulatedOutput(context, wideLineBuffer, FALSE);
         }
         fillCounter = 0;
     }
