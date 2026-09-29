@@ -3302,6 +3302,10 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     wchar_t* tokCtx;
                     wchar_t* line;
                     MultiDownloadContext* ctx;
+                    int skippedCount = 0;
+                    wchar_t skippedList[4096];
+
+                    skippedList[0] = L'\0';
 
                     if (textLen == 0) {
                         UnifiedDialogConfig config = {0};
@@ -3337,14 +3341,24 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                             line[--len] = L'\0';
                         }
 
-                        if (len > 0) {
-                            if (count >= capacity) {
-                                MultiDlItem* newItems;
-                                capacity *= 2;
-                                newItems = (MultiDlItem*)SAFE_REALLOC(items, sizeof(MultiDlItem) * capacity);
-                                if (!newItems) break;
+                        if (len > 0 && skippedCount == 0 && count >= capacity) {
+                            // Only record the new capacity once the allocation has succeeded
+                            MultiDlItem* newItems = (MultiDlItem*)SAFE_REALLOC(items, sizeof(MultiDlItem) * capacity * 2);
+                            if (newItems) {
                                 items = newItems;
+                                capacity *= 2;
                             }
+                        }
+
+                        if (len > 0 && (skippedCount > 0 || count >= capacity)) {
+                            // Out of memory: remember this URL so it can be reported
+                            size_t used = wcslen(skippedList);
+                            if (used + len + 3 < sizeof(skippedList) / sizeof(skippedList[0])) {
+                                wcscat(skippedList, line);
+                                wcscat(skippedList, L"\r\n");
+                            }
+                            skippedCount++;
+                        } else if (len > 0) {
                             memset(&items[count], 0, sizeof(MultiDlItem));
                             wcsncpy(items[count].url, line, MAX_URL_LENGTH - 1);
                             items[count].status = MULTI_DL_PENDING;
@@ -3355,6 +3369,22 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     }
 
                     SAFE_FREE(allText);
+
+                    if (skippedCount > 0) {
+                        UnifiedDialogConfig config = {0};
+                        wchar_t message[256];
+                        swprintf(message, 256,
+                                 L"Not enough memory to queue every URL. %d URL(s) could not be added and will not be downloaded.",
+                                 skippedCount);
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"Some URLs Not Added";
+                        config.message = message;
+                        config.details = skippedList;
+                        config.tab1_name = L"Skipped URLs";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = TRUE;
+                        ShowUnifiedDialog(hDlg, &config);
+                    }
 
                     if (count == 0) {
                         SAFE_FREE(items);
