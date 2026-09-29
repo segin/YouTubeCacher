@@ -293,7 +293,7 @@ BOOL CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     }
 
     // Stop the child and the reader while the context is still initialized:
-    // the cancel, wait and kill functions do nothing on an uninitialized context
+    // ForceKillThreadSafeSubprocess does nothing on an uninitialized context
 
     // Only stop the process if it is still running
     // If it's already completed, no need to stop it
