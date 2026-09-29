@@ -308,27 +308,27 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     return (int)msg.wParam;
 }
 
+// Return the arguments part of the UTF-16 command line, as wWinMain receives it:
+// skip the program name (quoted or not) and the whitespace after it
+static LPWSTR GetCommandLineArgsW(void) {
+    static wchar_t empty[1] = L"";
+    LPWSTR p = GetCommandLineW();
+    if (!p) return empty;
+
+    BOOL inQuotes = FALSE;
+    while (*p && (inQuotes || (*p != L' ' && *p != L'\t'))) {
+        if (*p == L'"') inQuotes = !inQuotes;
+        p++;
+    }
+    while (*p == L' ' || *p == L'\t') p++;
+
+    return p;
+}
+
 // ANSI entry point wrapper for Unicode main function
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // Convert ANSI command line to Unicode
-    wchar_t* lpCmdLineW = NULL;
-    if (lpCmdLine && strlen(lpCmdLine) > 0) {
-        int len = MultiByteToWideChar(CP_UTF8, 0, lpCmdLine, -1, NULL, 0);
-        if (len > 0) {
-            lpCmdLineW = (wchar_t*)SAFE_MALLOC(len * sizeof(wchar_t));
-            if (lpCmdLineW) {
-                MultiByteToWideChar(CP_UTF8, 0, lpCmdLine, -1, lpCmdLineW, len);
-            }
-        }
-    }
-    
-    // Call Unicode main function
-    int result = wWinMain(hInstance, hPrevInstance, lpCmdLineW ? lpCmdLineW : L"", nCmdShow);
-    
-    // Clean up
-    if (lpCmdLineW) {
-        SAFE_FREE(lpCmdLineW);
-    }
-    
-    return result;
+    // lpCmdLine is in the ANSI code page, so read the arguments as UTF-16 from
+    // the OS instead. The string belongs to the OS, so there is nothing to free.
+    UNREFERENCED_PARAMETER(lpCmdLine);
+    return wWinMain(hInstance, hPrevInstance, GetCommandLineArgsW(), nCmdShow);
 }

@@ -109,8 +109,14 @@ BOOL InitializeApplicationState(ApplicationState* state) {
 void CleanupApplicationState(ApplicationState* state) {
     if (!state || !state->isInitialized) return;
 
-    // Enter critical section for cleanup
+    // Detach the cache manager and metadata under the lock, but tear them down
+    // after releasing it: CleanupCacheManager waits for the save thread, which
+    // logs, and nothing that waits on another thread may hold stateLock
     EnterCriticalSection(&state->stateLock);
+    CacheManager* cacheManager = state->cacheManager;
+    CachedVideoMetadata* cachedVideoMetadata = state->cachedVideoMetadata;
+    state->cacheManager = NULL;
+    state->cachedVideoMetadata = NULL;
 
     // Clean up UI brushes
     if (state->hBrushWhite) {
@@ -130,24 +136,25 @@ void CleanupApplicationState(ApplicationState* state) {
         state->hBrushLightTeal = NULL;
     }
     state->hCurrentBrush = NULL;
+    LeaveCriticalSection(&state->stateLock);
 
     // Clean up cache manager
-    if (state->cacheManager) {
+    if (cacheManager) {
         // Use direct debug output since logging system may be shutting down
         ThreadSafeDebugOutput(L"YouTubeCacher: CleanupApplicationState - Cleaning up cache manager");
-        CleanupCacheManager(state->cacheManager);
-        SAFE_FREE(state->cacheManager);
-        state->cacheManager = NULL;
+        CleanupCacheManager(cacheManager);
+        SAFE_FREE(cacheManager);
     }
 
     // Clean up cached video metadata
-    if (state->cachedVideoMetadata) {
+    if (cachedVideoMetadata) {
         // Use direct debug output since logging system may be shutting down
         ThreadSafeDebugOutput(L"YouTubeCacher: CleanupApplicationState - Cleaning up cached video metadata");
-        FreeCachedMetadata(state->cachedVideoMetadata);
-        SAFE_FREE(state->cachedVideoMetadata);
-        state->cachedVideoMetadata = NULL;
+        FreeCachedMetadata(cachedVideoMetadata);
+        SAFE_FREE(cachedVideoMetadata);
     }
+
+    EnterCriticalSection(&state->stateLock);
 
     // Clean up yt-dlp output buffer
     if (state->ytdlpOutputBuffer) {
@@ -189,6 +196,72 @@ ApplicationState* GetApplicationState(void) {
         InitializeApplicationState(&g_appState);
     }
     return &g_appState;
+}
+
+// Worker thread tracking, so shutdown can join workers before freeing state
+typedef struct {
+    LPTHREAD_START_ROUTINE function;
+    LPVOID param;
+} WorkerThreadStart;
+
+static volatile LONG g_workerThreadCount = 0;
+
+static DWORD WINAPI WorkerThreadTrampoline(LPVOID lpParam) {
+    WorkerThreadStart start = *(WorkerThreadStart*)lpParam;
+    SAFE_FREE(lpParam);
+
+    DWORD result = start.function(start.param);
+
+    // Nothing after this point may touch application state
+    InterlockedDecrement(&g_workerThreadCount);
+    return result;
+}
+
+// Create a worker thread that WaitForWorkerThreads will wait for.
+// Returns the thread handle, which the caller must close, or NULL on failure.
+HANDLE CreateWorkerThread(LPTHREAD_START_ROUTINE function, LPVOID param) {
+    if (!function) return NULL;
+
+    WorkerThreadStart* start = (WorkerThreadStart*)SAFE_MALLOC(sizeof(WorkerThreadStart));
+    if (!start) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return NULL;
+    }
+    start->function = function;
+    start->param = param;
+
+    // Count the thread before it exists so a concurrent wait cannot miss it
+    InterlockedIncrement(&g_workerThreadCount);
+    HANDLE hThread = CreateThread(NULL, 0, WorkerThreadTrampoline, start, 0, NULL);
+    if (!hThread) {
+        DWORD error = GetLastError();
+        InterlockedDecrement(&g_workerThreadCount);
+        SAFE_FREE(start);
+        SetLastError(error);
+    }
+    return hThread;
+}
+
+// Wait up to timeoutMs for every worker thread to return. Must be called on
+// the UI thread: it services cross-thread SendMessage calls while it waits,
+// so a worker blocked in one can finish. Returns TRUE if no workers remain.
+BOOL WaitForWorkerThreads(DWORD timeoutMs) {
+    DWORD startTick = GetTickCount();
+
+    while (InterlockedCompareExchange(&g_workerThreadCount, 0, 0) > 0) {
+        DWORD elapsed = GetTickCount() - startTick;
+        if (elapsed >= timeoutMs) {
+            return FALSE;
+        }
+
+        DWORD remaining = timeoutMs - elapsed;
+        MsgWaitForMultipleObjects(0, NULL, FALSE, remaining < 10 ? remaining : 10, QS_SENDMESSAGE);
+
+        MSG msg;
+        PeekMessageW(&msg, NULL, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
+    }
+
+    return TRUE;
 }
 
 // Thread-safe downloading state functions
@@ -267,10 +340,12 @@ void GetDebugState(BOOL* enableDebug, BOOL* enableLogfile) {
         return;
     }
 
-    EnterCriticalSection(&g_appState.stateLock);
-    *enableDebug = g_appState.enableDebug;
-    *enableLogfile = g_appState.enableLogfile;
-    LeaveCriticalSection(&g_appState.stateLock);
+    // Read without stateLock: DebugOutput calls this while holding the
+    // debug-output lock, and stateLock holders log, so taking stateLock here
+    // inverts the lock order and deadlocks (CON-002). Aligned BOOL reads are
+    // atomic on Windows; the two flags need not be read as a pair.
+    *enableDebug = *(volatile BOOL*)&g_appState.enableDebug;
+    *enableLogfile = *(volatile BOOL*)&g_appState.enableLogfile;
 }
 
 void SetDebugState(BOOL enableDebug, BOOL enableLogfile) {

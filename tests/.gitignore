@@ -15,7 +15,10 @@ test_base64
 test_threadsafe
 test_settings
 test_memory
+test_memory_debug
 test_error
 test_ytdlp_cache
 test_uri_mem
 test_subproc
+test_cmdline
+cmdline_logic.c

@@ -3394,7 +3394,7 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETRANGE32, 0, count);
                     SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETPOS, 0, 0);
 
-                    ctx->hCoordinatorThread = CreateThread(NULL, 0, MultiDlCoordinatorThread, ctx, 0, NULL);
+                    ctx->hCoordinatorThread = CreateWorkerThread(MultiDlCoordinatorThread, ctx);
                     if (!ctx->hCoordinatorThread) {
                         SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Failed to start downloads");
                         EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), TRUE);

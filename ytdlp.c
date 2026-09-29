@@ -1822,7 +1822,7 @@ OperationResult* StartNonBlockingGetInfoEx(HWND hDlg, const wchar_t* url, Cached
     context->cachedMetadata = cachedMetadata;
 
     // Create worker thread using new error handling macro
-    HANDLE hThread = CreateThread(NULL, 0, GetInfoWorkerThread, context, 0, NULL);
+    HANDLE hThread = CreateWorkerThread(GetInfoWorkerThread, context);
     if (!hThread) {
         DWORD errorCode = GetLastError();
         REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
@@ -2085,7 +2085,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
 
     // Start worker thread using new error handling macro
     ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Starting worker thread");
-    HANDLE hThread = CreateThread(NULL, 0, UnifiedDownloadWorkerThread, context, 0, NULL);
+    HANDLE hThread = CreateWorkerThread(UnifiedDownloadWorkerThread, context);
     if (!hThread) {
         REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create unified download worker thread (Error: %lu)", GetLastError());
@@ -2151,7 +2151,7 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
     }
 
     // Create and start the download thread using new error handling macro
-    HANDLE hThread = CreateThread(NULL, 0, NonBlockingDownloadThread, downloadContext, 0, NULL);
+    HANDLE hThread = CreateWorkerThread(NonBlockingDownloadThread, downloadContext);
     if (!hThread) {
         REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create non-blocking download thread (Error: %lu)", GetLastError());

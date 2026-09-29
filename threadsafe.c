@@ -1132,14 +1132,7 @@ BOOL StartThreadSafeSubprocessOutputCollection(ThreadSafeSubprocessContext* cont
     }
 
     // Create output reader thread
-    HANDLE hOutputThread = CreateThread(
-        NULL,                           // Default security attributes
-        0,                              // Default stack size
-        SubprocessOutputReaderThread,   // Thread function
-        context,                        // Thread parameter
-        0,                              // Default creation flags
-        NULL                            // Don't need thread ID
-    );
+    HANDLE hOutputThread = CreateWorkerThread(SubprocessOutputReaderThread, context);
 
     if (!hOutputThread) {
         ThreadSafeDebugOutputF(L"StartThreadSafeSubprocessOutputCollection: Failed to create output thread, error %lu", GetLastError());

@@ -617,6 +617,17 @@ static UnifiedDialogType MapSeverityToDialogType(ErrorSeverity severity) {
 }
 
 /**
+ * Append text to a terminated buffer, truncating it to fit bufferSize characters
+ */
+static void AppendBounded(wchar_t* buffer, size_t bufferSize, const wchar_t* text) {
+    size_t len = wcslen(buffer);
+    if (len + 1 >= bufferSize) {
+        return;
+    }
+    wcsncat(buffer, text, bufferSize - len - 1);
+}
+
+/**
  * Format technical details from error context for display in dialog
  */
 void FormatTechnicalDetails(const ErrorContext* context, wchar_t* buffer, size_t bufferSize) {
@@ -647,15 +658,18 @@ void FormatTechnicalDetails(const ErrorContext* context, wchar_t* buffer, size_t
         context->timestamp.wHour, context->timestamp.wMinute, context->timestamp.wSecond,
         context->technicalMessage);
 
-    // Add context variables if any
+    // swprintf may leave the buffer unterminated when the text doesn't fit
+    buffer[bufferSize - 1] = L'\0';
+
+    // Add context variables if any, truncating at the end of the buffer
     if (context->contextVariableCount > 0) {
-        wcscat(buffer, L"\r\nContext Variables:\r\n");
-        for (int i = 0; i < context->contextVariableCount; i++) {
+        AppendBounded(buffer, bufferSize, L"\r\nContext Variables:\r\n");
+        for (int i = 0; i < context->contextVariableCount && i < 16; i++) {
             wchar_t varInfo[384];
-            swprintf(varInfo, 384, L"  %ls: %ls\r\n", 
-                context->contextVariables[i].name, 
+            swprintf(varInfo, 384, L"  %ls: %ls\r\n",
+                context->contextVariables[i].name,
                 context->contextVariables[i].value);
-            wcscat(buffer, varInfo);
+            AppendBounded(buffer, bufferSize, varInfo);
         }
     }
 }

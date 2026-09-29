@@ -1910,7 +1910,7 @@ void StartFileSizeUpdateThread(CacheManager* manager, HWND hMainWindow) {
     data->manager = manager;
     data->hMainWindow = hMainWindow;
     
-    HANDLE hThread = CreateThread(NULL, 0, UpdateFileSizesWorker, data, 0, NULL);
+    HANDLE hThread = CreateWorkerThread(UpdateFileSizesWorker, data);
     if (hThread) {
         CloseHandle(hThread); // We don't need to wait for it
     } else {
