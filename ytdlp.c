@@ -2115,6 +2115,18 @@ DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
     YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&downloadContext->config, downloadContext->request,
                                                           downloadContext->parentWindow, L"Downloading Video");
 
+    // The completion handler ignores a NULL result, which would leave the UI
+    // in the downloading state; report a failure instead
+    if (!result) {
+        result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
+        if (result) {
+            memset(result, 0, sizeof(YtDlpResult));
+            result->success = FALSE;
+            result->exitCode = 1;
+            result->errorMessage = SAFE_WCSDUP(L"The download did not produce a result");
+        }
+    }
+
     // Post completion message to main window with result
     PostMessageW(downloadContext->parentWindow, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
 
@@ -2402,9 +2414,17 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
     }
 
     // Wait for completion
+    // Every worker exit path sets completed; if the worker thread has ended
+    // without doing so, stop waiting rather than leave the UI downloading forever
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Waiting for enhanced execution to complete");
+    HANDLE hWorker = enhancedContext->baseContext->threadContext.hThread;
     while (!enhancedContext->baseContext->completed) {
-        Sleep(100);
+        if (!hWorker || WaitForSingleObject(hWorker, 100) != WAIT_TIMEOUT) {
+            break;
+        }
+    }
+    if (!enhancedContext->baseContext->completed) {
+        ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Worker ended without completing");
     }
 
     // Get result

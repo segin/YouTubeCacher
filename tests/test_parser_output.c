@@ -99,12 +99,28 @@ static void test_append_null_buffer(void) {
     check("NULL buffer is left alone", ctx.accumulatedOutput == NULL);
 }
 
+static void test_utf8_prefix(void) {
+    // "a" + U+00E9 (C3 A9) + U+20AC (E2 82 AC) + U+1F600 (F0 9F 98 80)
+    const char text[] = "a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80";
+    size_t len = sizeof(text) - 1;
+
+    check("complete text is kept whole", Utf8CompletePrefixLength(text, len) == len);
+    check("ASCII only", Utf8CompletePrefixLength("abc", 3) == 3);
+    check("cut after 2-byte lead", Utf8CompletePrefixLength(text, 2) == 1);
+    check("cut inside 3-byte sequence", Utf8CompletePrefixLength(text, 5) == 3);
+    check("cut inside 4-byte sequence", Utf8CompletePrefixLength(text, 9) == 6);
+    check("cut after 4-byte lead", Utf8CompletePrefixLength(text, 7) == 6);
+    check("stray continuation bytes are not held back",
+          Utf8CompletePrefixLength("\x80\x80\x80\x80", 4) == 4);
+}
+
 int main(void) {
     printf("Running parser output accumulation tests...\n");
     test_append_grows_buffer();
     test_append_exact_fit();
     test_append_realloc_failure();
     test_append_null_buffer();
+    test_utf8_prefix();
     printf("\nTests run: %d, Failed: %d\n", g_tests_run, g_tests_failed);
     return g_tests_failed ? 1 : 0;
 }

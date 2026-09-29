@@ -58,6 +58,7 @@ test_parser_output: test_parser_output.c parser_output_logic.c
 
 parser_output_logic.c: ../parser.c
 	/usr/bin/sed -n '/static void AppendAccumulatedOutput/,/^}/p' ../parser.c > $@
+	/usr/bin/sed -n '/static size_t Utf8CompletePrefixLength/,/^}/p' ../parser.c >> $@
 
 test_uri: test_uri.c uri_functions.c
 	$(CC) $(CFLAGS) test_uri.c -o $@
