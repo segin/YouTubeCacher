@@ -1,0 +1,106 @@
+name: Windows cross-build
+
+# Cross-builds YouTubeCacher for all three Windows architectures (x86_64,
+# i686, aarch64) in both debug and release configurations with llvm-mingw,
+# the same toolchain release the PsyMP3 Windows cross-build uses.
+#
+# PsyMP3 builds llvm-mingw from source because it carries a Windows XP patch;
+# nothing here needs that, so this uses the upstream prebuilt release of the
+# same tag. It is cached, so a warm run only downloads the repository.
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-cross-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LLVM_MINGW_TAG: "20260826"
+
+jobs:
+  windows:
+    name: ${{ matrix.arch }} ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ x86_64, i686, aarch64 ]
+        config: [ release, debug ]
+        include:
+        # The Makefile names its targets and toolchain variables by bitness
+        # rather than by tuple, and gives each arch its own output name.
+        - arch: x86_64
+          tuple: x86_64-w64-mingw32
+          suffix: "64"
+          var: "64"
+          exe: YouTubeCacher-x64.exe
+        - arch: i686
+          tuple: i686-w64-mingw32
+          suffix: "32"
+          var: "32"
+          exe: YouTubeCacher.exe
+        - arch: aarch64
+          tuple: aarch64-w64-mingw32
+          suffix: arm64
+          var: ARM64
+          exe: YouTubeCacher-arm64.exe
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Restore toolchain
+      id: toolchain
+      uses: actions/cache@v6
+      with:
+        path: ~/llvm-mingw
+        key: llvm-mingw-${{ env.LLVM_MINGW_TAG }}-ucrt-ubuntu-22.04-x86_64
+
+    - name: Download llvm-mingw
+      if: steps.toolchain.outputs.cache-hit != 'true'
+      run: |
+        set -euxo pipefail
+        name="llvm-mingw-${LLVM_MINGW_TAG}-ucrt-ubuntu-22.04-x86_64"
+        curl -fsSLO "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_TAG}/${name}.tar.xz"
+        xz -t "${name}.tar.xz"
+        tar xf "${name}.tar.xz"
+        mv "${name}" "$HOME/llvm-mingw"
+
+    - name: Build
+      run: |
+        set -euxo pipefail
+        export PATH="$HOME/llvm-mingw/bin:$PATH"
+        "${{ matrix.tuple }}-clang" --version
+
+        # The Makefile is written for MSYS2 gcc (absolute /mingw*/bin paths),
+        # so the toolchain and flags are overridden on the command line.
+        # Relative to its own flags:
+        #  - -std=c11: error.h and log.h repeat typedefs, which clang rejects
+        #    under -std=c99 -Werror (gcc only does with -pedantic).
+        #  - -static-libgcc and -s move from compile to link flags, where
+        #    they belong; at compile time clang reports them as unused
+        #    arguments, which -Werror makes fatal.
+        make -j"$(nproc)" "${{ matrix.config }}${{ matrix.suffix }}" \
+          "CC${{ matrix.var }}=${{ matrix.tuple }}-gcc" \
+          "RC${{ matrix.var }}=${{ matrix.tuple }}-windres" \
+          "RM=rm -f" "MKDIR=mkdir -p" \
+          "COMMON_CFLAGS=-Wall -Wextra -Werror -std=c11 -DUNICODE -D_UNICODE" \
+          "RELEASE_CFLAGS=-Os -DNDEBUG -DMEMORY_RELEASE -flto" \
+          "COMMON_LDFLAGS=-mwindows -static-libgcc -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -lbcrypt -static"
+
+        mkdir -p dist
+        cp "${{ matrix.exe }}" "dist/YouTubeCacher-${{ matrix.arch }}-${{ matrix.config }}.exe"
+        ls -la dist/
+        file dist/*.exe
+
+    - name: Upload binary
+      uses: actions/upload-artifact@v7
+      with:
+        name: YouTubeCacher-${{ matrix.arch }}-${{ matrix.config }}.exe
+        path: dist/YouTubeCacher-${{ matrix.arch }}-${{ matrix.config }}.exe
+        if-no-files-found: error

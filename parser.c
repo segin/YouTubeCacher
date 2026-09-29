@@ -1182,7 +1182,6 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     char buffer[4096];
     DWORD bytesRead;
     BOOL processRunning = TRUE;
-    int loopCount = 0;
 
     // Line accumulator for UTF-8 processing
     static char lineAccumulator[8192] = {0};
@@ -1197,7 +1196,6 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     const DWORD NO_OUTPUT_WARNING_THRESHOLD = 30000; // Warn after 30 seconds of no output
 
     while (processRunning || fillCounter > 0) {
-        loopCount++;
 
         // Check for cancellation
         if (IsCancellationRequested(&context->threadContext)) {
