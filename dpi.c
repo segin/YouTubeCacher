@@ -99,7 +99,27 @@ void DestroyDPIManager(DPIManager* manager) {
     free(manager);
 }
 
+// Subclass that releases a window's DPI context when the window is destroyed
+#define DPI_CLEANUP_SUBCLASS_ID 1
+
+static LRESULT CALLBACK DPICleanupSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
+                                               UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    if (uMsg == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, DPICleanupSubclassProc, uIdSubclass);
+
+        // Child controls are already destroyed, so the context's fonts are no
+        // longer in use. Skip this if the manager itself has been destroyed.
+        DPIManager* manager = (DPIManager*)dwRefData;
+        if (manager && manager == g_dpiManager) {
+            UnregisterWindowForDPI(manager, hwnd);
+        }
+    }
+
+    return DefSubclassProc(hwnd, uMsg, wParam, lParam);
+}
+
 // Register window for DPI management
+// The context, its font manager and fonts are released when the window is destroyed
 DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
     if (!manager || !hwnd) {
         return NULL;
@@ -138,6 +158,7 @@ DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
                 DPIContext** newDialogs = (DPIContext**)realloc(manager->dialogs, 
                                                                 newCapacity * sizeof(DPIContext*));
                 if (!newDialogs) {
+                    DestroyFontManager(context->fontManager);
                     free(context);
                     LeaveCriticalSection(&manager->lock);
                     return NULL;
@@ -154,6 +175,7 @@ DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
             DPIContext** newDialogs = (DPIContext**)realloc(manager->dialogs, 
                                                             newCapacity * sizeof(DPIContext*));
             if (!newDialogs) {
+                DestroyFontManager(context->fontManager);
                 free(context);
                 LeaveCriticalSection(&manager->lock);
                 return NULL;
@@ -163,8 +185,12 @@ DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
         }
         manager->dialogs[manager->dialogCount++] = context;
     }
-    
+
     LeaveCriticalSection(&manager->lock);
+
+    // Release the context automatically when the window goes away
+    SetWindowSubclass(hwnd, DPICleanupSubclassProc, DPI_CLEANUP_SUBCLASS_ID, (DWORD_PTR)manager);
+
     return context;
 }
 
