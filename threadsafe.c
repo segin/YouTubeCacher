@@ -353,12 +353,21 @@ BOOL CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     context->outputBufferSize = 0;
     context->outputLength = 0;
 
-    // Note: Handles are closed by the worker thread, so we just NULL them out here
-    // Attempting to close them again causes STATUS_INVALID_HANDLE exceptions
-    context->hProcess = NULL;
-    context->hThread = NULL;
-    context->hOutputRead = NULL;
-    context->hOutputWrite = NULL;
+    // Close the run's handles. Nothing else closes them, and the process has been
+    // stopped and the reader (the only other user of hOutputRead) joined above.
+    if (context->hProcess) {
+        CloseHandle(context->hProcess);
+        context->hProcess = NULL;
+    }
+    if (context->hThread) {
+        CloseHandle(context->hThread);
+        context->hThread = NULL;
+    }
+    if (context->hOutputRead) {
+        CloseHandle(context->hOutputRead);
+        context->hOutputRead = NULL;
+    }
+    context->hOutputWrite = NULL; // Already closed by StartThreadSafeSubprocess
 
     // Close cancellation event
     if (context->cancellationEvent && context->cancellationEvent != INVALID_HANDLE_VALUE) {

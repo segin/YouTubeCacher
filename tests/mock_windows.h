@@ -132,10 +132,12 @@ static inline HANDLE CreateEventW(void* sa, BOOL manual, BOOL initial, LPCWSTR n
     return (HANDLE)1;
 }
 
+#ifndef CloseHandle
 static inline BOOL CloseHandle(HANDLE h) {
     (void)h;
     return TRUE;
 }
+#endif
 
 static inline BOOL ResetEvent(HANDLE h) {
     (void)h;

@@ -8,8 +8,18 @@
 // Observable process kill and a reader thread that can be made to hang
 #define TerminateProcess Test_TerminateProcess
 #define WaitForSingleObject Test_WaitForSingleObject
+#define CloseHandle Test_CloseHandle
 
 #include "mock_windows.h"
+
+// Close counts for the small fake handle values 0x10-0x1F
+static int g_closeCounts[16];
+
+static BOOL Test_CloseHandle(HANDLE h) {
+    uintptr_t v = (uintptr_t)h;
+    if (v >= 0x10 && v < 0x20) g_closeCounts[v - 0x10]++;
+    return TRUE;
+}
 
 #define TEST_READER_THREAD ((HANDLE)0x77)
 #define TEST_HUNG_PROCESS ((HANDLE)0x55)
@@ -498,6 +508,27 @@ int test_cleanup_running() {
     g_readerStuck = FALSE;
     if (!CleanupThreadSafeSubprocessContext(&context) || context.initialized) {
         printf("FAILED (cleanup did not finish once the reader exited)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    // A completed run: its process, thread and pipe handles are closed once
+    printf("Testing cleanup closes the run's handles exactly once... ");
+    InitializeThreadSafeSubprocessContext(&context);
+    context.hProcess = (HANDLE)0x11;
+    context.hThread = (HANDLE)0x12;
+    context.hOutputRead = (HANDLE)0x13;
+    context.processCompleted = TRUE;
+    memset(g_closeCounts, 0, sizeof(g_closeCounts));
+    CleanupThreadSafeSubprocessContext(&context);
+    CleanupThreadSafeSubprocessContext(&context); // A second call must not close again
+    if (g_closeCounts[1] != 1 || g_closeCounts[2] != 1 || g_closeCounts[3] != 1) {
+        printf("FAILED (close counts %d/%d/%d, expected 1/1/1)\n",
+               g_closeCounts[1], g_closeCounts[2], g_closeCounts[3]);
+        return 1;
+    }
+    if (context.hProcess || context.hThread || context.hOutputRead) {
+        printf("FAILED (handles not cleared)\n");
         return 1;
     }
     printf("Passed.\n");
