@@ -1,0 +1,58 @@
+name: Unit tests
+
+# The tests in tests/ are host programs: each one pulls a function or two out
+# of the application sources (some via sed) and compiles it against the mock
+# Windows headers there, so they build and run natively on Linux.
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Build
+      run: |
+        set -eux
+        gcc --version
+        # tests/Makefile names MSYS2's /mingw64/bin/gcc.exe; override it.
+        # Test binaries and some generated sources are committed, and a
+        # checkout gives them fresh timestamps, so make would take them as up
+        # to date. Clean first so every test is built from the current source.
+        make clean CC=gcc "RM=rm -f"
+        make -j"$(nproc)" all CC=gcc "RM=rm -f"
+
+    - name: Run
+      run: |
+        # Run every test, rather than stopping at the first failure as
+        # `make run` does, and report all of the failures together.
+        # The list is the one `make run` uses, read from its recipe.
+        tests=$(sed -n '/^run:/,/^$/s|^\t\./||p' Makefile)
+        test -n "$tests"
+        failed=""
+        for t in $tests; do
+          echo "::group::$t"
+          if timeout 120 "./$t"; then
+            echo "::endgroup::"
+          else
+            echo "::endgroup::"
+            echo "::error::$t failed"
+            failed="$failed $t"
+          fi
+        done
+        [ -z "$failed" ] || { echo "Failed:$failed"; exit 1; }

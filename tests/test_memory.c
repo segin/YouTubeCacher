@@ -58,6 +58,7 @@ int AddRecoveryStrategy(void* handler, int code, int (*func)(const void*), const
 void GetSystemTime(void* st) { memset(st, 0, 16); } // 16 is enough for SYSTEMTIME
 
 // Use the mock_windows.h
+#define TEST_MEMORY_C
 #include "mock_windows.h"
 
 // Provide stubs for missing types used in memory.c but NOT defined in memory.h

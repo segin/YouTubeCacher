@@ -326,7 +326,7 @@ static inline int WideCharToMultiByte(uint32_t cp, DWORD flags, const wchar_t* s
 #define SAFE_REALLOC(ptr, sz) realloc(ptr, sz)
 #endif
 
-#ifndef TEST_THREADSAFE_C
+#if !defined(TEST_THREADSAFE_C) && !defined(TEST_MEMORY_C)
 #define SafeMalloc(sz, file, line) malloc(sz)
 #define SafeFree(ptr, file, line) free(ptr)
 #define SafeRealloc(ptr, sz, file, line) realloc(ptr, sz)
@@ -384,7 +384,7 @@ static inline int _wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t n) {
 #endif
 
 // Other mocks
-#ifndef TEST_THREADSAFE_C
+#if !defined(TEST_THREADSAFE_C) && !defined(TEST_SUBPROC_C)
 #define ThreadSafeDebugOutputF ThreadSafeDebugOutputF_mock
 static inline void ThreadSafeDebugOutputF_mock(const wchar_t* format, ...) { (void)format; }
 #endif

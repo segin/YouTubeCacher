@@ -1,3 +1,4 @@
+#define TEST_SUBPROC_C
 #include "mock_windows.h"
 
 // Define macros to prevent inclusion of real headers
