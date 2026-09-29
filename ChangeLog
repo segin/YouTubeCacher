@@ -1,3 +1,97 @@
+# 0.0.3
+
+Playlists and Multi-Download:
+
+- Add playlist support: accept YouTube playlist URLs, which 0.0.2 rejected, and resolve them into their videos with `--flat-playlist`
+- Add multi-download dialog that downloads a batch of URLs, up to 3 at a time, with pause and stop
+- Count successes and failures per video, and report URLs that could not be queued
+- Fix use-after-free when the multi-download dialog is closed while downloads are running
+
+Security:
+
+- Accept only `.exe` files as the `yt-dlp` executable, closing command injection through `.bat` and `.cmd` wrappers
+- Validate custom `yt-dlp` arguments before every run, blocking `--exec`, `--batch-file` and their abbreviations and short forms
+- Fix command injection in player launching and in `yt-dlp` argument building
+- Refuse to open or delete cached files outside the download folder
+- Reject cache index records with an invalid subtitle count
+- Use `BCryptGenRandom()` for temporary directory names
+- Redact sensitive query parameters in logged command lines
+
+Application Lifecycle:
+
+- Fix a deadlock that hung the application on every exit
+- Wait for worker threads on exit before freeing shared state
+- Read command-line arguments as UTF-16, so non-ASCII paths work
+
+Downloads and `yt-dlp` Output:
+
+- Keep complete `yt-dlp` output: lines of any length, lines split across reads, and output left after the process exits
+- Stop the output reader waiting up to 24 hours when the last line has no line ending
+- Kill `yt-dlp` and wait for the output reader before freeing a subprocess context
+- Fix subprocess handles being closed twice, and process, thread and pipe handles leaked after each run
+- Return the UI to idle when a download fails to start
+- Escape `%` in the download folder passed to the `yt-dlp` output template
+- Read custom `yt-dlp` arguments of any length
+
+Logging and Diagnostics:
+
+- Fix the log viewer reading log buffers while another thread reallocates them
+- Fix error dialogs sharing state when one opens over another
+- Fix a buffer overflow in error technical details
+
+Memory Management:
+
+- Fix false double-free reports when the heap reuses an address, which leaked the block
+- Fix a race in the freed-memory list between threads freeing memory
+- Fix debug builds freeing blocks at the wrong address when they were allocated before memory tracking started
+- Fix buffer overflows in `ValidateYtDlpExecutable`, `FormatDeleteErrorDetails`, the combined delete-error text and several dialogs
+
+Cache ListView Enhancements:
+
+- Fix cached videos not being found after a restart, and `cache_index.txt` gaining a copy of every entry on each launch
+- Read cache entries for Copy and Delete only under the cache lock
+- Open the context menu at the pointer on monitors left of or above the primary one, and at the selected item from the keyboard
+- Look up cache entries with a hash map, and save the cache index on a background thread
+
+Settings:
+
+- Keep the debug, log file and auto-paste options across restarts
+- Save the custom `yt-dlp` arguments field
+- Fix duplicate control IDs that broke the Settings tab order
+- Always return a terminated string from `LoadSettingFromRegistry`
+
+Reusable UI Components:
+
+- Connect the validation framework added in 0.0.2, which never ran: Settings now validates its paths and stays open on invalid input
+- Save paths typed into the path boxes, not only paths chosen with the browse button
+- Free components when the Settings dialog closes
+
+HiDPI Support:
+
+- Release each dialog's DPI context and fonts when it closes
+- Stop the About dialog deleting fonts owned by the DPI manager, and registering new fonts on every DPI change
+- Fix a stack overflow when restoring the window position from a malformed registry value
+
+Performance:
+
+- Replace blocking `Sleep` calls on the UI thread with timers
+- Remove string allocations from progress updates and repeated `wcslen` calls in loops
+
+Build System:
+
+- Build release executables with llvm-mingw against the Universal C Runtime (UCRT) instead of `msvcrt.dll`: they need Windows 10 or later, or Windows 7 SP1/8.1 with the UCRT update (KB2999226)
+- Give each toolchain and configuration its own object directory, `obj/<variant>-<config>`, and executable; debug builds are named `*-debug.exe`
+- Add UCRT64 targets (`debugucrt64`, `releaseucrt64`) building `YouTubeCacher-x64-ucrt.exe`
+- Generate header dependencies with `-MMD -MP`
+- Add `Makefile.cross` for cross-compiling with llvm-mingw
+- Build as C11
+
+Testing and CI:
+
+- Add unit tests: 19 test programs covering URL handling, Base64, cache and settings parsing, subprocess handling, memory tracking and argument validation
+- Add GitHub Actions CI that cross-builds x86, x64 and ARM64, debug and release, with llvm-mingw
+- Run the unit tests in CI
+
 # 0.0.2
 
 Multi-Instance Protection:
