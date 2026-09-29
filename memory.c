@@ -1647,6 +1647,7 @@ static void CleanupErrorSystem(void)
     DeleteCriticalSection(&g_errorLock);
 }
 
+// Caller must hold g_errorLock
 static void AddFreedMemoryRecord(void* address, size_t size, const char* file, int line)
 {
     if (!g_useAfterFreeDetectionEnabled || !address) {
@@ -1699,19 +1700,25 @@ static void AddFreedMemoryRecord(void* address, size_t size, const char* file, i
 
 static BOOL IsFreedMemory(void* address)
 {
-    if (!g_useAfterFreeDetectionEnabled || !address) {
+    if (!g_useAfterFreeDetectionEnabled || !address || !g_errorSystemInitialized) {
         return FALSE;
     }
+
+    // The list is modified under g_errorLock, so walk it under the same lock
+    BOOL found = FALSE;
+    EnterCriticalSection(&g_errorLock);
 
     FreedMemoryInfo* current = g_freedMemoryList;
     while (current) {
         if (current->address == address) {
-            return TRUE;
+            found = TRUE;
+            break;
         }
         current = current->next;
     }
 
-    return FALSE;
+    LeaveCriticalSection(&g_errorLock);
+    return found;
 }
 
 static void CleanupFreedMemoryList(void)
