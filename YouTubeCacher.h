@@ -510,12 +510,14 @@ typedef struct {
     volatile LONG completedCount;
     volatile LONG failedCount;
     int maxConcurrent;           // Default 3
+    int expandedCount;           // Playlist items replaced by their videos (guarded by itemLock)
 } MultiDownloadContext;
 
 // Multi-download worker thread functions
 DWORD WINAPI MultiDlCoordinatorThread(LPVOID lpParam);
 DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam);
 DWORD WINAPI MultiDlSingleDownloadThread(LPVOID lpParam);
+BOOL MultiDl_RemoveExactLine(wchar_t* text, const wchar_t* url);
 
 // Per-download thread context
 typedef struct {

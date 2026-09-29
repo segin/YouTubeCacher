@@ -6,6 +6,7 @@ cache_duration.c
 error_logic.c
 parser_types.h
 ytdlp_cache_logic.c
+multidl_lines_logic.c
 
 # Test binaries
 test_cache_duration
@@ -22,3 +23,4 @@ test_uri_mem
 test_subproc
 test_cmdline
 cmdline_logic.c
+test_multidl_lines

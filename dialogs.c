@@ -224,18 +224,68 @@ INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config) {
                           parent, UnifiedDialogProc, (LPARAM)config);
 }
 
+// Per-window state of a unified dialog. The config is a private copy, so it
+// stays valid for the dialog's lifetime whatever happens to the caller's.
+typedef struct {
+    UnifiedDialogConfig config;
+    BOOL isExpanded;
+} UnifiedDialogState;
+
+static const wchar_t* UNIFIED_DIALOG_STATE_PROP = L"UnifiedDialogState";
+
+static void FreeUnifiedDialogState(UnifiedDialogState* state) {
+    if (!state) return;
+    SAFE_FREE((void*)state->config.title);
+    SAFE_FREE((void*)state->config.message);
+    SAFE_FREE((void*)state->config.details);
+    SAFE_FREE((void*)state->config.tab1_name);
+    SAFE_FREE((void*)state->config.tab2_content);
+    SAFE_FREE((void*)state->config.tab2_name);
+    SAFE_FREE((void*)state->config.tab3_content);
+    SAFE_FREE((void*)state->config.tab3_name);
+    SAFE_FREE((void*)state->config.detailsButtonText);
+    SAFE_FREE((void*)state->config.copyButtonText);
+    SAFE_FREE((void*)state->config.okButtonText);
+    SAFE_FREE(state);
+}
+
+static UnifiedDialogState* CreateUnifiedDialogState(const UnifiedDialogConfig* source) {
+    UnifiedDialogState* state = (UnifiedDialogState*)SAFE_MALLOC(sizeof(UnifiedDialogState));
+    if (!state) return NULL;
+    memset(state, 0, sizeof(UnifiedDialogState));
+
+    state->config.dialogType = source->dialogType;
+    state->config.showDetailsButton = source->showDetailsButton;
+    state->config.showCopyButton = source->showCopyButton;
+    if (source->title) state->config.title = SAFE_WCSDUP(source->title);
+    if (source->message) state->config.message = SAFE_WCSDUP(source->message);
+    if (source->details) state->config.details = SAFE_WCSDUP(source->details);
+    if (source->tab1_name) state->config.tab1_name = SAFE_WCSDUP(source->tab1_name);
+    if (source->tab2_content) state->config.tab2_content = SAFE_WCSDUP(source->tab2_content);
+    if (source->tab2_name) state->config.tab2_name = SAFE_WCSDUP(source->tab2_name);
+    if (source->tab3_content) state->config.tab3_content = SAFE_WCSDUP(source->tab3_content);
+    if (source->tab3_name) state->config.tab3_name = SAFE_WCSDUP(source->tab3_name);
+    if (source->detailsButtonText) state->config.detailsButtonText = SAFE_WCSDUP(source->detailsButtonText);
+    if (source->copyButtonText) state->config.copyButtonText = SAFE_WCSDUP(source->copyButtonText);
+    if (source->okButtonText) state->config.okButtonText = SAFE_WCSDUP(source->okButtonText);
+    state->isExpanded = FALSE;
+    return state;
+}
+
 // Unified Dialog Procedure - handles all dialog types with single resource
 INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-    static const UnifiedDialogConfig* config = NULL;
-    static BOOL isExpanded = FALSE;
+    UnifiedDialogState* state = (UnifiedDialogState*)GetPropW(hDlg, UNIFIED_DIALOG_STATE_PROP);
+    const UnifiedDialogConfig* config = state ? &state->config : NULL;
     
     switch (message) {
         case WM_INITDIALOG: {
-            config = (const UnifiedDialogConfig*)lParam;
-            if (!config) {
+            state = lParam ? CreateUnifiedDialogState((const UnifiedDialogConfig*)lParam) : NULL;
+            if (!state || !SetPropW(hDlg, UNIFIED_DIALOG_STATE_PROP, (HANDLE)state)) {
+                FreeUnifiedDialogState(state);
                 EndDialog(hDlg, IDCANCEL);
                 return TRUE;
             }
+            config = &state->config;
             
             // Register dialog with DPI manager for font scaling
             if (g_dpiManager) {
@@ -470,8 +520,10 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
         
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
-                case IDC_UNIFIED_DETAILS_BTN:
-                    isExpanded = !isExpanded;
+                case IDC_UNIFIED_DETAILS_BTN: {
+                    BOOL isExpanded;
+                    if (!state) return TRUE;
+                    isExpanded = state->isExpanded = !state->isExpanded;
                     ResizeUnifiedDialog(hDlg, isExpanded);
                     if (isExpanded) {
                         ShowUnifiedDialogTab(hDlg, TabCtrl_GetCurSel(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL)));
@@ -505,9 +557,10 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                         }
                     }
                     return TRUE;
+                }
                     
                 case IDC_UNIFIED_COPY_BTN:
-                    CopyUnifiedDialogToClipboard(config);
+                    if (config) CopyUnifiedDialogToClipboard(config);
                     return TRUE;
                     
                 case IDC_UNIFIED_OK_BTN:
@@ -563,7 +616,7 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                 RescaleWindowForDPI(hDlg, oldDpi, newDpi);
                 
                 // Resize dialog to maintain proper layout
-                ResizeUnifiedDialog(hDlg, isExpanded);
+                ResizeUnifiedDialog(hDlg, state ? state->isExpanded : FALSE);
                 
                 // Apply suggested window position and size
                 SetWindowPos(hDlg, NULL,
@@ -586,6 +639,11 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
         case WM_CLOSE:
             EndDialog(hDlg, IDCANCEL);
             return TRUE;
+
+        case WM_DESTROY:
+            RemovePropW(hDlg, UNIFIED_DIALOG_STATE_PROP);
+            FreeUnifiedDialogState(state);
+            return FALSE;
     }
     
     return FALSE;
@@ -2144,6 +2202,10 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 }
                 // Get base font from dialog
                 hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+
+                // The DPI manager owns these fonts; keep them for WM_DPICHANGED
+                if (titleFont) SetPropW(hDlg, L"TitleScalableFont", (HANDLE)titleFont);
+                if (smallFont) SetPropW(hDlg, L"SmallScalableFont", (HANDLE)smallFont);
             } else {
                 // Fallback to old method if DPI manager not available
                 hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
@@ -2319,9 +2381,11 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_CLOSE), NULL,
                         buttonX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
             
-            // Store fonts for cleanup
-            if (hTitleFont) SetPropW(hDlg, L"TitleFont", hTitleFont);
-            if (hSmallFont) SetPropW(hDlg, L"SmallFont", hSmallFont);
+            // Store fonts for cleanup, but only those this dialog created itself
+            if (!g_dpiManager) {
+                if (hTitleFont) SetPropW(hDlg, L"TitleFont", hTitleFont);
+                if (hSmallFont) SetPropW(hDlg, L"SmallFont", hSmallFont);
+            }
             
             ReleaseDC(hDlg, hdc);
             
@@ -2393,7 +2457,11 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         }
         
         case WM_DESTROY: {
-            // Clean up custom fonts
+            // Fonts from the DPI manager stay registered with it; just forget them
+            RemovePropW(hDlg, L"TitleScalableFont");
+            RemovePropW(hDlg, L"SmallScalableFont");
+
+            // Clean up the fonts this dialog created (no DPI manager)
             HFONT hTitleFont = (HFONT)GetPropW(hDlg, L"TitleFont");
             if (hTitleFont) {
                 DeleteObject(hTitleFont);
@@ -2438,15 +2506,12 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 int buttonHeight = MulDiv(14 * baseUnitY, 1, 8);
                 int bottomPadding = ScaleForDpi(8, dpi);
                 
-                // Recreate fonts at new DPI
+                // Rescale the fonts registered at WM_INITDIALOG to the new DPI
                 HFONT hTitleFont = NULL, hSmallFont = NULL, hBaseFont = NULL;
-                ScalableFont* titleFont = NULL;
-                ScalableFont* smallFont = NULL;
+                ScalableFont* titleFont = (ScalableFont*)GetPropW(hDlg, L"TitleScalableFont");
+                ScalableFont* smallFont = (ScalableFont*)GetPropW(hDlg, L"SmallScalableFont");
                 
                 if (g_dpiManager) {
-                    titleFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 12, FW_BOLD);
-                    smallFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 7, FW_NORMAL);
-                    
                     if (titleFont) hTitleFont = GetFontForDPI(titleFont, dpi);
                     if (smallFont) hSmallFont = GetFontForDPI(smallFont, dpi);
                     hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
@@ -2666,9 +2731,10 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 TabCtrl_SetCurSel(hTabControl, 0);
             }
             
-            // Load log content from application state
-            const wchar_t* allLogs = GetYtDlpSessionLogAll();
-            const wchar_t* lastLog = GetYtDlpSessionLogLast();
+            // Load log content from application state (copies taken under its lock)
+            size_t allLen = 0, lastLen = 0;
+            wchar_t* allLogs = CopyYtDlpSessionLog(FALSE, 0, &allLen);
+            wchar_t* lastLog = CopyYtDlpSessionLog(TRUE, 0, &lastLen);
             
             if (allLogs && wcslen(allLogs) > 0) {
                 SetDlgItemTextW(hDlg, IDC_LOG_ALL_TEXT, allLogs);
@@ -2683,8 +2749,10 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             }
             
             // Store initial text lengths to track what's been displayed
-            SetPropW(hDlg, L"AllLogsLength", (HANDLE)(size_t)wcslen(allLogs ? allLogs : L""));
-            SetPropW(hDlg, L"LastLogLength", (HANDLE)(size_t)wcslen(lastLog ? lastLog : L""));
+            SetPropW(hDlg, L"AllLogsLength", (HANDLE)(allLogs ? allLen : 0));
+            SetPropW(hDlg, L"LastLogLength", (HANDLE)(lastLog ? lastLen : 0));
+            SAFE_FREE(allLogs);
+            SAFE_FREE(lastLog);
             
             // Show the "All Logs" tab by default
             ShowWindow(GetDlgItem(hDlg, IDC_LOG_ALL_TEXT), SW_SHOW);
@@ -2730,10 +2798,6 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 TabCtrl_SetItem(hTabControl, 1, &tie);
             }
             
-            // Get current log content
-            const wchar_t* allLogs = GetYtDlpSessionLogAll();
-            const wchar_t* lastLog = GetYtDlpSessionLogLast();
-            
             HWND hAllText = GetDlgItem(hDlg, IDC_LOG_ALL_TEXT);
             HWND hLastText = GetDlgItem(hDlg, IDC_LOG_LAST_TEXT);
             
@@ -2741,12 +2805,15 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             size_t prevAllLen = (size_t)GetPropW(hDlg, L"AllLogsLength");
             size_t prevLastLen = (size_t)GetPropW(hDlg, L"LastLogLength");
             
-            size_t currentAllLen = allLogs ? wcslen(allLogs) : 0;
-            size_t currentLastLen = lastLog ? wcslen(lastLog) : 0;
+            // Copy the text added since then, under the log lock. A log that is now
+            // shorter than before was cleared, and is then copied whole.
+            size_t currentAllLen = 0, currentLastLen = 0;
+            wchar_t* allLogs = CopyYtDlpSessionLog(FALSE, prevAllLen, &currentAllLen);
+            wchar_t* lastLog = CopyYtDlpSessionLog(TRUE, prevLastLen, &currentLastLen);
             
             // Update "All Logs" tab - only append new text
             if (currentAllLen > prevAllLen && allLogs) {
-                const wchar_t* newText = allLogs + prevAllLen;
+                const wchar_t* newText = allLogs;
                 
                 // Move to end of text
                 int textLen = GetWindowTextLengthW(hAllText);
@@ -2764,7 +2831,7 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
             
             // Update "Current Run" / "Last Run" tab - only append new text
             if (currentLastLen > prevLastLen && lastLog) {
-                const wchar_t* newText = lastLog + prevLastLen;
+                const wchar_t* newText = lastLog;
                 
                 // Move to end of text
                 int textLen = GetWindowTextLengthW(hLastText);
@@ -2778,9 +2845,9 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 
                 // Update stored length
                 SetPropW(hDlg, L"LastLogLength", (HANDLE)currentLastLen);
-            } else if (currentLastLen < prevLastLen) {
+            } else if (currentLastLen < prevLastLen && lastLog) {
                 // Log was cleared (new invocation started), replace entire content
-                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog ? lastLog : L"");
+                SetDlgItemTextW(hDlg, IDC_LOG_LAST_TEXT, lastLog);
                 SetPropW(hDlg, L"LastLogLength", (HANDLE)currentLastLen);
                 
                 // Scroll to bottom
@@ -2789,6 +2856,8 @@ INT_PTR CALLBACK LogViewerDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPA
                 SendMessageW(hLastText, EM_SCROLLCARET, 0, 0);
             }
             
+            SAFE_FREE(allLogs);
+            SAFE_FREE(lastLog);
             return TRUE;
         }
         
@@ -3015,6 +3084,108 @@ void ShowLogViewerDialog(HWND parent) {
 static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx);
 static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url);
 
+// Helper: Free a playlist result and the strings it owns
+static void MultiDl_FreePlaylistResult(MultiDlPlaylistResult* plResult) {
+    int i;
+
+    if (!plResult) return;
+    if (plResult->urls) {
+        for (i = 0; i < plResult->urlCount; i++) {
+            SAFE_FREE(plResult->urls[i]);
+        }
+        SAFE_FREE(plResult->urls);
+    }
+    if (plResult->titles) {
+        for (i = 0; i < plResult->urlCount; i++) {
+            SAFE_FREE(plResult->titles[i]);
+        }
+        SAFE_FREE(plResult->titles);
+    }
+    SAFE_FREE(plResult);
+}
+
+// Helper: Record an item's final status and tell the dialog about it
+static void MultiDl_FinishItem(MultiDownloadContext* ctx, int itemIndex, const wchar_t* url,
+                               BOOL success, const wchar_t* title, const wchar_t* filePath) {
+    MultiDlItemResult* itemResult;
+
+    // Update the counts before posting so the dialog sees them
+    EnterCriticalSection(&ctx->itemLock);
+    ctx->items[itemIndex].status = success ? MULTI_DL_COMPLETE : MULTI_DL_FAILED;
+    LeaveCriticalSection(&ctx->itemLock);
+
+    if (success) InterlockedIncrement(&ctx->completedCount);
+    else InterlockedIncrement(&ctx->failedCount);
+
+    itemResult = (MultiDlItemResult*)SAFE_MALLOC(sizeof(MultiDlItemResult));
+    if (itemResult) {
+        memset(itemResult, 0, sizeof(MultiDlItemResult));
+        itemResult->itemIndex = itemIndex;
+        itemResult->success = success;
+        if (url) {
+            wcsncpy(itemResult->url, url, MAX_URL_LENGTH - 1);
+        }
+        if (title) {
+            wcsncpy(itemResult->title, title, 511);
+        }
+        if (filePath) {
+            wcsncpy(itemResult->filePath, filePath, MAX_EXTENDED_PATH - 1);
+        }
+        if (!PostMessageW(ctx->hDialog, WM_MULTI_DL_ITEM_DONE, 0, (LPARAM)itemResult)) {
+            SAFE_FREE(itemResult);
+        }
+    }
+}
+
+// Helper: Replace a playlist item with its videos in the download queue.
+// Runs on the resolver thread so the videos are queued before downloads start.
+static BOOL MultiDl_QueuePlaylistVideos(MultiDownloadContext* ctx, const MultiDlPlaylistResult* plResult) {
+    BOOL queued = FALSE;
+    int needed;
+    int i;
+
+    // A video URL that could not be allocated fails the whole playlist
+    for (i = 0; i < plResult->urlCount; i++) {
+        if (!plResult->urls[i]) return FALSE;
+    }
+
+    EnterCriticalSection(&ctx->itemLock);
+
+    needed = ctx->itemCount + plResult->urlCount;
+    if (needed > ctx->itemCapacity) {
+        int newCap = needed * 2;
+        MultiDlItem* newItems = (MultiDlItem*)SAFE_REALLOC(ctx->items, sizeof(MultiDlItem) * newCap);
+        if (newItems) {
+            ctx->items = newItems;
+            ctx->itemCapacity = newCap;
+        }
+    }
+
+    if (ctx->itemCapacity >= needed) {
+        int addIdx;
+        for (addIdx = 0; addIdx < plResult->urlCount; addIdx++) {
+            int idx = ctx->itemCount;
+            memset(&ctx->items[idx], 0, sizeof(MultiDlItem));
+            if (plResult->urls[addIdx]) {
+                wcsncpy(ctx->items[idx].url, plResult->urls[addIdx], MAX_URL_LENGTH - 1);
+            }
+            if (plResult->titles[addIdx]) {
+                wcsncpy(ctx->items[idx].title, plResult->titles[addIdx], 511);
+            }
+            ctx->items[idx].status = MULTI_DL_PENDING;
+            ctx->itemCount++;
+        }
+
+        // The playlist itself is done, but it is not a download: its videos are counted instead
+        ctx->items[plResult->originalIndex].status = MULTI_DL_COMPLETE;
+        ctx->expandedCount++;
+        queued = TRUE;
+    }
+
+    LeaveCriticalSection(&ctx->itemLock);
+    return queued;
+}
+
 // Playlist resolver thread - runs --flat-playlist on background thread
 DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
     MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)lpParam;
@@ -3025,16 +3196,11 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
 
     MultiDownloadContext* ctx = workerCtx->batchCtx;
     int itemIndex = workerCtx->itemIndex;
+    BOOL queued = FALSE;
+    YtDlpRequest* request = NULL;
+    YtDlpResult* result = NULL;
 
     ThreadSafeDebugOutputF(L"MultiDlPlaylistResolverThread: Resolving playlist for item %d", itemIndex);
-
-    // Initialize config
-    YtDlpConfig config = {0};
-    if (!InitializeYtDlpConfig(&config)) {
-        ThreadSafeDebugOutput(L"MultiDlPlaylistResolverThread: Failed to init config");
-        SAFE_FREE(workerCtx);
-        return 1;
-    }
 
     // Get URL from item
     EnterCriticalSection(&ctx->itemLock);
@@ -3042,16 +3208,22 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
     wcsncpy(url, ctx->items[itemIndex].url, MAX_URL_LENGTH - 1); url[MAX_URL_LENGTH - 1] = L'\0';
     LeaveCriticalSection(&ctx->itemLock);
 
+    // Initialize config
+    YtDlpConfig config = {0};
+    BOOL configReady = InitializeYtDlpConfig(&config);
+    if (!configReady) {
+        ThreadSafeDebugOutput(L"MultiDlPlaylistResolverThread: Failed to init config");
+    }
+
     // Create request for flat-playlist
-    YtDlpRequest* request = CreateYtDlpRequest(YTDLP_OP_GET_PLAYLIST_INFO, url, NULL);
-    if (!request) {
-        CleanupYtDlpConfig(&config);
-        SAFE_FREE(workerCtx);
-        return 1;
+    if (configReady) {
+        request = CreateYtDlpRequest(YTDLP_OP_GET_PLAYLIST_INFO, url, NULL);
     }
 
     // Execute on this worker thread (blocking is fine - we're not on UI thread)
-    YtDlpResult* result = ExecuteYtDlpRequestThreadSafe(&config, request);
+    if (request) {
+        result = ExecuteYtDlpRequestThreadSafe(&config, request);
+    }
 
     if (result && result->success && result->output) {
         // Parse the playlist output
@@ -3077,81 +3249,352 @@ DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam) {
                             playlist.videos[pi].title ? playlist.videos[pi].title : L"Unknown");
                     }
 
-                    // Post result to dialog (UI thread will handle insertion)
-                    PostMessageW(ctx->hDialog, WM_MULTI_DL_PLAYLIST_RESOLVED, 0, (LPARAM)plResult);
+                    // Queue the videos now; the dialog only updates its URL list
+                    queued = MultiDl_QueuePlaylistVideos(ctx, plResult);
+                    if (queued && PostMessageW(ctx->hDialog, WM_MULTI_DL_PLAYLIST_RESOLVED, 0, (LPARAM)plResult)) {
+                        plResult = NULL;
+                    }
                 } else {
+                    // Only the pointer arrays that were allocated are freed below
                     SAFE_FREE(plResult->urls);
                     SAFE_FREE(plResult->titles);
-                    SAFE_FREE(plResult);
+                    plResult->urlCount = 0;
                 }
+                MultiDl_FreePlaylistResult(plResult);
             }
         }
         FreePlaylistMetadata(&playlist);
-    } else {
-        // Playlist resolution failed - mark item as failed
-        MultiDlItemResult* itemResult = (MultiDlItemResult*)SAFE_MALLOC(sizeof(MultiDlItemResult));
-        if (itemResult) {
-            memset(itemResult, 0, sizeof(MultiDlItemResult));
-            itemResult->itemIndex = itemIndex;
-            itemResult->success = FALSE;
-            wcsncpy(itemResult->url, url, MAX_URL_LENGTH - 1); itemResult->url[MAX_URL_LENGTH - 1] = L'\0';
-            wcscpy(itemResult->title, L"Playlist resolution failed");
-            PostMessageW(ctx->hDialog, WM_MULTI_DL_ITEM_DONE, 0, (LPARAM)itemResult);
-        }
+    }
+
+    // Resolving or queuing failed: the playlist counts as one failed item
+    if (!queued) {
+        ThreadSafeDebugOutputF(L"MultiDlPlaylistResolverThread: Failed to resolve or queue item %d", itemIndex);
+        MultiDl_FinishItem(ctx, itemIndex, url, FALSE, L"Playlist resolution failed", NULL);
     }
 
     if (result) FreeYtDlpResult(result);
-    FreeYtDlpRequest(request);
-    CleanupYtDlpConfig(&config);
+    if (request) FreeYtDlpRequest(request);
+    if (configReady) CleanupYtDlpConfig(&config);
     SAFE_FREE(workerCtx);
-    return 0;
+    return queued ? 0 : 1;
 }
 
+// Helper: Find the downloaded video file for a URL and add it to the cache.
+// Returns TRUE and fills filePath if a video file was found.
+static BOOL MultiDl_AddDownloadToCache(const wchar_t* url, const wchar_t* downloadPath,
+                                       const wchar_t* title, wchar_t* filePath, size_t filePathSize) {
+    wchar_t* videoId = ExtractVideoIdFromUrl(url);
+    wchar_t* videoPattern;
+    WIN32_FIND_DATAW findData;
+    HANDLE hFind;
+    FILETIME latestTime = {0};
+    BOOL found = FALSE;
+
+    if (!videoId) return FALSE;
+
+    videoPattern = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+    if (!videoPattern) {
+        SAFE_FREE(videoId);
+        return FALSE;
+    }
+
+    swprintf(videoPattern, MAX_EXTENDED_PATH, L"%ls\\*%ls*", downloadPath, videoId);
+    hFind = FindFirstFileW(videoPattern, &findData);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                wchar_t* ext = wcsrchr(findData.cFileName, L'.');
+                // Select the most recent video file (in case of multiple formats)
+                if (ext && IsVideoFileExtension(ext) &&
+                    (!found || CompareFileTime(&findData.ftLastWriteTime, &latestTime) > 0)) {
+                    swprintf(filePath, filePathSize, L"%ls\\%ls", downloadPath, findData.cFileName);
+                    latestTime = findData.ftLastWriteTime;
+                    found = TRUE;
+                }
+            }
+        } while (FindNextFileW(hFind, &findData));
+        FindClose(hFind);
+    }
+
+    if (found) {
+        wchar_t** subtitleFiles = NULL;
+        int subtitleCount = 0;
+        wchar_t* fileName = NULL;
+        int i;
+
+        FindSubtitleFiles(filePath, &subtitleFiles, &subtitleCount);
+        if (!title || !title[0]) {
+            fileName = ExtractFileNameFromPath(filePath);
+        }
+
+        AddCacheEntry(GetCacheManager(), videoId,
+                      (title && title[0]) ? title : (fileName ? fileName : filePath),
+                      L"Unknown", filePath, subtitleFiles, subtitleCount);
+
+        if (subtitleFiles) {
+            for (i = 0; i < subtitleCount; i++) {
+                SAFE_FREE(subtitleFiles[i]);
+            }
+            SAFE_FREE(subtitleFiles);
+        }
+        SAFE_FREE(fileName);
+    }
+
+    SAFE_FREE(videoPattern);
+    SAFE_FREE(videoId);
+    return found;
+}
+
+// Single download thread - downloads one URL
+DWORD WINAPI MultiDlSingleDownloadThread(LPVOID lpParam) {
+    MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)lpParam;
+    MultiDownloadContext* ctx;
+    int itemIndex;
+    wchar_t url[MAX_URL_LENGTH];
+    wchar_t title[512];
+    wchar_t* downloadPath = NULL;
+    wchar_t* tempDir = NULL;
+    wchar_t* filePath = NULL;
+    YtDlpConfig* config = NULL;
+    YtDlpRequest* request = NULL;
+    YtDlpResult* result = NULL;
+    BOOL configReady = FALSE;
+    BOOL tempDirReady = FALSE;
+    BOOL success = FALSE;
+    BOOL cached = FALSE;
+
+    if (!workerCtx || !workerCtx->batchCtx) {
+        SAFE_FREE(workerCtx);
+        return 1;
+    }
+
+    ctx = workerCtx->batchCtx;
+    itemIndex = workerCtx->itemIndex;
+    SAFE_FREE(workerCtx);
+
+    // Wait if paused, and don't start once a stop has been requested
+    WaitForSingleObject(ctx->hPauseEvent, INFINITE);
+    if (InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) {
+        return 1;
+    }
+
+    // Get URL from item
+    EnterCriticalSection(&ctx->itemLock);
+    wcsncpy(url, ctx->items[itemIndex].url, MAX_URL_LENGTH - 1); url[MAX_URL_LENGTH - 1] = L'\0';
+    wcsncpy(title, ctx->items[itemIndex].title, 511); title[511] = L'\0';
+    ctx->items[itemIndex].status = MULTI_DL_DOWNLOADING;
+    LeaveCriticalSection(&ctx->itemLock);
+
+    // Post progress update
+    {
+        MultiDlProgressData* progData = (MultiDlProgressData*)SAFE_MALLOC(sizeof(MultiDlProgressData));
+        if (progData) {
+            progData->itemIndex = itemIndex;
+            progData->percentage = 0;
+            swprintf(progData->status, 256, L"Starting download...");
+            if (!PostMessageW(ctx->hDialog, WM_MULTI_DL_PROGRESS, 0, (LPARAM)progData)) {
+                SAFE_FREE(progData);
+            }
+        }
+    }
+
+    ThreadSafeDebugOutputF(L"MultiDlSingleDownloadThread: Downloading item %d: %ls", itemIndex, url);
+
+    // Path buffers are large, so keep them off the thread's stack
+    config = (YtDlpConfig*)SAFE_MALLOC(sizeof(YtDlpConfig));
+    downloadPath = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+    tempDir = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+    filePath = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+
+    if (config && downloadPath && tempDir && filePath) {
+        memset(config, 0, sizeof(YtDlpConfig));
+        configReady = InitializeYtDlpConfig(config);
+    }
+
+    if (configReady) {
+        if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, downloadPath, MAX_EXTENDED_PATH)) {
+            GetDefaultDownloadPath(downloadPath, MAX_EXTENDED_PATH);
+        }
+
+        if (CreateDownloadDirectoryIfNeeded(downloadPath)) {
+            request = CreateYtDlpRequest(YTDLP_OP_DOWNLOAD, url, downloadPath);
+        }
+
+        if (request) {
+            tempDirReady = CreateTempDirectory(config, tempDir, MAX_EXTENDED_PATH) ||
+                           CreateYtDlpTempDirWithFallback(tempDir, MAX_EXTENDED_PATH);
+        }
+
+        if (tempDirReady) {
+            request->tempDir = SAFE_WCSDUP(tempDir);
+
+            // Execute download (blocking - fine on worker thread)
+            result = ExecuteYtDlpRequestThreadSafe(config, request);
+            success = (result && result->success);
+
+            if (success) {
+                filePath[0] = L'\0';
+                cached = MultiDl_AddDownloadToCache(url, downloadPath, title, filePath, MAX_EXTENDED_PATH);
+            }
+
+            CleanupTempDirectory(tempDir);
+        }
+    }
+
+    MultiDl_FinishItem(ctx, itemIndex, url, success, title, cached ? filePath : NULL);
+
+    if (result) FreeYtDlpResult(result);
+    if (request) FreeYtDlpRequest(request);
+    if (configReady) CleanupYtDlpConfig(config);
+    SAFE_FREE(config);
+    SAFE_FREE(downloadPath);
+    SAFE_FREE(tempDir);
+    SAFE_FREE(filePath);
+    return success ? 0 : 1;
+}
+
+// Coordinator thread - resolves playlists, then runs the downloads
 DWORD WINAPI MultiDlCoordinatorThread(LPVOID lpParam) {
     MultiDownloadContext* ctx = (MultiDownloadContext*)lpParam;
-    int i;
+    int i, t, nextItem, activeCount, itemToStart, maxConcurrent, itemCount;
+    HANDLE* activeThreads;
 
     if (!ctx) return 1;
 
     ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: Starting");
 
     // Phase 1: Resolve any playlist URLs first
-    for (i = 0; i < ctx->itemCount; i++) {
+    for (i = 0; ; i++) {
+        BOOL isPlaylist;
+
         if (InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) break;
 
         EnterCriticalSection(&ctx->itemLock);
-        {
-            BOOL isPlaylist = IsYouTubePlaylistURL(ctx->items[i].url);
-            if (isPlaylist) {
-                ctx->items[i].status = MULTI_DL_RESOLVING;
+        itemCount = ctx->itemCount;
+        isPlaylist = (i < itemCount) && IsYouTubePlaylistURL(ctx->items[i].url);
+        if (isPlaylist) {
+            ctx->items[i].status = MULTI_DL_RESOLVING;
+        }
+        LeaveCriticalSection(&ctx->itemLock);
+
+        if (i >= itemCount) break;
+
+        if (isPlaylist) {
+            wchar_t* statusMsg = SAFE_WCSDUP(L"Resolving playlist...");
+            if (statusMsg && !PostMessageW(ctx->hDialog, WM_MULTI_DL_STATUS, 0, (LPARAM)statusMsg)) {
+                SAFE_FREE(statusMsg);
             }
-            LeaveCriticalSection(&ctx->itemLock);
 
-            if (isPlaylist) {
-                wchar_t* statusMsg = SAFE_WCSDUP(L"Resolving playlist...");
-                if (statusMsg) {
-                    PostMessageW(ctx->hDialog, WM_MULTI_DL_STATUS, 0, (LPARAM)statusMsg);
+            {
+                MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
+                HANDLE hThread = NULL;
+                if (workerCtx) {
+                    workerCtx->batchCtx = ctx;
+                    workerCtx->itemIndex = i;
+                    hThread = CreateThread(NULL, 0, MultiDlPlaylistResolverThread, workerCtx, 0, NULL);
+                    if (!hThread) SAFE_FREE(workerCtx);
                 }
-
-                {
-                    MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
-                    if (workerCtx) {
-                        HANDLE hThread;
-                        workerCtx->batchCtx = ctx;
-                        workerCtx->itemIndex = i;
-                        hThread = CreateThread(NULL, 0, MultiDlPlaylistResolverThread, workerCtx, 0, NULL);
-                        if (hThread) {
-                            WaitForSingleObject(hThread, INFINITE);
-                            CloseHandle(hThread);
-                        } else {
-                            SAFE_FREE(workerCtx);
-                        }
-                    }
+                if (hThread) {
+                    WaitForSingleObject(hThread, INFINITE);
+                    CloseHandle(hThread);
+                } else {
+                    // The resolver never ran: count the playlist as failed
+                    wchar_t failedUrl[MAX_URL_LENGTH];
+                    EnterCriticalSection(&ctx->itemLock);
+                    wcsncpy(failedUrl, ctx->items[i].url, MAX_URL_LENGTH - 1);
+                    failedUrl[MAX_URL_LENGTH - 1] = L'\0';
+                    LeaveCriticalSection(&ctx->itemLock);
+                    MultiDl_FinishItem(ctx, i, failedUrl, FALSE, L"Playlist resolution failed", NULL);
                 }
-                Sleep(100);
             }
         }
     }
+
+    // Phase 2: Download all pending items in parallel (up to maxConcurrent)
+    maxConcurrent = ctx->maxConcurrent > 0 ? ctx->maxConcurrent : 1;
+    activeThreads = (HANDLE*)SAFE_MALLOC(sizeof(HANDLE) * maxConcurrent);
+    if (!activeThreads) {
+        ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: Out of memory");
+        PostMessageW(ctx->hDialog, WM_MULTI_DL_ALL_DONE, 0, 0);
+        return 1;
+    }
+    memset(activeThreads, 0, sizeof(HANDLE) * maxConcurrent);
+    activeCount = 0;
+    nextItem = 0;
+
+    while (!InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) {
+        // While paused, start nothing new; active downloads carry on
+        WaitForSingleObject(ctx->hPauseEvent, INFINITE);
+        if (InterlockedCompareExchange(&ctx->stopRequested, 0, 0)) break;
+
+        // Clean up finished threads
+        for (t = 0; t < maxConcurrent; t++) {
+            if (activeThreads[t] && WaitForSingleObject(activeThreads[t], 0) == WAIT_OBJECT_0) {
+                CloseHandle(activeThreads[t]);
+                activeThreads[t] = NULL;
+                activeCount--;
+            }
+        }
+
+        // Find the next pending item, but only when a slot is free
+        itemToStart = -1;
+        if (activeCount < maxConcurrent) {
+            EnterCriticalSection(&ctx->itemLock);
+            while (nextItem < ctx->itemCount) {
+                if (ctx->items[nextItem++].status == MULTI_DL_PENDING) {
+                    itemToStart = nextItem - 1;
+                    break;
+                }
+            }
+            LeaveCriticalSection(&ctx->itemLock);
+        }
+
+        if (itemToStart >= 0) {
+            MultiDlWorkerContext* workerCtx = (MultiDlWorkerContext*)SAFE_MALLOC(sizeof(MultiDlWorkerContext));
+            HANDLE hThread = NULL;
+
+            if (workerCtx) {
+                workerCtx->batchCtx = ctx;
+                workerCtx->itemIndex = itemToStart;
+                hThread = CreateThread(NULL, 0, MultiDlSingleDownloadThread, workerCtx, 0, NULL);
+                if (!hThread) SAFE_FREE(workerCtx);
+            }
+
+            if (hThread) {
+                for (t = 0; t < maxConcurrent; t++) {
+                    if (!activeThreads[t]) {
+                        activeThreads[t] = hThread;
+                        activeCount++;
+                        break;
+                    }
+                }
+            } else {
+                wchar_t failedUrl[MAX_URL_LENGTH];
+                EnterCriticalSection(&ctx->itemLock);
+                wcsncpy(failedUrl, ctx->items[itemToStart].url, MAX_URL_LENGTH - 1);
+                failedUrl[MAX_URL_LENGTH - 1] = L'\0';
+                LeaveCriticalSection(&ctx->itemLock);
+                MultiDl_FinishItem(ctx, itemToStart, failedUrl, FALSE, NULL, NULL);
+            }
+            continue;
+        }
+
+        // No more items to start and no active threads = done
+        if (activeCount == 0) {
+            break;
+        }
+
+        Sleep(200);
+    }
+
+    // Wait for every download thread: they all use ctx
+    for (t = 0; t < maxConcurrent; t++) {
+        if (activeThreads[t]) {
+            WaitForSingleObject(activeThreads[t], INFINITE);
+            CloseHandle(activeThreads[t]);
+        }
+    }
+    SAFE_FREE(activeThreads);
 
     ThreadSafeDebugOutput(L"MultiDlCoordinatorThread: All done");
     PostMessageW(ctx->hDialog, WM_MULTI_DL_ALL_DONE, 0, 0);
@@ -3167,7 +3610,9 @@ static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx) {
     if (!ctx) return;
     completed = InterlockedCompareExchange(&ctx->completedCount, 0, 0);
     failed = InterlockedCompareExchange(&ctx->failedCount, 0, 0);
-    remaining = ctx->itemCount - (int)completed - (int)failed;
+    EnterCriticalSection(&ctx->itemLock);
+    remaining = ctx->itemCount - ctx->expandedCount - (int)completed - (int)failed;
+    LeaveCriticalSection(&ctx->itemLock);
     if (remaining < 0) remaining = 0;
 
     swprintf(status, 256, L"Status: %d completed, %d failed, %d remaining",
@@ -3175,12 +3620,60 @@ static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx) {
     SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, status);
 }
 
+// Helper: Remove the first line of text that equals url, ignoring the spaces and
+// tabs around it (the multi-download parser trims those too). A line that merely
+// contains url is left alone. Returns TRUE if a line was removed.
+BOOL MultiDl_RemoveExactLine(wchar_t* text, const wchar_t* url) {
+    size_t urlLen;
+    wchar_t* lineStart;
+
+    if (!text || !url) return FALSE;
+    urlLen = wcslen(url);
+    if (urlLen == 0) return FALSE;
+
+    lineStart = text;
+    while (*lineStart) {
+        wchar_t* lineEnd = lineStart;
+        wchar_t* contentStart;
+        wchar_t* contentEnd;
+
+        while (*lineEnd && *lineEnd != L'\r' && *lineEnd != L'\n') lineEnd++;
+
+        contentStart = lineStart;
+        contentEnd = lineEnd;
+        while (contentStart < contentEnd && (*contentStart == L' ' || *contentStart == L'\t')) contentStart++;
+        while (contentEnd > contentStart && (*(contentEnd - 1) == L' ' || *(contentEnd - 1) == L'\t')) contentEnd--;
+
+        if ((size_t)(contentEnd - contentStart) == urlLen &&
+            wcsncmp(contentStart, url, urlLen) == 0) {
+            wchar_t* removeStart = lineStart;
+            wchar_t* removeEnd = lineEnd;
+
+            // Take the line's own terminator, or the previous one for the last line
+            if (*removeEnd == L'\r' && *(removeEnd + 1) == L'\n') removeEnd += 2;
+            else if (*removeEnd == L'\r' || *removeEnd == L'\n') removeEnd++;
+            else if (removeStart > text) {
+                removeStart--;
+                if (*removeStart == L'\n' && removeStart > text && *(removeStart - 1) == L'\r') removeStart--;
+            }
+
+            memmove(removeStart, removeEnd, (wcslen(removeEnd) + 1) * sizeof(wchar_t));
+            return TRUE;
+        }
+
+        if (*lineEnd == L'\r' && *(lineEnd + 1) == L'\n') lineStart = lineEnd + 2;
+        else if (*lineEnd) lineStart = lineEnd + 1;
+        else lineStart = lineEnd;
+    }
+
+    return FALSE;
+}
+
 // Helper: Remove a URL line from the edit control
 static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url) {
     HWND hEdit = GetDlgItem(hDlg, IDC_MULTI_URL_EDIT);
     int textLen;
     wchar_t* text;
-    wchar_t* found;
 
     if (!hEdit || !url) return;
 
@@ -3192,16 +3685,7 @@ static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url) {
 
     GetWindowTextW(hEdit, text, textLen + 1);
 
-    found = wcsstr(text, url);
-    if (found) {
-        wchar_t* lineStart = found;
-        wchar_t* lineEnd = found + wcslen(url);
-
-        while (lineStart > text && *(lineStart - 1) != L'\n') lineStart--;
-        while (*lineEnd && *lineEnd != L'\r' && *lineEnd != L'\n') lineEnd++;
-        while (*lineEnd == L'\r' || *lineEnd == L'\n') lineEnd++;
-
-        memmove(lineStart, lineEnd, (wcslen(lineEnd) + 1) * sizeof(wchar_t));
+    if (MultiDl_RemoveExactLine(text, url)) {
         SetWindowTextW(hEdit, text);
     }
 
@@ -3211,6 +3695,7 @@ static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url) {
 // Multi-Download Dialog Procedure
 INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     static const wchar_t* PROP_CTX = L"MultiDlCtx";
+    static const wchar_t* PROP_CLOSING = L"MultiDlClosing";
 
     switch (message) {
         case WM_INITDIALOG: {
@@ -3302,6 +3787,10 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     wchar_t* tokCtx;
                     wchar_t* line;
                     MultiDownloadContext* ctx;
+                    int skippedCount = 0;
+                    wchar_t skippedList[4096];
+
+                    skippedList[0] = L'\0';
 
                     if (textLen == 0) {
                         UnifiedDialogConfig config = {0};
@@ -3337,14 +3826,24 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                             line[--len] = L'\0';
                         }
 
-                        if (len > 0) {
-                            if (count >= capacity) {
-                                MultiDlItem* newItems;
-                                capacity *= 2;
-                                newItems = (MultiDlItem*)SAFE_REALLOC(items, sizeof(MultiDlItem) * capacity);
-                                if (!newItems) break;
+                        if (len > 0 && skippedCount == 0 && count >= capacity) {
+                            // Only record the new capacity once the allocation has succeeded
+                            MultiDlItem* newItems = (MultiDlItem*)SAFE_REALLOC(items, sizeof(MultiDlItem) * capacity * 2);
+                            if (newItems) {
                                 items = newItems;
+                                capacity *= 2;
                             }
+                        }
+
+                        if (len > 0 && (skippedCount > 0 || count >= capacity)) {
+                            // Out of memory: remember this URL so it can be reported
+                            size_t used = wcslen(skippedList);
+                            if (used + len + 3 < sizeof(skippedList) / sizeof(skippedList[0])) {
+                                wcscat(skippedList, line);
+                                wcscat(skippedList, L"\r\n");
+                            }
+                            skippedCount++;
+                        } else if (len > 0) {
                             memset(&items[count], 0, sizeof(MultiDlItem));
                             wcsncpy(items[count].url, line, MAX_URL_LENGTH - 1);
                             items[count].status = MULTI_DL_PENDING;
@@ -3355,6 +3854,22 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     }
 
                     SAFE_FREE(allText);
+
+                    if (skippedCount > 0) {
+                        UnifiedDialogConfig config = {0};
+                        wchar_t message[256];
+                        swprintf(message, 256,
+                                 L"Not enough memory to queue every URL. %d URL(s) could not be added and will not be downloaded.",
+                                 skippedCount);
+                        config.dialogType = UNIFIED_DIALOG_WARNING;
+                        config.title = L"Some URLs Not Added";
+                        config.message = message;
+                        config.details = skippedList;
+                        config.tab1_name = L"Skipped URLs";
+                        config.showDetailsButton = TRUE;
+                        config.showCopyButton = TRUE;
+                        ShowUnifiedDialog(hDlg, &config);
+                    }
 
                     if (count == 0) {
                         SAFE_FREE(items);
@@ -3396,6 +3911,13 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
                     ctx->hCoordinatorThread = CreateWorkerThread(MultiDlCoordinatorThread, ctx);
                     if (!ctx->hCoordinatorThread) {
+                        // No thread uses ctx, so it can be freed right away
+                        RemovePropW(hDlg, PROP_CTX);
+                        DeleteCriticalSection(&ctx->itemLock);
+                        if (ctx->hPauseEvent) CloseHandle(ctx->hPauseEvent);
+                        SAFE_FREE(ctx->items);
+                        SAFE_FREE(ctx);
+
                         SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, L"Status: Failed to start downloads");
                         EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), TRUE);
                         EnableWindow(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), FALSE);
@@ -3438,18 +3960,17 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
                 case IDCANCEL: {
                     MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
-                    if (ctx && ctx->hCoordinatorThread) {
+                    if (ctx) {
+                        // Worker threads still use ctx. Ask them to stop and hide the
+                        // dialog; WM_MULTI_DL_ALL_DONE frees ctx and ends the dialog
+                        // once the coordinator has joined every thread.
+                        HWND hOwner = GetWindow(hDlg, GW_OWNER);
                         InterlockedExchange(&ctx->stopRequested, 1);
                         SetEvent(ctx->hPauseEvent);
-                        WaitForSingleObject(ctx->hCoordinatorThread, 5000);
-                        CloseHandle(ctx->hCoordinatorThread);
-                        ctx->hCoordinatorThread = NULL;
-
-                        DeleteCriticalSection(&ctx->itemLock);
-                        if (ctx->hPauseEvent) CloseHandle(ctx->hPauseEvent);
-                        SAFE_FREE(ctx->items);
-                        SAFE_FREE(ctx);
-                        RemovePropW(hDlg, PROP_CTX);
+                        SetPropW(hDlg, PROP_CLOSING, (HANDLE)1);
+                        ShowWindow(hDlg, SW_HIDE);
+                        if (hOwner) EnableWindow(hOwner, TRUE);
+                        return TRUE;
                     }
                     EndDialog(hDlg, IDCANCEL);
                     return TRUE;
@@ -3493,6 +4014,12 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                         MultiDl_RemoveUrlLineFromEdit(hDlg, itemResult->url);
                     }
 
+                    // A download was added to the cache: refresh the main window's list
+                    if (itemResult->success && itemResult->filePath[0] && ctx->hMainWindow) {
+                        RefreshCacheList(GetDlgItem(ctx->hMainWindow, IDC_LIST), GetCacheManager());
+                        UpdateCacheListStatus(ctx->hMainWindow, GetCacheManager());
+                    }
+
                     MultiDl_UpdateStatusLabel(hDlg, ctx);
                 }
                 SAFE_FREE(itemResult);
@@ -3508,7 +4035,10 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
 
                 MultiDl_UpdateStatusLabel(hDlg, ctx);
 
+                // The coordinator posts this as its last act, after joining every
+                // worker, so this wait is brief; afterwards no thread uses ctx.
                 if (ctx->hCoordinatorThread) {
+                    WaitForSingleObject(ctx->hCoordinatorThread, INFINITE);
                     CloseHandle(ctx->hCoordinatorThread);
                     ctx->hCoordinatorThread = NULL;
                 }
@@ -3527,6 +4057,12 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 RemovePropW(hDlg, PROP_CTX);
             }
 
+            // The user closed the dialog while threads were still running
+            if (RemovePropW(hDlg, PROP_CLOSING)) {
+                EndDialog(hDlg, IDCANCEL);
+                return TRUE;
+            }
+
             EnableWindow(GetDlgItem(hDlg, IDC_MULTI_DOWNLOAD_BTN), TRUE);
             EnableWindow(GetDlgItem(hDlg, IDC_MULTI_PAUSE_BTN), FALSE);
             EnableWindow(GetDlgItem(hDlg, IDC_MULTI_STOP_BTN), FALSE);
@@ -3540,45 +4076,17 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                 MultiDownloadContext* ctx = (MultiDownloadContext*)GetPropW(hDlg, PROP_CTX);
                 if (ctx && plResult->urlCount > 0) {
                     wchar_t origUrl[MAX_URL_LENGTH] = {0};
+                    int downloadCount = 0;
 
+                    // The resolver thread has already queued the videos; show them in the list
                     EnterCriticalSection(&ctx->itemLock);
-
                     if (plResult->originalIndex >= 0 && plResult->originalIndex < ctx->itemCount) {
                         wcsncpy(origUrl, ctx->items[plResult->originalIndex].url, MAX_URL_LENGTH - 1); origUrl[MAX_URL_LENGTH - 1] = L'\0';
-                        ctx->items[plResult->originalIndex].status = MULTI_DL_COMPLETE;
-                        InterlockedIncrement(&ctx->completedCount);
                     }
-
-                    {
-                        int needed = ctx->itemCount + plResult->urlCount;
-                        if (needed > ctx->itemCapacity) {
-                            int newCap = needed * 2;
-                            MultiDlItem* newItems = (MultiDlItem*)SAFE_REALLOC(ctx->items, sizeof(MultiDlItem) * newCap);
-                            if (newItems) {
-                                ctx->items = newItems;
-                                ctx->itemCapacity = newCap;
-                            }
-                        }
-
-                        if (ctx->itemCapacity >= needed) {
-                            int addIdx;
-                            for (addIdx = 0; addIdx < plResult->urlCount; addIdx++) {
-                                int idx = ctx->itemCount;
-                                memset(&ctx->items[idx], 0, sizeof(MultiDlItem));
-                                if (plResult->urls[addIdx]) {
-                                    wcsncpy(ctx->items[idx].url, plResult->urls[addIdx], MAX_URL_LENGTH - 1);
-                                }
-                                if (plResult->titles[addIdx]) {
-                                    wcsncpy(ctx->items[idx].title, plResult->titles[addIdx], 511);
-                                }
-                                ctx->items[idx].status = MULTI_DL_PENDING;
-                                ctx->itemCount++;
-                            }
-                            SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETRANGE32, 0, ctx->itemCount);
-                        }
-                    }
-
+                    downloadCount = ctx->itemCount - ctx->expandedCount;
                     LeaveCriticalSection(&ctx->itemLock);
+
+                    SendDlgItemMessageW(hDlg, IDC_MULTI_PROGRESS_BAR, PBM_SETRANGE32, 0, downloadCount);
 
                     if (origUrl[0]) {
                         MultiDl_RemoveUrlLineFromEdit(hDlg, origUrl);
@@ -3602,22 +4110,7 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                     MultiDl_UpdateStatusLabel(hDlg, ctx);
                 }
 
-                {
-                    int freeIdx;
-                    if (plResult->urls) {
-                        for (freeIdx = 0; freeIdx < plResult->urlCount; freeIdx++) {
-                            SAFE_FREE(plResult->urls[freeIdx]);
-                        }
-                        SAFE_FREE(plResult->urls);
-                    }
-                    if (plResult->titles) {
-                        for (freeIdx = 0; freeIdx < plResult->urlCount; freeIdx++) {
-                            SAFE_FREE(plResult->titles[freeIdx]);
-                        }
-                        SAFE_FREE(plResult->titles);
-                    }
-                }
-                SAFE_FREE(plResult);
+                MultiDl_FreePlaylistResult(plResult);
             }
             return TRUE;
         }

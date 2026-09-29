@@ -110,14 +110,13 @@ CachedVideoMetadata* GetCachedVideoMetadata(void);
 // yt-dlp output buffer functions
 void ClearYtDlpOutputBuffer(void);
 void AppendToYtDlpOutputBuffer(const wchar_t* output);
-const wchar_t* GetYtDlpOutputBuffer(void);
+wchar_t* CopyYtDlpOutputBuffer(void);  // Copy taken under the lock; free with SAFE_FREE
 size_t GetYtDlpOutputBufferSize(void);
 
 // yt-dlp session log functions (in-memory only, separate from disk logging)
 void StartNewYtDlpInvocation(void);  // Clears "last run" log, prepares for new invocation
 void AppendToYtDlpSessionLog(const wchar_t* output);  // Appends to both "all" and "last" logs
-const wchar_t* GetYtDlpSessionLogAll(void);
-const wchar_t* GetYtDlpSessionLogLast(void);
+wchar_t* CopyYtDlpSessionLog(BOOL lastRun, size_t fromOffset, size_t* totalLength);  // Copy taken under the lock; free with SAFE_FREE
 
 // Brush type constants
 #define BRUSH_WHITE         0
