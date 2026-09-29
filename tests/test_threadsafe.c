@@ -5,7 +5,29 @@
 #define ReadFile Test_ReadFile
 #define MultiByteToWideChar Test_MultiByteToWideChar
 
+// Observable process kill and a reader thread that can be made to hang
+#define TerminateProcess Test_TerminateProcess
+#define WaitForSingleObject Test_WaitForSingleObject
+
 #include "mock_windows.h"
+
+#define TEST_READER_THREAD ((HANDLE)0x77)
+#define TEST_HUNG_PROCESS ((HANDLE)0x55)
+static int g_terminateCalls = 0;
+static BOOL g_readerStuck = FALSE;
+
+static BOOL Test_TerminateProcess(HANDLE h, DWORD code) {
+    (void)h; (void)code;
+    g_terminateCalls++;
+    return TRUE;
+}
+
+static DWORD Test_WaitForSingleObject(HANDLE h, DWORD ms) {
+    (void)ms;
+    if (h == TEST_READER_THREAD && g_readerStuck) return WAIT_TIMEOUT;
+    if (h == TEST_HUNG_PROCESS && g_terminateCalls == 0) return WAIT_TIMEOUT;
+    return WAIT_OBJECT_0;
+}
 
 static const char* g_pipeData = NULL;
 static size_t g_pipeSize = 0;
@@ -114,6 +136,7 @@ typedef struct {
     DWORD threadId;
     HANDLE hOutputRead;
     HANDLE hOutputWrite;
+    HANDLE hReaderThread;
 } ThreadSafeSubprocessContext;
 
 // Forward declarations of functions in threadsafe.c that are used before they are defined
@@ -429,6 +452,60 @@ int test_output_reader() {
     return 0;
 }
 
+int test_cleanup_running() {
+    printf("Starting CleanupThreadSafeSubprocessContext tests...\n");
+
+    // A running child with a reader thread: cleanup must kill the child and
+    // join the reader before it marks the context uninitialized
+    printf("Testing cleanup kills the child and joins the reader... ");
+    ThreadSafeSubprocessContext context;
+    InitializeThreadSafeSubprocessContext(&context);
+    context.hProcess = TEST_HUNG_PROCESS; // Exits only once terminated
+    context.hOutputRead = (HANDLE)1;
+    context.processRunning = TRUE;
+    context.hReaderThread = TEST_READER_THREAD;
+    g_terminateCalls = 0;
+    g_readerStuck = FALSE;
+    if (!CleanupThreadSafeSubprocessContext(&context)) {
+        printf("FAILED (cleanup returned FALSE)\n");
+        return 1;
+    }
+    if (g_terminateCalls == 0) {
+        printf("FAILED (child was not terminated)\n");
+        return 1;
+    }
+    if (context.initialized || context.hReaderThread != NULL) {
+        printf("FAILED (context not cleaned up)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    // A reader that never exits: the context must stay allocated for it
+    printf("Testing cleanup leaves the context to a hung reader... ");
+    InitializeThreadSafeSubprocessContext(&context);
+    context.hProcess = (HANDLE)1;
+    context.processRunning = TRUE;
+    context.hReaderThread = TEST_READER_THREAD;
+    g_readerStuck = TRUE;
+    if (CleanupThreadSafeSubprocessContext(&context)) {
+        printf("FAILED (cleanup returned TRUE with the reader still running)\n");
+        return 1;
+    }
+    if (!context.initialized || context.outputBuffer == NULL || !context.cancellationRequested) {
+        printf("FAILED (context was torn down under the reader)\n");
+        return 1;
+    }
+    g_readerStuck = FALSE;
+    if (!CleanupThreadSafeSubprocessContext(&context) || context.initialized) {
+        printf("FAILED (cleanup did not finish once the reader exited)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    printf("All CleanupThreadSafeSubprocessContext tests passed successfully!\n");
+    return 0;
+}
+
 int main() {
     if (test_initialization() != 0) return 1;
     if (test_set_executable() != 0) return 1;
@@ -436,5 +513,6 @@ int main() {
     if (test_clear_and_dir_null() != 0) return 1;
     if (test_exit_code() != 0) return 1;
     if (test_output_reader() != 0) return 1;
+    if (test_cleanup_running() != 0) return 1;
     return 0;
 }

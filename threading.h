@@ -182,6 +182,7 @@ typedef struct {
     // Output management (protected by outputLock)
     HANDLE hOutputRead;
     HANDLE hOutputWrite;
+    HANDLE hReaderThread;   // Output reader thread; joined and closed by cleanup
     wchar_t* outputBuffer;
     size_t outputBufferSize;
     size_t outputLength;
@@ -208,7 +209,9 @@ typedef struct {
 
 // Thread-safe subprocess management functions
 BOOL InitializeThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
-void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
+// Returns FALSE if the output reader thread could not be stopped; the context
+// is then left allocated for that thread and the caller must not free it
+BOOL CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
 BOOL SetSubprocessExecutable(ThreadSafeSubprocessContext* context, const wchar_t* path);
 BOOL SetSubprocessArguments(ThreadSafeSubprocessContext* context, const wchar_t* args);
 BOOL SetSubprocessWorkingDirectory(ThreadSafeSubprocessContext* context, const wchar_t* dir);

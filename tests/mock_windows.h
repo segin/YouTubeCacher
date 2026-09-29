@@ -163,6 +163,8 @@ static inline DWORD GetLastError(void) {
 #define CP_UTF8 65001
 #define STILL_ACTIVE 259
 #define WAIT_OBJECT_0 0
+#define WAIT_TIMEOUT 258
+#define INFINITE 0xFFFFFFFF
 #define ERROR_BROKEN_PIPE 109
 
 #define GENERIC_READ 0x80000000
@@ -264,15 +266,19 @@ static inline BOOL GetExitCodeProcess(HANDLE h, DWORD* code) {
     return TRUE;
 }
 
+#ifndef TerminateProcess
 static inline BOOL TerminateProcess(HANDLE h, DWORD code) {
     (void)h; (void)code;
     return TRUE;
 }
+#endif
 
+#ifndef WaitForSingleObject
 static inline DWORD WaitForSingleObject(HANDLE h, DWORD ms) {
     (void)h; (void)ms;
     return WAIT_OBJECT_0;
 }
+#endif
 
 static inline BOOL CreatePipe(HANDLE* read, HANDLE* write, LPSECURITY_ATTRIBUTES sa, DWORD size) {
     (void)read; (void)write; (void)sa; (void)size;

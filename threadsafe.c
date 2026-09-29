@@ -270,27 +270,30 @@ BOOL InitializeThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context)
 
 /**
  * Clean up a thread-safe subprocess context
- * Releases all resources and critical sections
+ * Stops the child process and joins the output reader thread, then releases
+ * all resources and critical sections.
+ * Returns FALSE if the reader thread did not exit: the context is then left
+ * initialized and allocated for that thread, and the caller must not free it.
  */
-void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
+BOOL CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     if (!context) {
-        return;
+        return TRUE;
     }
-    
+
     // Defensive: Check if context memory looks valid
     // If initialized flag is corrupted (not 0 or 1), bail out
     if (context->initialized != TRUE && context->initialized != FALSE) {
         OutputDebugStringW(L"CleanupThreadSafeSubprocessContext: Context appears corrupted, skipping cleanup\r\n");
-        return;
+        return FALSE;
     }
-    
+
     // Check if already cleaned up to prevent double-cleanup
     if (!context->initialized) {
-        return;
+        return TRUE;
     }
-    
-    // Mark as not initialized immediately to prevent re-entry
-    context->initialized = FALSE;
+
+    // Stop the child and the reader while the context is still initialized:
+    // the cancel, wait and kill functions do nothing on an uninitialized context
 
     // Only cancel if the process is still running
     // If it's already completed, no need to cancel
@@ -304,6 +307,25 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
         // Force terminate if still running
         ForceKillThreadSafeSubprocess(context);
     }
+
+    // Join the output reader thread before anything it uses is freed.
+    // Give it time to drain the pipe first, then ask it to stop.
+    if (context->hReaderThread) {
+        if (WaitForSingleObject(context->hReaderThread, 2000) == WAIT_TIMEOUT) {
+            context->cancellationRequested = TRUE;
+            if (WaitForSingleObject(context->hReaderThread, 5000) == WAIT_TIMEOUT) {
+                // Fallback: leave the context to the still-running reader.
+                // Leaking it is safe; freeing it under the reader is not.
+                ThreadSafeDebugOutput(L"CleanupThreadSafeSubprocessContext: Output reader did not exit, leaving context allocated");
+                return FALSE;
+            }
+        }
+        CloseHandle(context->hReaderThread);
+        context->hReaderThread = NULL;
+    }
+
+    // Nothing else uses the context now; mark it cleaned up
+    context->initialized = FALSE;
 
     // Clean up configuration strings - skip if critical sections are corrupted
     // Just free the memory directly without using locks since we're cleaning up anyway
@@ -351,11 +373,12 @@ void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     }
 
     // Delete critical sections
-    // Note: initialized was already set to FALSE at the start of this function
+    // Note: initialized was already set to FALSE above
     // The initialized check at the start of this function should prevent double-deletion
     DeleteCriticalSection(&context->processStateLock);
     DeleteCriticalSection(&context->outputLock);
     DeleteCriticalSection(&context->configLock);
+    return TRUE;
 }
 
 /**
@@ -1175,6 +1198,11 @@ BOOL StartThreadSafeSubprocessOutputCollection(ThreadSafeSubprocessContext* cont
         return FALSE;
     }
 
+    // One reader per context: cleanup joins the one handle it keeps
+    if (context->hReaderThread) {
+        return FALSE;
+    }
+
     // Create output reader thread
     HANDLE hOutputThread = CreateThread(
         NULL,                           // Default security attributes
@@ -1190,8 +1218,8 @@ BOOL StartThreadSafeSubprocessOutputCollection(ThreadSafeSubprocessContext* cont
         return FALSE;
     }
 
-    // Store the thread handle for cleanup (we'll close it immediately since we don't need to wait for it)
-    CloseHandle(hOutputThread);
+    // Keep the thread handle: cleanup must join the reader before freeing the context
+    context->hReaderThread = hOutputThread;
     
     ThreadSafeDebugOutput(L"StartThreadSafeSubprocessOutputCollection: Output collection thread started");
     return TRUE;
@@ -1351,8 +1379,9 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     if (!GetYtDlpArgsForOperation(legacyContext->request->operation, legacyContext->request->url, 
                                  legacyContext->request->outputPath, legacyContext->config, arguments, 4096)) {
         ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to build arguments");
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         legacyContext->completed = TRUE;
         return 1;
     }
@@ -1367,8 +1396,9 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     // Execute the subprocess with output collection
     if (!ExecuteThreadSafeSubprocessWithOutput(context)) {
         ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to start subprocess");
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         legacyContext->completed = TRUE;
         return 1;
     }
@@ -1377,8 +1407,9 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     if (!WaitForThreadSafeSubprocessWithOutputCompletion(context, 300000)) {
         ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Subprocess timed out");
         CancelThreadSafeSubprocess(context);
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         legacyContext->completed = TRUE;
         return 1;
     }
@@ -1387,8 +1418,9 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     YtDlpResult* result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
     if (!result) {
         ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Failed to allocate result");
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         legacyContext->completed = TRUE;
         return 1;
     }
@@ -1436,8 +1468,9 @@ DWORD WINAPI ThreadSafeSubprocessWorkerThread(LPVOID lpParam) {
     LeaveCriticalSection(&legacyContext->threadContext.criticalSection);
 
     // Clean up thread-safe context
-    CleanupThreadSafeSubprocessContext(context);
-    SAFE_FREE(context);
+    if (CleanupThreadSafeSubprocessContext(context)) {
+        SAFE_FREE(context);
+    }
 
     ThreadSafeDebugOutput(L"ThreadSafeSubprocessWorkerThread: Thread-safe worker completed successfully");
     return 0;

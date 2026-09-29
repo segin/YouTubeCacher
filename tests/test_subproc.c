@@ -79,6 +79,7 @@ typedef struct {
     DWORD exitCode;
     HANDLE hOutputRead;
     HANDLE hOutputWrite;
+    HANDLE hReaderThread;
     wchar_t* outputBuffer;
     size_t outputBufferSize;
     size_t outputLength;
@@ -122,8 +123,8 @@ void AppendToYtDlpSessionLog(const wchar_t* msg) { (void)msg; }
 BOOL InitializeThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
     (void)context; return TRUE;
 }
-void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
-    (void)context;
+BOOL CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context) {
+    (void)context; return TRUE;
 }
 BOOL SetSubprocessExecutable(ThreadSafeSubprocessContext* context, const wchar_t* path) {
     (void)context; (void)path; return TRUE;
