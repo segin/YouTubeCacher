@@ -16,6 +16,19 @@ static unsigned int GetCacheHash(const wchar_t* videoId) {
     return hash % CACHE_HASH_BUCKETS;
 }
 
+// Parse a subtitle count from the cache index; accepts only 0..MAX_CACHE_SUBTITLES
+static BOOL ParseSubtitleCount(const wchar_t* token, int* count) {
+    if (!token || !count) return FALSE;
+
+    wchar_t* end = NULL;
+    long value = wcstol(token, &end, 10);
+    if (end == token || *end != L'\0') return FALSE; // Not a plain number
+    if (value < 0 || value > MAX_CACHE_SUBTITLES) return FALSE;
+
+    *count = (int)value;
+    return TRUE;
+}
+
 // Enhanced file operation error handling macro for cache operations
 #define CHECK_FILE_OPERATION_WITH_CONTEXT(call, operation_name, file_path, cleanup_label) \
     do { \
@@ -404,8 +417,14 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
         // Parse subtitle count and files (simplified for performance)
         wchar_t* subtitleCountToken = wcstok(NULL, L"|", &context);
         if (subtitleCountToken) {
-            entry->subtitleCount = _wtoi(subtitleCountToken);
-            if (entry->subtitleCount > 0 && entry->subtitleCount <= 100) { // Reasonable limit
+            if (!ParseSubtitleCount(subtitleCountToken, &entry->subtitleCount)) {
+                // Count missing, malformed or outside 0..MAX_CACHE_SUBTITLES - invalid entry
+                FreeCacheEntry(entry);
+                SAFE_FREE(wideLine);
+                invalidEntries++;
+                continue;
+            }
+            if (entry->subtitleCount > 0) {
                 entry->subtitleFiles = (wchar_t**)SAFE_MALLOC(entry->subtitleCount * sizeof(wchar_t*));
                 if (entry->subtitleFiles) {
                     memset(entry->subtitleFiles, 0, entry->subtitleCount * sizeof(wchar_t*));

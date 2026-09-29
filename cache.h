@@ -40,6 +40,7 @@ typedef struct {
 #define CACHE_FILE_NAME         L"cache_index.txt"
 #define CACHE_VERSION           L"1.0"
 #define MAX_CACHE_LINE_LENGTH   2048
+#define MAX_CACHE_SUBTITLES     100    // Index records with more subtitles are rejected
 
 // File deletion error information
 typedef struct {
