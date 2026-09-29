@@ -1191,9 +1191,10 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     DWORD bytesRead;
     BOOL processRunning = TRUE;
 
-    // Line accumulator for UTF-8 processing
-    static char lineAccumulator[8192] = {0};
-    static size_t fillCounter = 0;
+    // Line accumulator for UTF-8 processing (private to this invocation)
+    char lineAccumulator[8192];
+    size_t fillCounter = 0;
+    lineAccumulator[0] = '\0';
 
     // Timeout tracking
     DWORD startTime = GetTickCount();
