@@ -224,18 +224,68 @@ INT_PTR ShowUnifiedDialog(HWND parent, const UnifiedDialogConfig* config) {
                           parent, UnifiedDialogProc, (LPARAM)config);
 }
 
+// Per-window state of a unified dialog. The config is a private copy, so it
+// stays valid for the dialog's lifetime whatever happens to the caller's.
+typedef struct {
+    UnifiedDialogConfig config;
+    BOOL isExpanded;
+} UnifiedDialogState;
+
+static const wchar_t* UNIFIED_DIALOG_STATE_PROP = L"UnifiedDialogState";
+
+static void FreeUnifiedDialogState(UnifiedDialogState* state) {
+    if (!state) return;
+    SAFE_FREE((void*)state->config.title);
+    SAFE_FREE((void*)state->config.message);
+    SAFE_FREE((void*)state->config.details);
+    SAFE_FREE((void*)state->config.tab1_name);
+    SAFE_FREE((void*)state->config.tab2_content);
+    SAFE_FREE((void*)state->config.tab2_name);
+    SAFE_FREE((void*)state->config.tab3_content);
+    SAFE_FREE((void*)state->config.tab3_name);
+    SAFE_FREE((void*)state->config.detailsButtonText);
+    SAFE_FREE((void*)state->config.copyButtonText);
+    SAFE_FREE((void*)state->config.okButtonText);
+    SAFE_FREE(state);
+}
+
+static UnifiedDialogState* CreateUnifiedDialogState(const UnifiedDialogConfig* source) {
+    UnifiedDialogState* state = (UnifiedDialogState*)SAFE_MALLOC(sizeof(UnifiedDialogState));
+    if (!state) return NULL;
+    memset(state, 0, sizeof(UnifiedDialogState));
+
+    state->config.dialogType = source->dialogType;
+    state->config.showDetailsButton = source->showDetailsButton;
+    state->config.showCopyButton = source->showCopyButton;
+    if (source->title) state->config.title = SAFE_WCSDUP(source->title);
+    if (source->message) state->config.message = SAFE_WCSDUP(source->message);
+    if (source->details) state->config.details = SAFE_WCSDUP(source->details);
+    if (source->tab1_name) state->config.tab1_name = SAFE_WCSDUP(source->tab1_name);
+    if (source->tab2_content) state->config.tab2_content = SAFE_WCSDUP(source->tab2_content);
+    if (source->tab2_name) state->config.tab2_name = SAFE_WCSDUP(source->tab2_name);
+    if (source->tab3_content) state->config.tab3_content = SAFE_WCSDUP(source->tab3_content);
+    if (source->tab3_name) state->config.tab3_name = SAFE_WCSDUP(source->tab3_name);
+    if (source->detailsButtonText) state->config.detailsButtonText = SAFE_WCSDUP(source->detailsButtonText);
+    if (source->copyButtonText) state->config.copyButtonText = SAFE_WCSDUP(source->copyButtonText);
+    if (source->okButtonText) state->config.okButtonText = SAFE_WCSDUP(source->okButtonText);
+    state->isExpanded = FALSE;
+    return state;
+}
+
 // Unified Dialog Procedure - handles all dialog types with single resource
 INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-    static const UnifiedDialogConfig* config = NULL;
-    static BOOL isExpanded = FALSE;
+    UnifiedDialogState* state = (UnifiedDialogState*)GetPropW(hDlg, UNIFIED_DIALOG_STATE_PROP);
+    const UnifiedDialogConfig* config = state ? &state->config : NULL;
     
     switch (message) {
         case WM_INITDIALOG: {
-            config = (const UnifiedDialogConfig*)lParam;
-            if (!config) {
+            state = lParam ? CreateUnifiedDialogState((const UnifiedDialogConfig*)lParam) : NULL;
+            if (!state || !SetPropW(hDlg, UNIFIED_DIALOG_STATE_PROP, (HANDLE)state)) {
+                FreeUnifiedDialogState(state);
                 EndDialog(hDlg, IDCANCEL);
                 return TRUE;
             }
+            config = &state->config;
             
             // Register dialog with DPI manager for font scaling
             if (g_dpiManager) {
@@ -470,8 +520,10 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
         
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
-                case IDC_UNIFIED_DETAILS_BTN:
-                    isExpanded = !isExpanded;
+                case IDC_UNIFIED_DETAILS_BTN: {
+                    BOOL isExpanded;
+                    if (!state) return TRUE;
+                    isExpanded = state->isExpanded = !state->isExpanded;
                     ResizeUnifiedDialog(hDlg, isExpanded);
                     if (isExpanded) {
                         ShowUnifiedDialogTab(hDlg, TabCtrl_GetCurSel(GetDlgItem(hDlg, IDC_UNIFIED_TAB_CONTROL)));
@@ -505,9 +557,10 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                         }
                     }
                     return TRUE;
+                }
                     
                 case IDC_UNIFIED_COPY_BTN:
-                    CopyUnifiedDialogToClipboard(config);
+                    if (config) CopyUnifiedDialogToClipboard(config);
                     return TRUE;
                     
                 case IDC_UNIFIED_OK_BTN:
@@ -563,7 +616,7 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
                 RescaleWindowForDPI(hDlg, oldDpi, newDpi);
                 
                 // Resize dialog to maintain proper layout
-                ResizeUnifiedDialog(hDlg, isExpanded);
+                ResizeUnifiedDialog(hDlg, state ? state->isExpanded : FALSE);
                 
                 // Apply suggested window position and size
                 SetWindowPos(hDlg, NULL,
@@ -586,6 +639,11 @@ INT_PTR CALLBACK UnifiedDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
         case WM_CLOSE:
             EndDialog(hDlg, IDCANCEL);
             return TRUE;
+
+        case WM_DESTROY:
+            RemovePropW(hDlg, UNIFIED_DIALOG_STATE_PROP);
+            FreeUnifiedDialogState(state);
+            return FALSE;
     }
     
     return FALSE;
