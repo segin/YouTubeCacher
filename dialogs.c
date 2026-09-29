@@ -2202,6 +2202,10 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 }
                 // Get base font from dialog
                 hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+
+                // The DPI manager owns these fonts; keep them for WM_DPICHANGED
+                if (titleFont) SetPropW(hDlg, L"TitleScalableFont", (HANDLE)titleFont);
+                if (smallFont) SetPropW(hDlg, L"SmallScalableFont", (HANDLE)smallFont);
             } else {
                 // Fallback to old method if DPI manager not available
                 hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
@@ -2377,9 +2381,11 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_CLOSE), NULL,
                         buttonX, buttonY, buttonWidth, buttonHeight, SWP_NOZORDER);
             
-            // Store fonts for cleanup
-            if (hTitleFont) SetPropW(hDlg, L"TitleFont", hTitleFont);
-            if (hSmallFont) SetPropW(hDlg, L"SmallFont", hSmallFont);
+            // Store fonts for cleanup, but only those this dialog created itself
+            if (!g_dpiManager) {
+                if (hTitleFont) SetPropW(hDlg, L"TitleFont", hTitleFont);
+                if (hSmallFont) SetPropW(hDlg, L"SmallFont", hSmallFont);
+            }
             
             ReleaseDC(hDlg, hdc);
             
@@ -2451,7 +2457,11 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         }
         
         case WM_DESTROY: {
-            // Clean up custom fonts
+            // Fonts from the DPI manager stay registered with it; just forget them
+            RemovePropW(hDlg, L"TitleScalableFont");
+            RemovePropW(hDlg, L"SmallScalableFont");
+
+            // Clean up the fonts this dialog created (no DPI manager)
             HFONT hTitleFont = (HFONT)GetPropW(hDlg, L"TitleFont");
             if (hTitleFont) {
                 DeleteObject(hTitleFont);
@@ -2496,15 +2506,12 @@ INT_PTR CALLBACK AboutDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 int buttonHeight = MulDiv(14 * baseUnitY, 1, 8);
                 int bottomPadding = ScaleForDpi(8, dpi);
                 
-                // Recreate fonts at new DPI
+                // Rescale the fonts registered at WM_INITDIALOG to the new DPI
                 HFONT hTitleFont = NULL, hSmallFont = NULL, hBaseFont = NULL;
-                ScalableFont* titleFont = NULL;
-                ScalableFont* smallFont = NULL;
+                ScalableFont* titleFont = (ScalableFont*)GetPropW(hDlg, L"TitleScalableFont");
+                ScalableFont* smallFont = (ScalableFont*)GetPropW(hDlg, L"SmallScalableFont");
                 
                 if (g_dpiManager) {
-                    titleFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 12, FW_BOLD);
-                    smallFont = CreateAndRegisterFont(hDlg, L"Segoe UI", 7, FW_NORMAL);
-                    
                     if (titleFont) hTitleFont = GetFontForDPI(titleFont, dpi);
                     if (smallFont) hSmallFont = GetFontForDPI(smallFont, dpi);
                     hBaseFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
