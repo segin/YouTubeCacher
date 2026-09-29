@@ -1,4 +1,5 @@
 #include "YouTubeCacher.h"
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM
 
 // Timer IDs
 #define IDT_PROGRESS_HIDE_TIMER 9998
@@ -1690,10 +1691,31 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 
             // Check if right-click was on the ListView
             if ((HWND)wParam == hListView) {
-                // Get cursor position
+                // Get the menu position in screen coordinates
                 POINT pt;
-                pt.x = LOWORD(lParam);
-                pt.y = HIWORD(lParam);
+                if (lParam == -1) {
+                    // Opened from the keyboard (Shift+F10 or the Menu key): place the
+                    // menu at the selected item, or at the list's corner if none
+                    pt.x = 0;
+                    pt.y = 0;
+                    int item = ListView_GetNextItem(hListView, -1, LVNI_FOCUSED | LVNI_SELECTED);
+                    if (item == -1) {
+                        item = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+                    }
+                    if (item != -1) {
+                        RECT itemRect;
+                        ListView_EnsureVisible(hListView, item, FALSE);
+                        if (ListView_GetItemRect(hListView, item, &itemRect, LVIR_LABEL)) {
+                            pt.x = itemRect.left;
+                            pt.y = itemRect.bottom;
+                        }
+                    }
+                    ClientToScreen(hListView, &pt);
+                } else {
+                    // Read signed coordinates, which are negative on monitors left of or above the primary
+                    pt.x = GET_X_LPARAM(lParam);
+                    pt.y = GET_Y_LPARAM(lParam);
+                }
 
                 // Load and show context menu
                 HMENU hMenu = LoadMenuW(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_LISTVIEW_CONTEXT));
