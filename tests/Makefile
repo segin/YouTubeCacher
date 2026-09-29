@@ -67,6 +67,11 @@ ytdlp_args_logic.c: ../ytdlp.c
 	/usr/bin/sed -n '/^BOOL ValidateYtDlpExecutable/,/^}/p' ../ytdlp.c > $@
 	/usr/bin/sed -n '/^wchar_t\* EscapeCommandLineArgument/,/^}/p' ../ytdlp.c >> $@
 	/usr/bin/sed -n '/^wchar_t\* EscapeOutputTemplateText/,/^}/p' ../ytdlp.c >> $@
+	/usr/bin/sed -n '/^static const wchar_t\* const g_blockedYtDlpLongOptions/,/^};/p' ../ytdlp.c >> $@
+	/usr/bin/sed -n '/^static const wchar_t g_blockedYtDlpShortOptions/p' ../ytdlp.c >> $@
+	/usr/bin/sed -n '/^static const wchar_t g_ytDlpShortOptionsWithValue/p' ../ytdlp.c >> $@
+	/usr/bin/sed -n '/^static BOOL IsBlockedYtDlpOption/,/^}/p' ../ytdlp.c >> $@
+	/usr/bin/sed -n '/^BOOL ValidateYtDlpArguments/,/^}/p' ../ytdlp.c >> $@
 
 test_uri: test_uri.c uri_functions.c
 	$(CC) $(CFLAGS) test_uri.c -o $@

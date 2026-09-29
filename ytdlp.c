@@ -885,16 +885,77 @@ void FreeErrorAnalysis(ErrorAnalysis* analysis) {
     SAFE_FREE(analysis);
 }
 
-// Additional stub implementations for missing functions
-BOOL ValidateYtDlpArguments(const wchar_t* args) {
-    if (!args) return TRUE;
+// Custom-argument options that make yt-dlp run commands or read URLs from a
+// file. yt-dlp also accepts an unambiguous abbreviation of a long option, so a
+// prefix of one of these is blocked too.
+static const wchar_t* const g_blockedYtDlpLongOptions[] = {
+    L"--exec",
+    L"--exec-before-download",
+    L"--batch-file",
+};
+// Short aliases of the blocked options (-a is --batch-file)
+static const wchar_t g_blockedYtDlpShortOptions[] = L"a";
+// Short options that take a value; the rest of a group such as "-fa" is that value
+static const wchar_t g_ytDlpShortOptionsWithValue[] = L"tINrRPoOfSup2";
 
-    // Simple validation - reject potentially dangerous arguments
-    if (wcsstr(args, L"--exec") || wcsstr(args, L"--batch-file")) {
+// Check one command-line token (not NUL-terminated) against the blocked options
+static BOOL IsBlockedYtDlpOption(const wchar_t* token, size_t len) {
+    if (len < 2 || token[0] != L'-') return FALSE;
+
+    if (token[1] == L'-') {
+        // Long option; the name ends at '=' when a value is attached
+        size_t nameLen = 0;
+        while (nameLen < len && token[nameLen] != L'=') nameLen++;
+        if (nameLen <= 2) return FALSE; // "--" alone ends the options
+
+        for (size_t i = 0; i < sizeof(g_blockedYtDlpLongOptions) / sizeof(g_blockedYtDlpLongOptions[0]); i++) {
+            const wchar_t* blocked = g_blockedYtDlpLongOptions[i];
+            if (nameLen <= wcslen(blocked) && wcsncmp(token, blocked, nameLen) == 0) {
+                return TRUE;
+            }
+        }
         return FALSE;
     }
 
-    return TRUE;
+    // A group of short options, such as "-ia"
+    for (size_t i = 1; i < len && token[i] != L'\0'; i++) {
+        if (wcschr(g_blockedYtDlpShortOptions, token[i])) return TRUE;
+        if (wcschr(g_ytDlpShortOptionsWithValue, token[i])) return FALSE;
+    }
+    return FALSE;
+}
+
+BOOL ValidateYtDlpArguments(const wchar_t* args) {
+    if (!args) return TRUE;
+
+    // Check each whitespace-separated token for a blocked option. Quotes are
+    // dropped rather than parsed, so quoting part of an option can't hide it:
+    // "-"-exec reaches yt-dlp as --exec.
+    size_t len = wcslen(args);
+    wchar_t* unquoted = (wchar_t*)SAFE_MALLOC((len + 1) * sizeof(wchar_t));
+    if (!unquoted) return FALSE;
+
+    size_t unquotedLen = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (args[i] != L'"') {
+            unquoted[unquotedLen++] = args[i];
+        }
+    }
+    unquoted[unquotedLen] = L'\0';
+
+    BOOL valid = TRUE;
+    size_t pos = 0;
+    while (valid && pos < unquotedLen) {
+        while (pos < unquotedLen && wcschr(L" \t\r\n", unquoted[pos])) pos++;
+        size_t start = pos;
+        while (pos < unquotedLen && !wcschr(L" \t\r\n", unquoted[pos])) pos++;
+        if (pos > start && IsBlockedYtDlpOption(unquoted + start, pos - start)) {
+            valid = FALSE;
+        }
+    }
+
+    SAFE_FREE(unquoted);
+    return valid;
 }
 
 BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
@@ -994,6 +1055,13 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     // executable that CreateProcessW would hand to a command interpreter
     if (config && !ValidateYtDlpExecutable(config->ytDlpPath)) {
         ThreadSafeDebugOutput(L"GetYtDlpArgsForOperation: yt-dlp path is not an existing .exe file");
+        return FALSE;
+    }
+
+    // Check the custom arguments that this command will pass, not only the
+    // ones seen at startup, since they are re-read for each run
+    if (config && config->defaultArgs && !ValidateYtDlpArguments(config->defaultArgs)) {
+        ThreadSafeDebugOutput(L"GetYtDlpArgsForOperation: custom yt-dlp arguments contain a blocked option");
         return FALSE;
     }
 

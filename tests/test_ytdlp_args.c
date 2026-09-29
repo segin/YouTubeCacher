@@ -80,8 +80,40 @@ static void test_escape_output_template_text(void) {
     check("NULL text", EscapeOutputTemplateText(NULL) == NULL);
 }
 
+static void test_validate_arguments(void) {
+    // Allowed
+    check("NULL arguments", ValidateYtDlpArguments(NULL));
+    check("empty arguments", ValidateYtDlpArguments(L""));
+    check("ordinary options", ValidateYtDlpArguments(L"-f bestaudio --embed-metadata --limit-rate 1M"));
+    check("--no-exec", ValidateYtDlpArguments(L"--no-exec"));
+    check("--no-batch-file", ValidateYtDlpArguments(L"--no-batch-file"));
+    check("--exec inside a value", ValidateYtDlpArguments(L"-o C:\\foo--exec\\%(id)s"));
+    check("-a inside a -f value", ValidateYtDlpArguments(L"-fbestaudio"));
+    check("-a as a value of -o group", ValidateYtDlpArguments(L"-oa.mp4"));
+    check("group of flags without a", ValidateYtDlpArguments(L"-iwc"));
+    check("end of options marker", ValidateYtDlpArguments(L"--"));
+
+    // Blocked
+    check("--exec", !ValidateYtDlpArguments(L"--exec calc"));
+    check("--exec=", !ValidateYtDlpArguments(L"--exec=calc"));
+    check("--exec among others", !ValidateYtDlpArguments(L"-f best   --exec calc"));
+    check("--exec after a tab", !ValidateYtDlpArguments(L"-f best\t--exec calc"));
+    check("--exec-before-download", !ValidateYtDlpArguments(L"--exec-before-download calc"));
+    check("abbreviated --exe", !ValidateYtDlpArguments(L"--exe calc"));
+    check("--batch-file", !ValidateYtDlpArguments(L"--batch-file urls.txt"));
+    check("abbreviated --batch", !ValidateYtDlpArguments(L"--batch urls.txt"));
+    check("--batch-file=", !ValidateYtDlpArguments(L"--batch-file=urls.txt"));
+    check("-a", !ValidateYtDlpArguments(L"-a urls.txt"));
+    check("-a with attached value", !ValidateYtDlpArguments(L"-aurls.txt"));
+    check("-a in a group", !ValidateYtDlpArguments(L"-ia urls.txt"));
+    check("quoted --exec", !ValidateYtDlpArguments(L"\"--exec\" calc"));
+    check("partly quoted --exec", !ValidateYtDlpArguments(L"\"-\"-exec calc"));
+    check("escaped quote before --exec", !ValidateYtDlpArguments(L"x\\\" --exec calc"));
+}
+
 int main(void) {
     printf("Running yt-dlp argument tests...\n");
+    test_validate_arguments();
     test_validate_executable();
     test_escape_command_line_argument();
     test_escape_output_template_text();
