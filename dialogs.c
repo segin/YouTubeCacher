@@ -3175,12 +3175,60 @@ static void MultiDl_UpdateStatusLabel(HWND hDlg, MultiDownloadContext* ctx) {
     SetDlgItemTextW(hDlg, IDC_MULTI_STATUS_LABEL, status);
 }
 
+// Helper: Remove the first line of text that equals url, ignoring the spaces and
+// tabs around it (the multi-download parser trims those too). A line that merely
+// contains url is left alone. Returns TRUE if a line was removed.
+BOOL MultiDl_RemoveExactLine(wchar_t* text, const wchar_t* url) {
+    size_t urlLen;
+    wchar_t* lineStart;
+
+    if (!text || !url) return FALSE;
+    urlLen = wcslen(url);
+    if (urlLen == 0) return FALSE;
+
+    lineStart = text;
+    while (*lineStart) {
+        wchar_t* lineEnd = lineStart;
+        wchar_t* contentStart;
+        wchar_t* contentEnd;
+
+        while (*lineEnd && *lineEnd != L'\r' && *lineEnd != L'\n') lineEnd++;
+
+        contentStart = lineStart;
+        contentEnd = lineEnd;
+        while (contentStart < contentEnd && (*contentStart == L' ' || *contentStart == L'\t')) contentStart++;
+        while (contentEnd > contentStart && (*(contentEnd - 1) == L' ' || *(contentEnd - 1) == L'\t')) contentEnd--;
+
+        if ((size_t)(contentEnd - contentStart) == urlLen &&
+            wcsncmp(contentStart, url, urlLen) == 0) {
+            wchar_t* removeStart = lineStart;
+            wchar_t* removeEnd = lineEnd;
+
+            // Take the line's own terminator, or the previous one for the last line
+            if (*removeEnd == L'\r' && *(removeEnd + 1) == L'\n') removeEnd += 2;
+            else if (*removeEnd == L'\r' || *removeEnd == L'\n') removeEnd++;
+            else if (removeStart > text) {
+                removeStart--;
+                if (*removeStart == L'\n' && removeStart > text && *(removeStart - 1) == L'\r') removeStart--;
+            }
+
+            memmove(removeStart, removeEnd, (wcslen(removeEnd) + 1) * sizeof(wchar_t));
+            return TRUE;
+        }
+
+        if (*lineEnd == L'\r' && *(lineEnd + 1) == L'\n') lineStart = lineEnd + 2;
+        else if (*lineEnd) lineStart = lineEnd + 1;
+        else lineStart = lineEnd;
+    }
+
+    return FALSE;
+}
+
 // Helper: Remove a URL line from the edit control
 static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url) {
     HWND hEdit = GetDlgItem(hDlg, IDC_MULTI_URL_EDIT);
     int textLen;
     wchar_t* text;
-    wchar_t* found;
 
     if (!hEdit || !url) return;
 
@@ -3192,16 +3240,7 @@ static void MultiDl_RemoveUrlLineFromEdit(HWND hDlg, const wchar_t* url) {
 
     GetWindowTextW(hEdit, text, textLen + 1);
 
-    found = wcsstr(text, url);
-    if (found) {
-        wchar_t* lineStart = found;
-        wchar_t* lineEnd = found + wcslen(url);
-
-        while (lineStart > text && *(lineStart - 1) != L'\n') lineStart--;
-        while (*lineEnd && *lineEnd != L'\r' && *lineEnd != L'\n') lineEnd++;
-        while (*lineEnd == L'\r' || *lineEnd == L'\n') lineEnd++;
-
-        memmove(lineStart, lineEnd, (wcslen(lineEnd) + 1) * sizeof(wchar_t));
+    if (MultiDl_RemoveExactLine(text, url)) {
         SetWindowTextW(hEdit, text);
     }
 

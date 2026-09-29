@@ -516,6 +516,7 @@ typedef struct {
 DWORD WINAPI MultiDlCoordinatorThread(LPVOID lpParam);
 DWORD WINAPI MultiDlPlaylistResolverThread(LPVOID lpParam);
 DWORD WINAPI MultiDlSingleDownloadThread(LPVOID lpParam);
+BOOL MultiDl_RemoveExactLine(wchar_t* text, const wchar_t* url);
 
 // Per-download thread context
 typedef struct {
