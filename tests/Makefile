@@ -65,6 +65,8 @@ test_ytdlp_args: test_ytdlp_args.c ytdlp_args_logic.c
 
 ytdlp_args_logic.c: ../ytdlp.c
 	/usr/bin/sed -n '/^BOOL ValidateYtDlpExecutable/,/^}/p' ../ytdlp.c > $@
+	/usr/bin/sed -n '/^wchar_t\* EscapeCommandLineArgument/,/^}/p' ../ytdlp.c >> $@
+	/usr/bin/sed -n '/^wchar_t\* EscapeOutputTemplateText/,/^}/p' ../ytdlp.c >> $@
 
 test_uri: test_uri.c uri_functions.c
 	$(CC) $(CFLAGS) test_uri.c -o $@

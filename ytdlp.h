@@ -62,6 +62,7 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
 BOOL ValidateYtDlpArguments(const wchar_t* args);
 BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize);
 wchar_t* EscapeCommandLineArgument(const wchar_t* arg);
+wchar_t* EscapeOutputTemplateText(const wchar_t* text);
 
 // Context management
 SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDlpRequest* request, 

@@ -911,6 +911,35 @@ wchar_t* EscapeCommandLineArgument(const wchar_t* arg) {
     return escaped;
 }
 
+/**
+ * Escapes literal text for use in a yt-dlp output template, where '%' starts
+ * a field: every '%' is doubled. Returns an allocated wide string that must be
+ * freed by the caller.
+ */
+wchar_t* EscapeOutputTemplateText(const wchar_t* text) {
+    if (!text) return NULL;
+
+    size_t len = wcslen(text);
+    size_t percentCount = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (text[i] == L'%') percentCount++;
+    }
+
+    wchar_t* escaped = (wchar_t*)SAFE_MALLOC((len + percentCount + 1) * sizeof(wchar_t));
+    if (!escaped) return NULL;
+
+    size_t j = 0;
+    for (size_t i = 0; i < len; i++) {
+        escaped[j++] = text[i];
+        if (text[i] == L'%') {
+            escaped[j++] = L'%';
+        }
+    }
+    escaped[j] = L'\0';
+
+    return escaped;
+}
+
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath,
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
@@ -931,9 +960,13 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     }
 
     if (outputPath) {
-        // Construct the output template: "outputPath\%(id)s.%(ext)s"
+        // Construct the output template: "outputPath\%(id)s.%(ext)s", with any
+        // '%' in the folder doubled so yt-dlp doesn't read it as template syntax
+        wchar_t* templateFolder = EscapeOutputTemplateText(outputPath);
+        if (!templateFolder) goto cleanup;
         wchar_t outputTemplate[MAX_EXTENDED_PATH];
-        swprintf(outputTemplate, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", outputPath);
+        swprintf(outputTemplate, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", templateFolder);
+        SAFE_FREE(templateFolder);
         escapedOutputPath = EscapeCommandLineArgument(outputTemplate);
         if (!escapedOutputPath) goto cleanup;
     }
