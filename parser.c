@@ -1118,7 +1118,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (!cmdLine) {
         ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to allocate command line memory");
         CloseHandle(context->hOutputRead);
+        context->hOutputRead = NULL;
         CloseHandle(context->hOutputWrite);
+        context->hOutputWrite = NULL;
         context->result->success = FALSE;
         context->result->exitCode = 1;
         context->result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed");
@@ -1145,7 +1147,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create process");
         SAFE_FREE(cmdLine);
         CloseHandle(context->hOutputRead);
+        context->hOutputRead = NULL;
         CloseHandle(context->hOutputWrite);
+        context->hOutputWrite = NULL;
         context->result->success = FALSE;
         context->result->exitCode = error;
         context->result->errorMessage = SAFE_WCSDUP(L"Failed to start yt-dlp process");
@@ -1156,6 +1160,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     // Store process handle for potential cancellation
     context->hProcess = pi.hProcess;
     CloseHandle(context->hOutputWrite);
+    context->hOutputWrite = NULL;
     SAFE_FREE(cmdLine);
 
     // Duplicate the process handle for application state cancellation support
@@ -1166,8 +1171,11 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                        FALSE, 0)) {
         SetActiveDownload(hDuplicatedProcess, pi.dwProcessId, context->request->tempDir);
     } else {
-        // Fallback: use original handle but don't close it later
-        SetActiveDownload(pi.hProcess, pi.dwProcessId, context->request->tempDir);
+        // Fallback: never share our handle, because both this thread and the
+        // application state would close it. Without a handle of its own the
+        // application state can't cancel this run.
+        SetActiveDownload(OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pi.dwProcessId),
+                          pi.dwProcessId, context->request->tempDir);
     }
     CloseHandle(pi.hThread); // We don't need the thread handle
 
@@ -1402,6 +1410,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (pi.hProcess && pi.hProcess != INVALID_HANDLE_VALUE) {
         CloseHandle(pi.hProcess);
         pi.hProcess = NULL;
+        context->hProcess = NULL; // Same handle; FreeSubprocessContext must not close it again
     }
     // Note: pi.hThread was already closed earlier after process creation
 

@@ -2316,35 +2316,20 @@ void FreeSubprocessContext(SubprocessContext* context) {
     // Note: accumulatedOutput is now used to store ThreadSafeSubprocessContext pointer
     // It's cleaned up by CleanupLegacySubprocessContext above
 
-    // Close handles (these should already be cleaned up by thread-safe backend)
-    // Use defensive validation to prevent STATUS_INVALID_HANDLE crashes
+    // Close only the handles this context still owns. Every earlier close
+    // clears its field, so a non-NULL value here is never a stale handle.
     if (context->hProcess && context->hProcess != INVALID_HANDLE_VALUE) {
-        HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hProcess,
-                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-            CloseHandle(hTest);
-            CloseHandle(context->hProcess);
-        }
-        context->hProcess = NULL;
+        CloseHandle(context->hProcess);
     }
+    context->hProcess = NULL;
     if (context->hOutputRead && context->hOutputRead != INVALID_HANDLE_VALUE) {
-        HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hOutputRead,
-                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-            CloseHandle(hTest);
-            CloseHandle(context->hOutputRead);
-        }
-        context->hOutputRead = NULL;
+        CloseHandle(context->hOutputRead);
     }
+    context->hOutputRead = NULL;
     if (context->hOutputWrite && context->hOutputWrite != INVALID_HANDLE_VALUE) {
-        HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hOutputWrite,
-                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-            CloseHandle(hTest);
-            CloseHandle(context->hOutputWrite);
-        }
-        context->hOutputWrite = NULL;
+        CloseHandle(context->hOutputWrite);
     }
+    context->hOutputWrite = NULL;
 
     SAFE_FREE(context);
 }
