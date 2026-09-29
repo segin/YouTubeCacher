@@ -1,5 +1,11 @@
-CC ?= gcc
-CFLAGS ?= -Wall -Wextra -I. -I./include -DTEST_BUILD
+# CC always has make's built-in default (cc), so ?= would never apply.
+ifeq ($(origin CC),default)
+CC = gcc
+endif
+CFLAGS ?= -Wall -Wextra
+# The tests build against the mock Windows headers here whatever CFLAGS
+# the environment or command line supplies.
+override CFLAGS += -I. -I./include -DTEST_BUILD
 RM ?= rm -f
 
 all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc
