@@ -3341,7 +3341,7 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                             if (count >= capacity) {
                                 MultiDlItem* newItems;
                                 capacity *= 2;
-                                newItems = (MultiDlItem*)realloc(items, sizeof(MultiDlItem) * capacity);
+                                newItems = (MultiDlItem*)SAFE_REALLOC(items, sizeof(MultiDlItem) * capacity);
                                 if (!newItems) break;
                                 items = newItems;
                             }
@@ -3553,7 +3553,7 @@ INT_PTR CALLBACK MultiDownloadDialogProc(HWND hDlg, UINT message, WPARAM wParam,
                         int needed = ctx->itemCount + plResult->urlCount;
                         if (needed > ctx->itemCapacity) {
                             int newCap = needed * 2;
-                            MultiDlItem* newItems = (MultiDlItem*)realloc(ctx->items, sizeof(MultiDlItem) * newCap);
+                            MultiDlItem* newItems = (MultiDlItem*)SAFE_REALLOC(ctx->items, sizeof(MultiDlItem) * newCap);
                             if (newItems) {
                                 ctx->items = newItems;
                                 ctx->itemCapacity = newCap;

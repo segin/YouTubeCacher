@@ -23,38 +23,54 @@ TARGET64 = YouTubeCacher-x64.exe
 TARGETARM64 = YouTubeCacher-arm64.exe
 
 # Common compiler flags
-COMMON_CFLAGS = -Wall -Wextra -Werror -std=c99 -DUNICODE -D_UNICODE -static-libgcc
+COMMON_CFLAGS ?= -Wall -Wextra -Werror -std=c11 -DUNICODE -D_UNICODE -Wno-unused-command-line-argument
 
 # Debug flags for memory tracking
-DEBUG_CFLAGS = -g -DMEMORY_DEBUG -DLEAK_DETECTION
-COMMON_LDFLAGS = -mwindows -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -lbcrypt -static
+DEBUG_CFLAGS ?= -g -DMEMORY_DEBUG -DLEAK_DETECTION
+COMMON_LDFLAGS ?= -mwindows -static-libgcc -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -lbcrypt -static
 
 # MinGW32 settings
-CC32 = /mingw32/bin/gcc.exe
-RC32 = /mingw32/bin/windres.exe
-CFLAGS32 = $(COMMON_CFLAGS)
-LDFLAGS32 = $(COMMON_LDFLAGS)
+CC32 ?= /mingw32/bin/gcc.exe
+RC32 ?= /mingw32/bin/windres.exe
+CFLAGS32 ?= $(COMMON_CFLAGS)
+LDFLAGS32 ?= $(COMMON_LDFLAGS)
 
 # MinGW64 settings  
-CC64 = /mingw64/bin/gcc.exe
-RC64 = /mingw64/bin/windres.exe
-CFLAGS64 = $(COMMON_CFLAGS)
-LDFLAGS64 = $(COMMON_LDFLAGS)
+CC64 ?= /mingw64/bin/gcc.exe
+RC64 ?= /mingw64/bin/windres.exe
+CFLAGS64 ?= $(COMMON_CFLAGS)
+LDFLAGS64 ?= $(COMMON_LDFLAGS)
+
+# UCRT64 settings
+CCUCRT64 ?= /ucrt64/bin/gcc.exe
+RCUCRT64 ?= /ucrt64/bin/windres.exe
+CFLAGSUCRT64 ?= $(COMMON_CFLAGS)
+LDFLAGSUCRT64 ?= $(COMMON_LDFLAGS)
 
 # ARM64 Cross-Compiler settings
-CCARM64 = /opt/bin/aarch64-w64-mingw32-gcc
-RCARM64 = /opt/bin/aarch64-w64-mingw32-windres
-CFLAGSARM64 = $(COMMON_CFLAGS)
-LDFLAGSARM64 = $(COMMON_LDFLAGS)
-RM = /usr/bin/rm -f
-MKDIR = /usr/bin/mkdir -p
+CCARM64 ?= /clangarm64/bin/clang.exe
+RCARM64 ?= /clangarm64/bin/llvm-windres.exe
+CFLAGSARM64 ?= $(COMMON_CFLAGS)
+LDFLAGSARM64 ?= $(COMMON_LDFLAGS)
+RM ?= rm -f
+MKDIR ?= mkdir -p
 
 # Release flags
-RELEASE_CFLAGS = -Os -DNDEBUG -DMEMORY_RELEASE -flto -s
-RELEASE_LDFLAGS = -flto -s
+RELEASE_CFLAGS ?= -Os -DNDEBUG -DMEMORY_RELEASE -flto
+RELEASE_LDFLAGS ?= -flto -s
 
-# Default target (32-bit debug)
-all: debug32
+# Default target: builds native arch for current MSYSTEM or 64-bit
+ifeq ($(MSYSTEM),UCRT64)
+all: releaseucrt64
+else ifeq ($(MSYSTEM),MINGW64)
+all: release64
+else ifeq ($(MSYSTEM),MINGW32)
+all: release32
+else ifeq ($(MSYSTEM),CLANGARM64)
+all: releasearm64
+else
+all: release64
+endif
 
 # Debug targets
 debug32: export MSYSTEM := MINGW32
@@ -72,6 +88,14 @@ debug64: RC = $(RC64)
 debug64: CFLAGS = $(CFLAGS64) $(DEBUG_CFLAGS)
 debug64: LDFLAGS = $(LDFLAGS64)
 debug64: $(OBJ64_DIR) $(TARGET64)
+
+debugucrt64: export MSYSTEM := UCRT64
+debugucrt64: export PATH := /ucrt64/bin:$(PATH)
+debugucrt64: CC = $(CCUCRT64)
+debugucrt64: RC = $(RCUCRT64)
+debugucrt64: CFLAGS = $(CFLAGSUCRT64) $(DEBUG_CFLAGS)
+debugucrt64: LDFLAGS = $(LDFLAGSUCRT64)
+debugucrt64: $(OBJ64_DIR) $(TARGET64)
 
 debugarm64: export MSYSTEM := CLANGARM64
 debugarm64: export PATH := /clangarm64/bin:/opt/bin:/usr/bin:$(PATH)
@@ -99,6 +123,14 @@ release64: RC = $(RC64)
 release64: CFLAGS = $(CFLAGS64) $(RELEASE_CFLAGS)
 release64: LDFLAGS = $(LDFLAGS64) $(RELEASE_LDFLAGS)
 release64: $(OBJ64_DIR) $(TARGET64)
+
+releaseucrt64: export MSYSTEM := UCRT64
+releaseucrt64: export PATH := /ucrt64/bin:$(PATH)
+releaseucrt64: CC = $(CCUCRT64)
+releaseucrt64: RC = $(RCUCRT64)
+releaseucrt64: CFLAGS = $(CFLAGSUCRT64) $(RELEASE_CFLAGS)
+releaseucrt64: LDFLAGS = $(LDFLAGSUCRT64) $(RELEASE_LDFLAGS)
+releaseucrt64: $(OBJ64_DIR) $(TARGET64)
 
 releasearm64: export MSYSTEM := CLANGARM64
 releasearm64: export PATH := /clangarm64/bin:$(PATH)

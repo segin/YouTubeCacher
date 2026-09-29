@@ -1,9 +1,6 @@
-# Standardize paths for MSYS2/MinGW environment
-export PATH := /mingw64/bin:/usr/bin:$(PATH)
-
-CC = /mingw64/bin/gcc.exe
-CFLAGS = -Wall -Wextra -I. -I./include -DTEST_BUILD
-RM = /usr/bin/rm -f
+CC ?= gcc
+CFLAGS ?= -Wall -Wextra -I. -I./include -DTEST_BUILD
+RM ?= rm -f
 
 all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc
 
