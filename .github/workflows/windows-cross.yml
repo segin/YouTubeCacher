@@ -35,22 +35,23 @@ jobs:
         config: [ release, debug ]
         include:
         # The Makefile names its targets and toolchain variables by bitness
-        # rather than by tuple, and gives each arch its own output name.
+        # rather than by tuple, and gives each arch its own output name;
+        # debug builds add -debug to it.
         - arch: x86_64
           tuple: x86_64-w64-mingw32
           suffix: "64"
           var: "64"
-          exe: YouTubeCacher-x64.exe
+          exe: YouTubeCacher-x64
         - arch: i686
           tuple: i686-w64-mingw32
           suffix: "32"
           var: "32"
-          exe: YouTubeCacher.exe
+          exe: YouTubeCacher
         - arch: aarch64
           tuple: aarch64-w64-mingw32
           suffix: arm64
           var: ARM64
-          exe: YouTubeCacher-arm64.exe
+          exe: YouTubeCacher-arm64
     steps:
     - uses: actions/checkout@v7
 
@@ -94,7 +95,7 @@ jobs:
           "COMMON_LDFLAGS=-mwindows -static-libgcc -lgdi32 -luser32 -lkernel32 -lshell32 -lcomdlg32 -lole32 -lcomctl32 -luuid -lshlwapi -ldbghelp -lbcrypt -static"
 
         mkdir -p dist
-        cp "${{ matrix.exe }}" "dist/YouTubeCacher-${{ matrix.arch }}-${{ matrix.config }}.exe"
+        cp "${{ matrix.exe }}${{ matrix.config == 'debug' && '-debug' || '' }}.exe" "dist/YouTubeCacher-${{ matrix.arch }}-${{ matrix.config }}.exe"
         ls -la dist/
         file dist/*.exe
 

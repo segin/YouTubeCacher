@@ -4,23 +4,22 @@
 SOURCES = main.c uri.c cache.c base64.c parser.c appstate.c settings.c threading.c ytdlp.c log.c ui.c dialogs.c memory.c error.c threadsafe.c subproc.c accessibility.c keyboard.c components.c dpi.c
 RC_SOURCE = YouTubeCacher.rc
 
-# Object directories
-OBJ32_DIR = obj32
-OBJ64_DIR = obj64
-OBJARM64_DIR = objarm64
-
-# Object files with separate directories
-OBJECTS32 = $(SOURCES:%.c=$(OBJ32_DIR)/%.o)
-RC_OBJECT32 = $(RC_SOURCE:%.rc=$(OBJ32_DIR)/%.o)
-OBJECTS64 = $(SOURCES:%.c=$(OBJ64_DIR)/%.o)
-RC_OBJECT64 = $(RC_SOURCE:%.rc=$(OBJ64_DIR)/%.o)
-OBJECTSARM64 = $(SOURCES:%.c=$(OBJARM64_DIR)/%.o)
-RC_OBJECTARM64 = $(RC_SOURCE:%.rc=$(OBJARM64_DIR)/%.o)
-
-# Target executables
-TARGET32 = YouTubeCacher.exe
-TARGET64 = YouTubeCacher-x64.exe
-TARGETARM64 = YouTubeCacher-arm64.exe
+# Every build variant (toolchain) and configuration gets its own object
+# directory, obj/<variant>-<config>, and its own executable, so switching
+# between them never reuses objects built with another toolchain or flags.
+#
+#   variant  toolchain            release executable
+#   32       MINGW32 gcc          YouTubeCacher.exe
+#   64       MINGW64 gcc          YouTubeCacher-x64.exe
+#   ucrt64   UCRT64 gcc           YouTubeCacher-x64-ucrt.exe
+#   arm64    CLANGARM64 clang     YouTubeCacher-arm64.exe
+#
+# Debug builds add -debug to the name, e.g. YouTubeCacher-x64-debug.exe.
+OBJ_ROOT = obj
+EXE_32 = YouTubeCacher
+EXE_64 = YouTubeCacher-x64
+EXE_ucrt64 = YouTubeCacher-x64-ucrt
+EXE_arm64 = YouTubeCacher-arm64
 
 # Common compiler flags
 COMMON_CFLAGS ?= -Wall -Wextra -Werror -std=c11 -DUNICODE -D_UNICODE -Wno-unused-command-line-argument
@@ -35,7 +34,7 @@ RC32 ?= /mingw32/bin/windres.exe
 CFLAGS32 ?= $(COMMON_CFLAGS)
 LDFLAGS32 ?= $(COMMON_LDFLAGS)
 
-# MinGW64 settings  
+# MinGW64 settings
 CC64 ?= /mingw64/bin/gcc.exe
 RC64 ?= /mingw64/bin/windres.exe
 CFLAGS64 ?= $(COMMON_CFLAGS)
@@ -47,7 +46,7 @@ RCUCRT64 ?= /ucrt64/bin/windres.exe
 CFLAGSUCRT64 ?= $(COMMON_CFLAGS)
 LDFLAGSUCRT64 ?= $(COMMON_LDFLAGS)
 
-# ARM64 Cross-Compiler settings
+# ARM64 settings
 CCARM64 ?= /clangarm64/bin/clang.exe
 RCARM64 ?= /clangarm64/bin/llvm-windres.exe
 CFLAGSARM64 ?= $(COMMON_CFLAGS)
@@ -59,191 +58,128 @@ MKDIR ?= mkdir -p
 RELEASE_CFLAGS ?= -Os -DNDEBUG -DMEMORY_RELEASE -flto
 RELEASE_LDFLAGS ?= -flto -s
 
+# Per-variant toolchain variable suffix, MSYS2 environment and bin directory
+TOOLVAR_32 = 32
+TOOLVAR_64 = 64
+TOOLVAR_ucrt64 = UCRT64
+TOOLVAR_arm64 = ARM64
+MSYSTEM_32 = MINGW32
+MSYSTEM_64 = MINGW64
+MSYSTEM_ucrt64 = UCRT64
+MSYSTEM_arm64 = CLANGARM64
+BINDIR_32 = /mingw32/bin
+BINDIR_64 = /mingw64/bin
+BINDIR_ucrt64 = /ucrt64/bin
+BINDIR_arm64 = /clangarm64/bin
+
+VARIANTS = 32 64 ucrt64 arm64
+BUILD_TARGETS = $(foreach v,$(VARIANTS),debug$(v) release$(v))
+
 # Default target: builds native arch for current MSYSTEM or 64-bit
 ifeq ($(MSYSTEM),UCRT64)
-all: releaseucrt64
-else ifeq ($(MSYSTEM),MINGW64)
-all: release64
+DEFAULT_TARGET ?= releaseucrt64
 else ifeq ($(MSYSTEM),MINGW32)
-all: release32
+DEFAULT_TARGET ?= release32
 else ifeq ($(MSYSTEM),CLANGARM64)
-all: releasearm64
+DEFAULT_TARGET ?= releasearm64
 else
-all: release64
+DEFAULT_TARGET ?= release64
 endif
 
-# Debug targets
-debug32: export MSYSTEM := MINGW32
-debug32: export PATH := /mingw32/bin:$(PATH)
-debug32: CC = $(CC32)
-debug32: RC = $(RC32)
-debug32: CFLAGS = $(CFLAGS32) $(DEBUG_CFLAGS)
-debug32: LDFLAGS = $(LDFLAGS32)
-debug32: $(OBJ32_DIR) $(TARGET32)
-
-debug64: export MSYSTEM := MINGW64
-debug64: export PATH := /mingw64/bin:$(PATH)
-debug64: CC = $(CC64)
-debug64: RC = $(RC64)
-debug64: CFLAGS = $(CFLAGS64) $(DEBUG_CFLAGS)
-debug64: LDFLAGS = $(LDFLAGS64)
-debug64: $(OBJ64_DIR) $(TARGET64)
-
-debugucrt64: export MSYSTEM := UCRT64
-debugucrt64: export PATH := /ucrt64/bin:$(PATH)
-debugucrt64: CC = $(CCUCRT64)
-debugucrt64: RC = $(RCUCRT64)
-debugucrt64: CFLAGS = $(CFLAGSUCRT64) $(DEBUG_CFLAGS)
-debugucrt64: LDFLAGS = $(LDFLAGSUCRT64)
-debugucrt64: $(OBJ64_DIR) $(TARGET64)
-
-debugarm64: export MSYSTEM := CLANGARM64
-debugarm64: export PATH := /clangarm64/bin:/opt/bin:/usr/bin:$(PATH)
-debugarm64: CC = $(CCARM64)
-debugarm64: RC = $(RCARM64)
-debugarm64: CFLAGS = $(CFLAGSARM64) $(DEBUG_CFLAGS)
-debugarm64: LDFLAGS = $(LDFLAGSARM64)
-debugarm64: $(OBJARM64_DIR) $(TARGETARM64)
+all: $(DEFAULT_TARGET)
 
 debug: debug32 debug64 debugarm64
-
-# Release targets
-release32: export MSYSTEM := MINGW32
-release32: export PATH := /mingw32/bin:$(PATH)
-release32: CC = $(CC32)
-release32: RC = $(RC32)
-release32: CFLAGS = $(CFLAGS32) $(RELEASE_CFLAGS)
-release32: LDFLAGS = $(LDFLAGS32) $(RELEASE_LDFLAGS)
-release32: $(OBJ32_DIR) $(TARGET32)
-
-release64: export MSYSTEM := MINGW64
-release64: export PATH := /mingw64/bin:$(PATH)
-release64: CC = $(CC64)
-release64: RC = $(RC64)
-release64: CFLAGS = $(CFLAGS64) $(RELEASE_CFLAGS)
-release64: LDFLAGS = $(LDFLAGS64) $(RELEASE_LDFLAGS)
-release64: $(OBJ64_DIR) $(TARGET64)
-
-releaseucrt64: export MSYSTEM := UCRT64
-releaseucrt64: export PATH := /ucrt64/bin:$(PATH)
-releaseucrt64: CC = $(CCUCRT64)
-releaseucrt64: RC = $(RCUCRT64)
-releaseucrt64: CFLAGS = $(CFLAGSUCRT64) $(RELEASE_CFLAGS)
-releaseucrt64: LDFLAGS = $(LDFLAGSUCRT64) $(RELEASE_LDFLAGS)
-releaseucrt64: $(OBJ64_DIR) $(TARGET64)
-
-releasearm64: export MSYSTEM := CLANGARM64
-releasearm64: export PATH := /clangarm64/bin:$(PATH)
-releasearm64: CC = $(CCARM64)
-releasearm64: RC = $(RCARM64)
-releasearm64: CFLAGS = $(CFLAGSARM64) $(RELEASE_CFLAGS)
-releasearm64: LDFLAGS = $(LDFLAGSARM64) $(RELEASE_LDFLAGS)
-releasearm64: $(OBJARM64_DIR) $(TARGETARM64)
-
 release: release32 release64 releasearm64
 
-# Directory creation
-$(OBJ32_DIR):
-	$(MKDIR) $(OBJ32_DIR)
+# debug<variant> and release<variant> re-run make for that one variant and
+# configuration; the rules below the ifdef then build it in isolation.
+$(BUILD_TARGETS):
+	@$(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) build \
+		CONFIG=$(if $(filter debug%,$@),debug,release) \
+		VARIANT=$(patsubst release%,%,$(patsubst debug%,%,$@))
 
-$(OBJ64_DIR):
-	$(MKDIR) $(OBJ64_DIR)
+ifdef VARIANT
+ifeq ($(filter $(VARIANT),$(VARIANTS)),)
+$(error Unknown VARIANT '$(VARIANT)'; expected one of: $(VARIANTS))
+endif
 
-$(OBJARM64_DIR):
-	$(MKDIR) $(OBJARM64_DIR)
+TOOLVAR := $(TOOLVAR_$(VARIANT))
+CC := $(CC$(TOOLVAR))
+RC := $(RC$(TOOLVAR))
+ifeq ($(CONFIG),debug)
+CFLAGS := $(CFLAGS$(TOOLVAR)) $(DEBUG_CFLAGS)
+LDFLAGS := $(LDFLAGS$(TOOLVAR))
+TARGET := $(EXE_$(VARIANT))-debug.exe
+else
+CFLAGS := $(CFLAGS$(TOOLVAR)) $(RELEASE_CFLAGS)
+LDFLAGS := $(LDFLAGS$(TOOLVAR)) $(RELEASE_LDFLAGS)
+TARGET := $(EXE_$(VARIANT)).exe
+endif
+export MSYSTEM := $(MSYSTEM_$(VARIANT))
+export PATH := $(BINDIR_$(VARIANT)):$(PATH)
 
-# Build rules
-$(TARGET32): $(OBJECTS32) $(RC_OBJECT32)
-	$(CC) $(OBJECTS32) $(RC_OBJECT32) -o $@ $(LDFLAGS)
+OBJ_DIR := $(OBJ_ROOT)/$(VARIANT)-$(CONFIG)
+OBJECTS := $(SOURCES:%.c=$(OBJ_DIR)/%.o)
+RC_OBJECT := $(RC_SOURCE:%.rc=$(OBJ_DIR)/%.o)
 
-$(TARGET64): $(OBJECTS64) $(RC_OBJECT64)
-	$(CC) $(OBJECTS64) $(RC_OBJECT64) -o $@ $(LDFLAGS)
+build: $(TARGET)
 
-$(TARGETARM64): $(OBJECTSARM64) $(RC_OBJECTARM64)
-	$(CC) $(OBJECTSARM64) $(RC_OBJECTARM64) -o $@ $(LDFLAGS)
+$(TARGET): $(OBJECTS) $(RC_OBJECT)
+	$(CC) $(OBJECTS) $(RC_OBJECT) -o $@ $(LDFLAGS)
 
-# Compile source files to object files (32-bit)
-$(OBJ32_DIR)/%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJ_DIR):
+	$(MKDIR) $@
 
-# Compile resource files (32-bit)
-$(OBJ32_DIR)/%.o: %.rc
+# -MMD -MP writes each object's header dependencies next to it, so editing
+# a header rebuilds exactly the objects that include it.
+$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(OBJ_DIR)/%.o: %.rc | $(OBJ_DIR)
 	$(RC) $< -o $@
 
-# Compile source files to object files (64-bit)
-$(OBJ64_DIR)/%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(RC_OBJECT): resource.h YouTubeCacher.manifest
 
-# Compile resource files (64-bit)
-$(OBJ64_DIR)/%.o: %.rc
-	$(RC) $< -o $@
+-include $(OBJECTS:.o=.d)
+endif
 
-# Compile source files to object files (ARM64)
-$(OBJARM64_DIR)/%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Compile resource files (ARM64)
-$(OBJARM64_DIR)/%.o: %.rc
-	$(RC) $< -o $@
-
-# Cleaning targets
+# Cleaning targets. obj32, obj64 and objarm64 are where older versions of
+# this Makefile put objects.
 clean-objects:
-	$(RM) -rf $(OBJ32_DIR) $(OBJ64_DIR) $(OBJARM64_DIR)
+	$(RM) -r $(OBJ_ROOT) obj32 obj64 objarm64
 
 clean32:
-	$(RM) -rf $(OBJ32_DIR) $(TARGET32)
+	$(RM) -r $(OBJ_ROOT)/32-debug $(OBJ_ROOT)/32-release obj32 $(EXE_32).exe $(EXE_32)-debug.exe
 
 clean64:
-	$(RM) -rf $(OBJ64_DIR) $(TARGET64)
+	$(RM) -r $(OBJ_ROOT)/64-debug $(OBJ_ROOT)/64-release obj64 $(EXE_64).exe $(EXE_64)-debug.exe
+
+cleanucrt64:
+	$(RM) -r $(OBJ_ROOT)/ucrt64-debug $(OBJ_ROOT)/ucrt64-release $(EXE_ucrt64).exe $(EXE_ucrt64)-debug.exe
 
 cleanarm64:
-	$(RM) -rf $(OBJARM64_DIR) $(TARGETARM64)
+	$(RM) -r $(OBJ_ROOT)/arm64-debug $(OBJ_ROOT)/arm64-release objarm64 $(EXE_arm64).exe $(EXE_arm64)-debug.exe
 
-clean: clean32 clean64 cleanarm64
+clean: clean32 clean64 cleanucrt64 cleanarm64
 	$(MAKE) -C tests clean
 
 # Run the program
-run: debug32
-	./$(TARGET32)
+run: run32
 
 run32: debug32
-	./$(TARGET32)
+	./$(EXE_32)-debug.exe
 
 run64: debug64
-	./$(TARGET64)
+	./$(EXE_64)-debug.exe
+
+runucrt64: debugucrt64
+	./$(EXE_ucrt64)-debug.exe
 
 runarm64: debugarm64
-	./$(TARGETARM64)
-
-# Dependency tracking for incremental compilation
-# Each source file depends on its corresponding header and YouTubeCacher.h
-# Note: YouTubeCacher.h includes dpi.h, so files including YouTubeCacher.h implicitly depend on dpi.h
-$(OBJ32_DIR)/main.o $(OBJ64_DIR)/main.o $(OBJARM64_DIR)/main.o: main.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h uri.h parser.h log.h cache.h base64.h memory.h resource.h dpi.h
-$(OBJ32_DIR)/appstate.o $(OBJ64_DIR)/appstate.o $(OBJARM64_DIR)/appstate.o: appstate.c appstate.h cache.h memory.h
-$(OBJ32_DIR)/settings.o $(OBJ64_DIR)/settings.o $(OBJARM64_DIR)/settings.o: settings.c settings.h appstate.h memory.h
-$(OBJ32_DIR)/threading.o $(OBJ64_DIR)/threading.o $(OBJARM64_DIR)/threading.o: threading.c threading.h appstate.h memory.h
-$(OBJ32_DIR)/ytdlp.o $(OBJ64_DIR)/ytdlp.o $(OBJARM64_DIR)/ytdlp.o: ytdlp.c ytdlp.h appstate.h settings.h threading.h memory.h
-$(OBJ32_DIR)/ui.o $(OBJ64_DIR)/ui.o $(OBJARM64_DIR)/ui.o: ui.c YouTubeCacher.h ui.h appstate.h settings.h threading.h memory.h resource.h dpi.h
-$(OBJ32_DIR)/dialogs.o $(OBJ64_DIR)/dialogs.o $(OBJARM64_DIR)/dialogs.o: dialogs.c YouTubeCacher.h appstate.h settings.h threading.h ytdlp.h ui.h memory.h resource.h dpi.h
-$(OBJ32_DIR)/uri.o $(OBJ64_DIR)/uri.o $(OBJARM64_DIR)/uri.o: uri.c uri.h memory.h
-$(OBJ32_DIR)/cache.o $(OBJ64_DIR)/cache.o $(OBJARM64_DIR)/cache.o: cache.c cache.h memory.h
-$(OBJ32_DIR)/base64.o $(OBJ64_DIR)/base64.o $(OBJARM64_DIR)/base64.o: base64.c base64.h memory.h
-$(OBJ32_DIR)/parser.o $(OBJ64_DIR)/parser.o $(OBJARM64_DIR)/parser.o: parser.c parser.h memory.h
-$(OBJ32_DIR)/log.o $(OBJ64_DIR)/log.o $(OBJARM64_DIR)/log.o: log.c log.h memory.h
-$(OBJ32_DIR)/memory.o $(OBJ64_DIR)/memory.o $(OBJARM64_DIR)/memory.o: memory.c memory.h
-$(OBJ32_DIR)/error.o $(OBJ64_DIR)/error.o $(OBJARM64_DIR)/error.o: error.c error.h memory.h
-$(OBJ32_DIR)/threadsafe.o $(OBJ64_DIR)/threadsafe.o $(OBJARM64_DIR)/threadsafe.o: threadsafe.c threadsafe.h error.h memory.h appstate.h
-$(OBJ32_DIR)/subproc.o $(OBJ64_DIR)/subproc.o $(OBJARM64_DIR)/subproc.o: subproc.c YouTubeCacher.h threading.h ytdlp.h memory.h dpi.h
-$(OBJ32_DIR)/accessibility.o $(OBJ64_DIR)/accessibility.o $(OBJARM64_DIR)/accessibility.o: accessibility.c accessibility.h YouTubeCacher.h dpi.h
-$(OBJ32_DIR)/keyboard.o $(OBJ64_DIR)/keyboard.o $(OBJARM64_DIR)/keyboard.o: keyboard.c keyboard.h YouTubeCacher.h dpi.h
-$(OBJ32_DIR)/components.o $(OBJ64_DIR)/components.o $(OBJARM64_DIR)/components.o: components.c components.h YouTubeCacher.h dpi.h
-$(OBJ32_DIR)/dpi.o $(OBJ64_DIR)/dpi.o $(OBJARM64_DIR)/dpi.o: dpi.c dpi.h YouTubeCacher.h memory.h
-
-# Resource file dependencies
-$(OBJ32_DIR)/YouTubeCacher.o $(OBJ64_DIR)/YouTubeCacher.o $(OBJARM64_DIR)/YouTubeCacher.o: YouTubeCacher.rc resource.h
+	./$(EXE_arm64)-debug.exe
 
 # Phony targets
-.PHONY: all debug debug32 debug64 debugarm64 release release32 release64 releasearm64 clean clean32 clean64 cleanarm64 clean-objects run run32 run64 runarm64 test
+.PHONY: all build debug release $(BUILD_TARGETS) clean clean32 clean64 cleanucrt64 cleanarm64 clean-objects run run32 run64 runucrt64 runarm64 test
 
 test:
 	$(MAKE) -C tests run
