@@ -972,6 +972,15 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 SetFileBrowserPath(components->playerBrowser, playerPath);
             }
 
+            // Load custom yt-dlp arguments
+            wchar_t* customArgs = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+            if (customArgs) {
+                if (LoadSettingFromRegistry(REG_CUSTOM_ARGS, customArgs, MAX_EXTENDED_PATH)) {
+                    SetDlgItemTextW(hDlg, IDC_CUSTOM_ARGS_FIELD, customArgs);
+                }
+                SAFE_FREE(customArgs);
+            }
+
             // Load checkbox settings with the same reader and defaults that startup uses
             CheckDlgButton(hDlg, IDC_ENABLE_DEBUG,
                            LoadBoolSettingFromRegistry(REG_ENABLE_DEBUG, FALSE) ? BST_CHECKED : BST_UNCHECKED);
@@ -1112,6 +1121,25 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         FreeValidationSummary(validationSummary);
                     }
 
+                    // Read and validate the custom yt-dlp arguments
+                    HWND hCustomArgs = GetDlgItem(hDlg, IDC_CUSTOM_ARGS_FIELD);
+                    int customArgsLen = GetWindowTextLengthW(hCustomArgs);
+                    wchar_t* customArgs = (wchar_t*)SAFE_MALLOC((size_t)(customArgsLen + 1) * sizeof(wchar_t));
+                    if (!customArgs) {
+                        return TRUE;
+                    }
+                    GetWindowTextW(hCustomArgs, customArgs, customArgsLen + 1);
+                    if (!ValidateYtDlpArguments(customArgs)) {
+                        MessageBoxW(hDlg,
+                                    L"The custom yt-dlp arguments contain options that are not allowed, such as --exec or --batch-file.\n\n"
+                                    L"Remove them and try again.",
+                                    L"Invalid Arguments", MB_OK | MB_ICONWARNING);
+                        SetFocus(hCustomArgs);
+                        SAFE_FREE(customArgs);
+                        return TRUE;
+                    }
+                    SanitizeYtDlpArguments(customArgs, (size_t)customArgsLen + 1);
+
                     // Get values from components and save to registry
                     const wchar_t* ytdlpPath = GetFileBrowserPath(components->ytdlpBrowser);
                     const wchar_t* downloadPath = GetFolderBrowserPath(components->downloadFolderBrowser);
@@ -1142,6 +1170,10 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
 
                         RegCloseKey(hKey);
                     }
+
+                    // Save custom yt-dlp arguments as REG_SZ (an empty field clears them)
+                    SaveSettingToRegistry(REG_CUSTOM_ARGS, customArgs);
+                    SAFE_FREE(customArgs);
 
                     EndDialog(hDlg, IDOK);
                     return TRUE;
