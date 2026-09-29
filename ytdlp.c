@@ -143,6 +143,51 @@ BOOL ValidateYtDlpExecutable(const wchar_t* path) {
 
     return FALSE;
 }
+
+// Read the custom yt-dlp arguments with a buffer sized from the registry value,
+// so arguments of any length are kept. Returns NULL when there are none; the
+// caller frees the result.
+static wchar_t* LoadCustomArgsFromRegistry(void) {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+        return NULL;
+    }
+
+    wchar_t* args = NULL;
+    DWORD dataType = 0;
+    DWORD dataSize = 0;
+    LONG status = RegQueryValueExW(hKey, REG_CUSTOM_ARGS, NULL, &dataType, NULL, &dataSize);
+
+    // The value can grow between the size query and the read, so retry a few times
+    for (int attempt = 0; attempt < 3 && status == ERROR_SUCCESS && dataType == REG_SZ; attempt++) {
+        // Leave room to terminate a string stored without a terminator
+        wchar_t* buffer = (wchar_t*)SAFE_MALLOC((size_t)dataSize + 2 * sizeof(wchar_t));
+        if (!buffer) break;
+
+        DWORD readSize = dataSize;
+        status = RegQueryValueExW(hKey, REG_CUSTOM_ARGS, NULL, &dataType, (LPBYTE)buffer, &readSize);
+        if (status == ERROR_SUCCESS && dataType == REG_SZ) {
+            buffer[readSize / sizeof(wchar_t)] = L'\0';
+            args = buffer;
+            break;
+        }
+
+        SAFE_FREE(buffer);
+        if (status == ERROR_MORE_DATA) {
+            dataSize = readSize;
+            status = ERROR_SUCCESS;
+        }
+    }
+
+    RegCloseKey(hKey);
+
+    if (args && args[0] == L'\0') {
+        SAFE_FREE(args);
+        args = NULL;
+    }
+    return args;
+}
+
 BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
     if (!config) return FALSE;
 
@@ -154,11 +199,8 @@ BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
         GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
     }
 
-    // Load custom yt-dlp arguments from registry
-    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
-        // Use empty default if not found in registry
-        config->defaultArgs[0] = L'\0';
-    }
+    // Load custom yt-dlp arguments from registry (NULL if not found)
+    config->defaultArgs = LoadCustomArgsFromRegistry();
 
     // Set default timeout
     config->timeoutSeconds = 300; // 5 minutes
@@ -170,8 +212,12 @@ BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
 }
 
 void CleanupYtDlpConfig(YtDlpConfig* config) {
-    // Placeholder - no dynamic memory to clean up in current implementation
-    (void)config;
+    if (!config) return;
+
+    if (config->defaultArgs) {
+        SAFE_FREE(config->defaultArgs);
+        config->defaultArgs = NULL;
+    }
 }
 
 BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info) {
@@ -971,13 +1017,6 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
         if (!escapedOutputPath) goto cleanup;
     }
 
-    // Start with custom arguments if they exist
-    wchar_t baseArgs[2048] = L"";
-    if (config && config->defaultArgs[0] != L'\0') {
-        wcscpy(baseArgs, config->defaultArgs);
-        wcscat(baseArgs, L" ");
-    }
-
     // Build operation-specific arguments
     wchar_t operationArgs[4096];
     switch (operation) {
@@ -1062,12 +1101,18 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             goto cleanup;
     }
 
-    // Combine custom arguments with operation-specific arguments
-    if (wcslen(baseArgs) + wcslen(operationArgs) + 1 >= argsSize) {
+    // Combine custom arguments, if any, with operation-specific arguments
+    const wchar_t* customArgs = (config && config->defaultArgs) ? config->defaultArgs : L"";
+    size_t customLen = wcslen(customArgs);
+    if (customLen + 1 + wcslen(operationArgs) + 1 > argsSize) {
         goto cleanup;
     }
 
-    wcscpy(args, baseArgs);
+    args[0] = L'\0';
+    if (customLen > 0) {
+        wcscpy(args, customArgs);
+        wcscat(args, L" ");
+    }
     wcscat(args, operationArgs);
 
     if (escapedUrl) SAFE_FREE(escapedUrl);
@@ -1914,10 +1959,8 @@ BOOL LoadYtDlpConfig(YtDlpConfig* config) {
         }
     }
 
-    // Load custom yt-dlp arguments
-    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
-        config->defaultArgs[0] = L'\0';
-    }
+    // Load custom yt-dlp arguments (NULL if not found)
+    config->defaultArgs = LoadCustomArgsFromRegistry();
 
     // Load timeout setting (stored as string in registry)
     wchar_t timeoutStr[32];
@@ -1974,7 +2017,7 @@ BOOL SaveYtDlpConfig(const YtDlpConfig* config) {
     }
 
     // Save custom yt-dlp arguments
-    if (!SaveSettingToRegistry(REG_CUSTOM_ARGS, config->defaultArgs)) {
+    if (!SaveSettingToRegistry(REG_CUSTOM_ARGS, config->defaultArgs ? config->defaultArgs : L"")) {
         allSuccess = FALSE;
     }
 
@@ -2177,7 +2220,8 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
     NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)SAFE_MALLOC(sizeof(NonBlockingDownloadContext));
     if (!downloadContext) return FALSE;
 
-    // Copy configuration and request data
+    // Copy configuration and request data; on success the context owns the
+    // config's strings, and on failure the caller keeps them
     memcpy(&downloadContext->config, config, sizeof(YtDlpConfig));
     downloadContext->request = request; // Transfer ownership
     downloadContext->parentWindow = parentWindow;
@@ -2246,6 +2290,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
         return NULL;
     }
     memcpy(context->config, config, sizeof(YtDlpConfig));
+    context->config->defaultArgs = NULL; // Deep-copied below, once the request is copied
 
     // Deep copy request
     context->request = (YtDlpRequest*)SAFE_MALLOC(sizeof(YtDlpRequest));
@@ -2308,6 +2353,14 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
         }
     }
 
+    if (config->defaultArgs) {
+        context->config->defaultArgs = SAFE_WCSDUP(config->defaultArgs);
+        if (!context->config->defaultArgs) {
+            FreeSubprocessContext(context);
+            return NULL;
+        }
+    }
+
     // Set callback information
     context->progressCallback = progressCallback;
     context->callbackUserData = callbackUserData;
@@ -2351,6 +2404,7 @@ void FreeSubprocessContext(SubprocessContext* context) {
     }
 
     if (context->config) {
+        CleanupYtDlpConfig(context->config);
         SAFE_FREE(context->config);
         context->config = NULL;
     }
@@ -2502,6 +2556,7 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     if (!StartNonBlockingDownload(&context->config, context->request, context->hDialog)) {
         ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
         PostMessageW(context->hDialog, WM_DOWNLOAD_COMPLETE, (WPARAM)NULL, (LPARAM)NULL);
+        CleanupYtDlpConfig(&context->config);
         SAFE_FREE(context);
         return 1;
     }
@@ -2628,7 +2683,7 @@ cleanup:
     }
 
     // Validate custom arguments if present
-    if (config->defaultArgs[0] != L'\0') {
+    if (config->defaultArgs && config->defaultArgs[0] != L'\0') {
         if (!ValidateYtDlpArguments(config->defaultArgs)) {
             validationInfo->result = VALIDATION_PERMISSION_DENIED;
             validationInfo->errorDetails = SAFE_WCSDUP(L"Custom yt-dlp arguments contain potentially dangerous options");
@@ -2694,8 +2749,8 @@ SetupDefaultYtDlpConfiguration(YtDlpConfig* config) {
         wcscpy(config->defaultTempDir, L"C:\\Temp\\");
     }
 
-    // Set default arguments (empty)
-    config->defaultArgs[0] = L'\0';
+    // Set default arguments (none)
+    config->defaultArgs = NULL;
 
     // Set default timeout (5 minutes)
     config->timeoutSeconds = 300;
@@ -2812,10 +2867,12 @@ BOOL InitializeYtDlpSystem(HWND hMainWindow) {
         // Configuration validation failed - notify user
         NotifyConfigurationIssues(hMainWindow, &validationInfo);
         FreeValidationInfo(&validationInfo);
+        CleanupYtDlpConfig(&config);
         return FALSE;
     }
 
     FreeValidationInfo(&validationInfo);
+    CleanupYtDlpConfig(&config);
     return TRUE;
 }
 

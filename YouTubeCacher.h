@@ -131,7 +131,7 @@ typedef struct {
 typedef struct {
     wchar_t ytDlpPath[MAX_EXTENDED_PATH];
     wchar_t defaultTempDir[MAX_EXTENDED_PATH];
-    wchar_t defaultArgs[1024];
+    wchar_t* defaultArgs;  // Custom yt-dlp arguments, NULL if none; freed by CleanupYtDlpConfig
     DWORD timeoutSeconds;
     BOOL enableVerboseLogging;
     BOOL autoRetryOnFailure;
