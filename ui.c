@@ -903,7 +903,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 editWidth, editHeight,
                 ytdlpBtnPt.x, buttonWidth, buttonHeight,
                 L"yt-dlp Executable Path:",
-                L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0",
+                L"Executable Files (*.exe)\0*.exe\0",
                 IDC_YTDLP_COMPONENT
             );
             if (components->ytdlpBrowser) {

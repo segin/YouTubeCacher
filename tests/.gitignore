@@ -24,3 +24,7 @@ test_subproc
 test_cmdline
 cmdline_logic.c
 test_multidl_lines
+parser_output_logic.c
+test_parser_output
+ytdlp_args_logic.c
+test_ytdlp_args

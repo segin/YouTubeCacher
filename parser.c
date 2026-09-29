@@ -1032,6 +1032,97 @@ BOOL StartEnhancedSubprocessExecution(EnhancedSubprocessContext* context) {
     return TRUE;
 }
 
+// Append text, and optionally a newline, to the accumulated subprocess output.
+// The buffer is grown before writing, and its recorded size changes only after
+// a successful realloc; if growing fails, the text is dropped.
+static void AppendAccumulatedOutput(SubprocessContext* context, const wchar_t* text, BOOL addNewline) {
+    if (!context || !context->accumulatedOutput || !text) return;
+
+    size_t currentLen = wcslen(context->accumulatedOutput);
+    size_t textLen = wcslen(text);
+    size_t needed = currentLen + textLen + (addNewline ? 1 : 0) + 1;
+
+    if (needed > context->outputBufferSize) {
+        size_t newSize = needed * 2;
+        wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(context->accumulatedOutput, newSize * sizeof(wchar_t));
+        if (!newBuffer) {
+            return;
+        }
+        context->accumulatedOutput = newBuffer;
+        context->outputBufferSize = newSize;
+    }
+
+    memcpy(context->accumulatedOutput + currentLen, text, textLen * sizeof(wchar_t));
+    currentLen += textLen;
+    if (addNewline) {
+        context->accumulatedOutput[currentLen++] = L'\n';
+    }
+    context->accumulatedOutput[currentLen] = L'\0';
+}
+
+// Length of the longest prefix of data that doesn't end inside a UTF-8 sequence
+static size_t Utf8CompletePrefixLength(const char* data, size_t len) {
+    size_t i = len;
+    size_t continuation = 0;
+    while (i > 0 && continuation < 3 && ((unsigned char)data[i - 1] & 0xC0) == 0x80) {
+        i--;
+        continuation++;
+    }
+    if (i == 0) return len;
+
+    unsigned char lead = (unsigned char)data[i - 1];
+    size_t sequenceLen = (lead >= 0xF0) ? 4 : (lead >= 0xE0) ? 3 : (lead >= 0xC0) ? 2 : 1;
+    if (sequenceLen > continuation + 1) {
+        // The last sequence is incomplete; leave it for the next chunk
+        return i - 1;
+    }
+    return len;
+}
+
+// Convert one UTF-8 output line, parse it, and add it to the accumulated output.
+// The final unterminated line is stored without a newline and without a
+// progress callback. Returns TRUE if the line produced any text.
+static BOOL HandleEnhancedOutputLine(EnhancedSubprocessContext* enhancedContext, const char* line,
+                                     size_t lineLen, BOOL isFinal) {
+    SubprocessContext* context = enhancedContext->baseContext;
+    EnhancedProgressInfo* progress = enhancedContext->enhancedProgress;
+
+    if (lineLen == 0 || lineLen > INT_MAX) return FALSE;
+
+    // Size the conversion buffer to the line, so no line is too long to convert
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, line, (int)lineLen, NULL, 0);
+    if (wideLen <= 0) return FALSE;
+
+    wchar_t* wideLineBuffer = (wchar_t*)SAFE_MALLOC(((size_t)wideLen + 1) * sizeof(wchar_t));
+    if (!wideLineBuffer) return FALSE;
+
+    int converted = MultiByteToWideChar(CP_UTF8, 0, line, (int)lineLen, wideLineBuffer, wideLen);
+    if (converted <= 0) {
+        SAFE_FREE(wideLineBuffer);
+        return FALSE;
+    }
+    wideLineBuffer[converted] = L'\0';
+
+    // Process the line with enhanced processing
+    EnterCriticalSection(&enhancedContext->progressLock);
+    ProcessYtDlpOutputLine(wideLineBuffer, progress);
+    LeaveCriticalSection(&enhancedContext->progressLock);
+
+    // Add to accumulated output
+    AppendAccumulatedOutput(context, wideLineBuffer, !isFinal);
+
+    // Update progress callback with enhanced information
+    if (!isFinal && context->progressCallback) {
+        EnterCriticalSection(&enhancedContext->progressLock);
+        const wchar_t* statusMsg = progress->statusMessage ? progress->statusMessage : L"Processing...";
+        context->progressCallback(progress->progressPercentage, statusMsg, context->callbackUserData);
+        LeaveCriticalSection(&enhancedContext->progressLock);
+    }
+
+    SAFE_FREE(wideLineBuffer);
+    return TRUE;
+}
+
 // Enhanced subprocess worker thread
 DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread started");
@@ -1118,7 +1209,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (!cmdLine) {
         ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to allocate command line memory");
         CloseHandle(context->hOutputRead);
+        context->hOutputRead = NULL;
         CloseHandle(context->hOutputWrite);
+        context->hOutputWrite = NULL;
         context->result->success = FALSE;
         context->result->exitCode = 1;
         context->result->errorMessage = SAFE_WCSDUP(L"Memory allocation failed");
@@ -1145,7 +1238,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
         ThreadSafeDebugOutput(L"YouTubeCacher: EnhancedSubprocessWorkerThread - FAILED to create process");
         SAFE_FREE(cmdLine);
         CloseHandle(context->hOutputRead);
+        context->hOutputRead = NULL;
         CloseHandle(context->hOutputWrite);
+        context->hOutputWrite = NULL;
         context->result->success = FALSE;
         context->result->exitCode = error;
         context->result->errorMessage = SAFE_WCSDUP(L"Failed to start yt-dlp process");
@@ -1156,6 +1251,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     // Store process handle for potential cancellation
     context->hProcess = pi.hProcess;
     CloseHandle(context->hOutputWrite);
+    context->hOutputWrite = NULL;
     SAFE_FREE(cmdLine);
 
     // Duplicate the process handle for application state cancellation support
@@ -1166,8 +1262,11 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                        FALSE, 0)) {
         SetActiveDownload(hDuplicatedProcess, pi.dwProcessId, context->request->tempDir);
     } else {
-        // Fallback: use original handle but don't close it later
-        SetActiveDownload(pi.hProcess, pi.dwProcessId, context->request->tempDir);
+        // Fallback: never share our handle, because both this thread and the
+        // application state would close it. Without a handle of its own the
+        // application state can't cancel this run.
+        SetActiveDownload(OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pi.dwProcessId),
+                          pi.dwProcessId, context->request->tempDir);
     }
     CloseHandle(pi.hThread); // We don't need the thread handle
 
@@ -1183,9 +1282,14 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     DWORD bytesRead;
     BOOL processRunning = TRUE;
 
-    // Line accumulator for UTF-8 processing
-    static char lineAccumulator[8192] = {0};
-    static size_t fillCounter = 0;
+    // Line accumulator for UTF-8 processing (private to this invocation).
+    // It starts on the stack and moves to the heap to hold a longer line.
+    char initialAccumulator[8192];
+    char* lineAccumulator = initialAccumulator;
+    size_t lineAccumulatorSize = sizeof(initialAccumulator);
+    const size_t MAX_LINE_ACCUMULATOR_SIZE = 1024 * 1024; // Longer lines are passed on in pieces
+    size_t fillCounter = 0;
+    lineAccumulator[0] = '\0';
 
     // Timeout tracking
     DWORD startTime = GetTickCount();
@@ -1195,7 +1299,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     DWORD noOutputWarningTime = 0;
     const DWORD NO_OUTPUT_WARNING_THRESHOLD = 30000; // Warn after 30 seconds of no output
 
-    while (processRunning || fillCounter > 0) {
+    // Runs until the process has exited and the pipe is drained; any
+    // unterminated final line is handled after the loop
+    while (TRUE) {
 
         // Check for cancellation
         if (IsCancellationRequested(&context->threadContext)) {
@@ -1234,101 +1340,90 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
             if (ReadFile(context->hOutputRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
                 buffer[bytesRead] = '\0';
 
-                // Safely add new bytes to accumulator with bounds checking
-                size_t spaceAvailable = sizeof(lineAccumulator) - fillCounter - 1;
-                size_t bytesToCopy = (bytesRead < spaceAvailable) ? bytesRead : spaceAvailable;
+                // Feed the whole read through the accumulator, one chunk at a time
+                size_t offset = 0;
+                while (offset < bytesRead) {
+                    size_t spaceAvailable = lineAccumulatorSize - fillCounter - 1;
+                    size_t bytesToCopy = (bytesRead - offset < spaceAvailable) ? bytesRead - offset : spaceAvailable;
 
-                if (bytesToCopy > 0) {
-                    memcpy(lineAccumulator + fillCounter, buffer, bytesToCopy);
+                    memcpy(lineAccumulator + fillCounter, buffer + offset, bytesToCopy);
                     fillCounter += bytesToCopy;
+                    offset += bytesToCopy;
                     lineAccumulator[fillCounter] = '\0';
-                }
 
-                // Process complete lines with enhanced processing
-                // yt-dlp uses both \n and \r as line terminators
-                // Progress updates use \r to overwrite the same line
-                char* start = lineAccumulator;
-                char* lineEnd;
+                    // Process complete lines with enhanced processing
+                    // yt-dlp uses both \n and \r as line terminators
+                    // Progress updates use \r to overwrite the same line
+                    char* start = lineAccumulator;
+                    char* lineEnd;
 
-                // Look for either \n or \r as line terminators
-                while ((lineEnd = strpbrk(start, "\n\r")) != NULL) {
-                    char terminator = *lineEnd;
-                    *lineEnd = '\0';
+                    // Look for either \n or \r as line terminators
+                    while ((lineEnd = strpbrk(start, "\n\r")) != NULL) {
+                        char terminator = *lineEnd;
+                        *lineEnd = '\0';
 
-                    // Calculate line length
-                    size_t lineLen = lineEnd - start;
-
-                    // Remove trailing \r or \n if present
-                    if (lineLen > 0 && (start[lineLen - 1] == '\r' || start[lineLen - 1] == '\n')) {
-                        start[lineLen - 1] = '\0';
-                        lineLen--;
-                    }
-
-                    // Convert this complete UTF-8 line to wide chars
-                    if (lineLen > 0) {
-                        wchar_t wideLineBuffer[2048];
-                        int converted = MultiByteToWideChar(CP_UTF8, 0, start, (int)lineLen, wideLineBuffer, 2047);
-                        if (converted > 0) {
-                            wideLineBuffer[converted] = L'\0';
-
+                        if (HandleEnhancedOutputLine(enhancedContext, start, (size_t)(lineEnd - start), FALSE)) {
                             // Update last output time since we received data
                             lastOutputTime = GetTickCount();
                             noOutputWarningTime = 0; // Reset warning flag
+                        }
 
-                            // Process the line with enhanced processing
-                            EnterCriticalSection(&enhancedContext->progressLock);
-                            ProcessYtDlpOutputLine(wideLineBuffer, progress);
-                            LeaveCriticalSection(&enhancedContext->progressLock);
+                        start = lineEnd + 1;
 
-                            // Add to accumulated output
-                            if (context->accumulatedOutput) {
-                                size_t currentLen = wcslen(context->accumulatedOutput);
-                                size_t newLen = currentLen + converted + 2;
-                                if (newLen >= context->outputBufferSize) {
-                                    context->outputBufferSize = newLen * 2;
-                                    wchar_t* newBuffer = (wchar_t*)SAFE_REALLOC(context->accumulatedOutput,
-                                                                          context->outputBufferSize * sizeof(wchar_t));
-                                    if (newBuffer) {
-                                        context->accumulatedOutput = newBuffer;
-                                    }
-                                }
-
-                                if (context->accumulatedOutput) {
-                                    wcscat(context->accumulatedOutput, wideLineBuffer);
-                                    wcscat(context->accumulatedOutput, L"\n");
-                                }
-                            }
-
-                            // Update progress callback with enhanced information
-                            if (context->progressCallback) {
-                                EnterCriticalSection(&enhancedContext->progressLock);
-                                const wchar_t* statusMsg = progress->statusMessage ? progress->statusMessage : L"Processing...";
-                                context->progressCallback(progress->progressPercentage, statusMsg, context->callbackUserData);
-                                LeaveCriticalSection(&enhancedContext->progressLock);
-                            }
+                        // If we hit a \r, skip any following \n (handle \r\n sequences)
+                        if (terminator == '\r' && *start == '\n') {
+                            start++;
                         }
                     }
 
-                    start = lineEnd + 1;
+                    // Move remaining incomplete data to start of buffer
+                    size_t remaining = fillCounter - (start - lineAccumulator);
+                    if (remaining > 0 && start != lineAccumulator) {
+                        memmove(lineAccumulator, start, remaining);
+                    }
+                    fillCounter = remaining;
+                    lineAccumulator[fillCounter] = '\0';
 
-                    // If we hit a \r, skip any following \n (handle \r\n sequences)
-                    if (terminator == '\r' && *start == '\n') {
-                        start++;
+                    // The accumulator is full without a line terminator: grow it
+                    // so the line is passed on whole
+                    BOOL grown = FALSE;
+                    if (fillCounter == lineAccumulatorSize - 1 && lineAccumulatorSize < MAX_LINE_ACCUMULATOR_SIZE) {
+                        size_t newSize = lineAccumulatorSize * 2;
+                        char* newAccumulator;
+                        if (lineAccumulator == initialAccumulator) {
+                            newAccumulator = (char*)SAFE_MALLOC(newSize);
+                            if (newAccumulator) {
+                                memcpy(newAccumulator, lineAccumulator, fillCounter + 1);
+                            }
+                        } else {
+                            newAccumulator = (char*)SAFE_REALLOC(lineAccumulator, newSize);
+                        }
+                        if (newAccumulator) {
+                            lineAccumulator = newAccumulator;
+                            lineAccumulatorSize = newSize;
+                            grown = TRUE;
+                        }
+                    }
+
+                    // A line longer than the accumulator can hold: pass on what
+                    // we have as a line, so that later input isn't discarded
+                    if (!grown && fillCounter == lineAccumulatorSize - 1) {
+                        size_t flushLen = Utf8CompletePrefixLength(lineAccumulator, fillCounter);
+                        if (flushLen == 0) flushLen = fillCounter;
+                        if (HandleEnhancedOutputLine(enhancedContext, lineAccumulator, flushLen, FALSE)) {
+                            lastOutputTime = GetTickCount();
+                            noOutputWarningTime = 0;
+                        }
+                        fillCounter -= flushLen;
+                        memmove(lineAccumulator, lineAccumulator + flushLen, fillCounter);
+                        lineAccumulator[fillCounter] = '\0';
                     }
                 }
-
-                // Move remaining incomplete data to start of buffer
-                size_t remaining = fillCounter - (start - lineAccumulator);
-                if (remaining > 0 && start != lineAccumulator) {
-                    memmove(lineAccumulator, start, remaining);
-                }
-                fillCounter = remaining;
-                lineAccumulator[fillCounter] = '\0';
             }
         }
 
-        // If process has exited and no more data, break
-        if (!processRunning && fillCounter == 0) {
+        // Once the process has exited and the pipe is drained, stop reading
+        if (!processRunning && bytesAvailable == 0) {
             break;
         }
 
@@ -1340,20 +1435,11 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
 
     // Process any remaining data in the accumulator
     if (fillCounter > 0) {
-        wchar_t wideLineBuffer[2048];
-        int converted = MultiByteToWideChar(CP_UTF8, 0, lineAccumulator, (int)fillCounter, wideLineBuffer, 2047);
-        if (converted > 0) {
-            wideLineBuffer[converted] = L'\0';
-
-            EnterCriticalSection(&enhancedContext->progressLock);
-            ProcessYtDlpOutputLine(wideLineBuffer, progress);
-            LeaveCriticalSection(&enhancedContext->progressLock);
-
-            if (context->accumulatedOutput) {
-                wcscat(context->accumulatedOutput, wideLineBuffer);
-            }
-        }
+        HandleEnhancedOutputLine(enhancedContext, lineAccumulator, fillCounter, TRUE);
         fillCounter = 0;
+    }
+    if (lineAccumulator != initialAccumulator) {
+        SAFE_FREE(lineAccumulator);
     }
 
     // Wait for process completion and get exit code
@@ -1402,6 +1488,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (pi.hProcess && pi.hProcess != INVALID_HANDLE_VALUE) {
         CloseHandle(pi.hProcess);
         pi.hProcess = NULL;
+        context->hProcess = NULL; // Same handle; FreeSubprocessContext must not close it again
     }
     // Note: pi.hThread was already closed earlier after process creation
 

@@ -133,20 +133,61 @@ BOOL ValidateYtDlpExecutable(const wchar_t* path) {
         return FALSE;
     }
 
-    // Check if it's an executable file (has .exe, .cmd, .bat, .py, or .ps1 extension)
+    // Accept only .exe: CreateProcessW hands .bat and .cmd files to cmd.exe,
+    // which would parse the URL and other arguments as shell syntax, and it
+    // can't run .py or .ps1 files at all
     const wchar_t* ext = wcsrchr(path, L'.');
-    if (ext != NULL) {
-        if (_wcsicmp(ext, L".exe") == 0 ||
-            _wcsicmp(ext, L".cmd") == 0 ||
-            _wcsicmp(ext, L".bat") == 0 ||
-            _wcsicmp(ext, L".py") == 0 ||
-            _wcsicmp(ext, L".ps1") == 0) {
-            return TRUE;
-        }
+    if (ext != NULL && _wcsicmp(ext, L".exe") == 0) {
+        return TRUE;
     }
 
     return FALSE;
 }
+
+// Read the custom yt-dlp arguments with a buffer sized from the registry value,
+// so arguments of any length are kept. Returns NULL when there are none; the
+// caller frees the result.
+static wchar_t* LoadCustomArgsFromRegistry(void) {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+        return NULL;
+    }
+
+    wchar_t* args = NULL;
+    DWORD dataType = 0;
+    DWORD dataSize = 0;
+    LONG status = RegQueryValueExW(hKey, REG_CUSTOM_ARGS, NULL, &dataType, NULL, &dataSize);
+
+    // The value can grow between the size query and the read, so retry a few times
+    for (int attempt = 0; attempt < 3 && status == ERROR_SUCCESS && dataType == REG_SZ; attempt++) {
+        // Leave room to terminate a string stored without a terminator
+        wchar_t* buffer = (wchar_t*)SAFE_MALLOC((size_t)dataSize + 2 * sizeof(wchar_t));
+        if (!buffer) break;
+
+        DWORD readSize = dataSize;
+        status = RegQueryValueExW(hKey, REG_CUSTOM_ARGS, NULL, &dataType, (LPBYTE)buffer, &readSize);
+        if (status == ERROR_SUCCESS && dataType == REG_SZ) {
+            buffer[readSize / sizeof(wchar_t)] = L'\0';
+            args = buffer;
+            break;
+        }
+
+        SAFE_FREE(buffer);
+        if (status == ERROR_MORE_DATA) {
+            dataSize = readSize;
+            status = ERROR_SUCCESS;
+        }
+    }
+
+    RegCloseKey(hKey);
+
+    if (args && args[0] == L'\0') {
+        SAFE_FREE(args);
+        args = NULL;
+    }
+    return args;
+}
+
 BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
     if (!config) return FALSE;
 
@@ -158,11 +199,8 @@ BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
         GetDefaultYtDlpPath(config->ytDlpPath, MAX_EXTENDED_PATH);
     }
 
-    // Load custom yt-dlp arguments from registry
-    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
-        // Use empty default if not found in registry
-        config->defaultArgs[0] = L'\0';
-    }
+    // Load custom yt-dlp arguments from registry (NULL if not found)
+    config->defaultArgs = LoadCustomArgsFromRegistry();
 
     // Set default timeout
     config->timeoutSeconds = 300; // 5 minutes
@@ -174,8 +212,12 @@ BOOL InitializeYtDlpConfig(YtDlpConfig* config) {
 }
 
 void CleanupYtDlpConfig(YtDlpConfig* config) {
-    // Placeholder - no dynamic memory to clean up in current implementation
-    (void)config;
+    if (!config) return;
+
+    if (config->defaultArgs) {
+        SAFE_FREE(config->defaultArgs);
+        config->defaultArgs = NULL;
+    }
 }
 
 BOOL ValidateYtDlpComprehensive(const wchar_t* path, ValidationInfo* info) {
@@ -843,16 +885,77 @@ void FreeErrorAnalysis(ErrorAnalysis* analysis) {
     SAFE_FREE(analysis);
 }
 
-// Additional stub implementations for missing functions
-BOOL ValidateYtDlpArguments(const wchar_t* args) {
-    if (!args) return TRUE;
+// Custom-argument options that make yt-dlp run commands or read URLs from a
+// file. yt-dlp also accepts an unambiguous abbreviation of a long option, so a
+// prefix of one of these is blocked too.
+static const wchar_t* const g_blockedYtDlpLongOptions[] = {
+    L"--exec",
+    L"--exec-before-download",
+    L"--batch-file",
+};
+// Short aliases of the blocked options (-a is --batch-file)
+static const wchar_t g_blockedYtDlpShortOptions[] = L"a";
+// Short options that take a value; the rest of a group such as "-fa" is that value
+static const wchar_t g_ytDlpShortOptionsWithValue[] = L"tINrRPoOfSup2";
 
-    // Simple validation - reject potentially dangerous arguments
-    if (wcsstr(args, L"--exec") || wcsstr(args, L"--batch-file")) {
+// Check one command-line token (not NUL-terminated) against the blocked options
+static BOOL IsBlockedYtDlpOption(const wchar_t* token, size_t len) {
+    if (len < 2 || token[0] != L'-') return FALSE;
+
+    if (token[1] == L'-') {
+        // Long option; the name ends at '=' when a value is attached
+        size_t nameLen = 0;
+        while (nameLen < len && token[nameLen] != L'=') nameLen++;
+        if (nameLen <= 2) return FALSE; // "--" alone ends the options
+
+        for (size_t i = 0; i < sizeof(g_blockedYtDlpLongOptions) / sizeof(g_blockedYtDlpLongOptions[0]); i++) {
+            const wchar_t* blocked = g_blockedYtDlpLongOptions[i];
+            if (nameLen <= wcslen(blocked) && wcsncmp(token, blocked, nameLen) == 0) {
+                return TRUE;
+            }
+        }
         return FALSE;
     }
 
-    return TRUE;
+    // A group of short options, such as "-ia"
+    for (size_t i = 1; i < len && token[i] != L'\0'; i++) {
+        if (wcschr(g_blockedYtDlpShortOptions, token[i])) return TRUE;
+        if (wcschr(g_ytDlpShortOptionsWithValue, token[i])) return FALSE;
+    }
+    return FALSE;
+}
+
+BOOL ValidateYtDlpArguments(const wchar_t* args) {
+    if (!args) return TRUE;
+
+    // Check each whitespace-separated token for a blocked option. Quotes are
+    // dropped rather than parsed, so quoting part of an option can't hide it:
+    // "-"-exec reaches yt-dlp as --exec.
+    size_t len = wcslen(args);
+    wchar_t* unquoted = (wchar_t*)SAFE_MALLOC((len + 1) * sizeof(wchar_t));
+    if (!unquoted) return FALSE;
+
+    size_t unquotedLen = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (args[i] != L'"') {
+            unquoted[unquotedLen++] = args[i];
+        }
+    }
+    unquoted[unquotedLen] = L'\0';
+
+    BOOL valid = TRUE;
+    size_t pos = 0;
+    while (valid && pos < unquotedLen) {
+        while (pos < unquotedLen && wcschr(L" \t\r\n", unquoted[pos])) pos++;
+        size_t start = pos;
+        while (pos < unquotedLen && !wcschr(L" \t\r\n", unquoted[pos])) pos++;
+        if (pos > start && IsBlockedYtDlpOption(unquoted + start, pos - start)) {
+            valid = FALSE;
+        }
+    }
+
+    SAFE_FREE(unquoted);
+    return valid;
 }
 
 BOOL SanitizeYtDlpArguments(wchar_t* args, size_t argsSize) {
@@ -915,9 +1018,52 @@ wchar_t* EscapeCommandLineArgument(const wchar_t* arg) {
     return escaped;
 }
 
+/**
+ * Escapes literal text for use in a yt-dlp output template, where '%' starts
+ * a field: every '%' is doubled. Returns an allocated wide string that must be
+ * freed by the caller.
+ */
+wchar_t* EscapeOutputTemplateText(const wchar_t* text) {
+    if (!text) return NULL;
+
+    size_t len = wcslen(text);
+    size_t percentCount = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (text[i] == L'%') percentCount++;
+    }
+
+    wchar_t* escaped = (wchar_t*)SAFE_MALLOC((len + percentCount + 1) * sizeof(wchar_t));
+    if (!escaped) return NULL;
+
+    size_t j = 0;
+    for (size_t i = 0; i < len; i++) {
+        escaped[j++] = text[i];
+        if (text[i] == L'%') {
+            escaped[j++] = L'%';
+        }
+    }
+    escaped[j] = L'\0';
+
+    return escaped;
+}
+
 BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, const wchar_t* outputPath,
                              const YtDlpConfig* config, wchar_t* args, size_t argsSize) {
     if (!args || argsSize == 0) return FALSE;
+
+    // Every yt-dlp command line is built here, so refuse to build one for an
+    // executable that CreateProcessW would hand to a command interpreter
+    if (config && !ValidateYtDlpExecutable(config->ytDlpPath)) {
+        ThreadSafeDebugOutput(L"GetYtDlpArgsForOperation: yt-dlp path is not an existing .exe file");
+        return FALSE;
+    }
+
+    // Check the custom arguments that this command will pass, not only the
+    // ones seen at startup, since they are re-read for each run
+    if (config && config->defaultArgs && !ValidateYtDlpArguments(config->defaultArgs)) {
+        ThreadSafeDebugOutput(L"GetYtDlpArgsForOperation: custom yt-dlp arguments contain a blocked option");
+        return FALSE;
+    }
 
     wchar_t* escapedUrl = NULL;
     wchar_t* escapedOutputPath = NULL;
@@ -928,18 +1074,15 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
     }
 
     if (outputPath) {
-        // Construct the output template: "outputPath\%(id)s.%(ext)s"
+        // Construct the output template: "outputPath\%(id)s.%(ext)s", with any
+        // '%' in the folder doubled so yt-dlp doesn't read it as template syntax
+        wchar_t* templateFolder = EscapeOutputTemplateText(outputPath);
+        if (!templateFolder) goto cleanup;
         wchar_t outputTemplate[MAX_EXTENDED_PATH];
-        swprintf(outputTemplate, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", outputPath);
+        swprintf(outputTemplate, MAX_EXTENDED_PATH, L"%ls\\%%(id)s.%%(ext)s", templateFolder);
+        SAFE_FREE(templateFolder);
         escapedOutputPath = EscapeCommandLineArgument(outputTemplate);
         if (!escapedOutputPath) goto cleanup;
-    }
-
-    // Start with custom arguments if they exist
-    wchar_t baseArgs[2048] = L"";
-    if (config && config->defaultArgs[0] != L'\0') {
-        wcscpy(baseArgs, config->defaultArgs);
-        wcscat(baseArgs, L" ");
     }
 
     // Build operation-specific arguments
@@ -1026,12 +1169,18 @@ BOOL GetYtDlpArgsForOperation(YtDlpOperation operation, const wchar_t* url, cons
             goto cleanup;
     }
 
-    // Combine custom arguments with operation-specific arguments
-    if (wcslen(baseArgs) + wcslen(operationArgs) + 1 >= argsSize) {
+    // Combine custom arguments, if any, with operation-specific arguments
+    const wchar_t* customArgs = (config && config->defaultArgs) ? config->defaultArgs : L"";
+    size_t customLen = wcslen(customArgs);
+    if (customLen + 1 + wcslen(operationArgs) + 1 > argsSize) {
         goto cleanup;
     }
 
-    wcscpy(args, baseArgs);
+    args[0] = L'\0';
+    if (customLen > 0) {
+        wcscpy(args, customArgs);
+        wcscat(args, L" ");
+    }
     wcscat(args, operationArgs);
 
     if (escapedUrl) SAFE_FREE(escapedUrl);
@@ -1878,10 +2027,8 @@ BOOL LoadYtDlpConfig(YtDlpConfig* config) {
         }
     }
 
-    // Load custom yt-dlp arguments
-    if (!LoadSettingFromRegistry(REG_CUSTOM_ARGS, config->defaultArgs, 1024)) {
-        config->defaultArgs[0] = L'\0';
-    }
+    // Load custom yt-dlp arguments (NULL if not found)
+    config->defaultArgs = LoadCustomArgsFromRegistry();
 
     // Load timeout setting (stored as string in registry)
     wchar_t timeoutStr[32];
@@ -1938,7 +2085,7 @@ BOOL SaveYtDlpConfig(const YtDlpConfig* config) {
     }
 
     // Save custom yt-dlp arguments
-    if (!SaveSettingToRegistry(REG_CUSTOM_ARGS, config->defaultArgs)) {
+    if (!SaveSettingToRegistry(REG_CUSTOM_ARGS, config->defaultArgs ? config->defaultArgs : L"")) {
         allSuccess = FALSE;
     }
 
@@ -2090,6 +2237,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
         REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create unified download worker thread (Error: %lu)", GetLastError());
         ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create worker thread");
+        CleanupTempDirectory(tempDir);
         SAFE_FREE(context);
         FreeYtDlpRequest(request);
         CleanupYtDlpConfig(&config);
@@ -2115,6 +2263,18 @@ DWORD WINAPI NonBlockingDownloadThread(LPVOID lpParam) {
     YtDlpResult* result = ExecuteYtDlpRequestMultithreaded(&downloadContext->config, downloadContext->request,
                                                           downloadContext->parentWindow, L"Downloading Video");
 
+    // The completion handler ignores a NULL result, which would leave the UI
+    // in the downloading state; report a failure instead
+    if (!result) {
+        result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
+        if (result) {
+            memset(result, 0, sizeof(YtDlpResult));
+            result->success = FALSE;
+            result->exitCode = 1;
+            result->errorMessage = SAFE_WCSDUP(L"The download did not produce a result");
+        }
+    }
+
     // Post completion message to main window with result
     PostMessageW(downloadContext->parentWindow, WM_DOWNLOAD_COMPLETE, (WPARAM)result, (LPARAM)downloadContext);
 
@@ -2129,7 +2289,8 @@ BOOL StartNonBlockingDownload(YtDlpConfig* config, YtDlpRequest* request, HWND p
     NonBlockingDownloadContext* downloadContext = (NonBlockingDownloadContext*)SAFE_MALLOC(sizeof(NonBlockingDownloadContext));
     if (!downloadContext) return FALSE;
 
-    // Copy configuration and request data
+    // Copy configuration and request data; on success the context owns the
+    // config's strings, and on failure the caller keeps them
     memcpy(&downloadContext->config, config, sizeof(YtDlpConfig));
     downloadContext->request = request; // Transfer ownership
     downloadContext->parentWindow = parentWindow;
@@ -2198,6 +2359,7 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
         return NULL;
     }
     memcpy(context->config, config, sizeof(YtDlpConfig));
+    context->config->defaultArgs = NULL; // Deep-copied below, once the request is copied
 
     // Deep copy request
     context->request = (YtDlpRequest*)SAFE_MALLOC(sizeof(YtDlpRequest));
@@ -2260,6 +2422,14 @@ SubprocessContext* CreateSubprocessContext(const YtDlpConfig* config, const YtDl
         }
     }
 
+    if (config->defaultArgs) {
+        context->config->defaultArgs = SAFE_WCSDUP(config->defaultArgs);
+        if (!context->config->defaultArgs) {
+            FreeSubprocessContext(context);
+            return NULL;
+        }
+    }
+
     // Set callback information
     context->progressCallback = progressCallback;
     context->callbackUserData = callbackUserData;
@@ -2303,6 +2473,7 @@ void FreeSubprocessContext(SubprocessContext* context) {
     }
 
     if (context->config) {
+        CleanupYtDlpConfig(context->config);
         SAFE_FREE(context->config);
         context->config = NULL;
     }
@@ -2316,35 +2487,20 @@ void FreeSubprocessContext(SubprocessContext* context) {
     // Note: accumulatedOutput is now used to store ThreadSafeSubprocessContext pointer
     // It's cleaned up by CleanupLegacySubprocessContext above
 
-    // Close handles (these should already be cleaned up by thread-safe backend)
-    // Use defensive validation to prevent STATUS_INVALID_HANDLE crashes
+    // Close only the handles this context still owns. Every earlier close
+    // clears its field, so a non-NULL value here is never a stale handle.
     if (context->hProcess && context->hProcess != INVALID_HANDLE_VALUE) {
-        HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hProcess,
-                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-            CloseHandle(hTest);
-            CloseHandle(context->hProcess);
-        }
-        context->hProcess = NULL;
+        CloseHandle(context->hProcess);
     }
+    context->hProcess = NULL;
     if (context->hOutputRead && context->hOutputRead != INVALID_HANDLE_VALUE) {
-        HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hOutputRead,
-                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-            CloseHandle(hTest);
-            CloseHandle(context->hOutputRead);
-        }
-        context->hOutputRead = NULL;
+        CloseHandle(context->hOutputRead);
     }
+    context->hOutputRead = NULL;
     if (context->hOutputWrite && context->hOutputWrite != INVALID_HANDLE_VALUE) {
-        HANDLE hTest = NULL;
-        if (DuplicateHandle(GetCurrentProcess(), context->hOutputWrite,
-                           GetCurrentProcess(), &hTest, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-            CloseHandle(hTest);
-            CloseHandle(context->hOutputWrite);
-        }
-        context->hOutputWrite = NULL;
+        CloseHandle(context->hOutputWrite);
     }
+    context->hOutputWrite = NULL;
 
     SAFE_FREE(context);
 }
@@ -2417,9 +2573,17 @@ YtDlpResult* ExecuteYtDlpRequestMultithreaded(const YtDlpConfig* config, const Y
     }
 
     // Wait for completion
+    // Every worker exit path sets completed; if the worker thread has ended
+    // without doing so, stop waiting rather than leave the UI downloading forever
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Waiting for enhanced execution to complete");
+    HANDLE hWorker = enhancedContext->baseContext->threadContext.hThread;
     while (!enhancedContext->baseContext->completed) {
-        Sleep(100);
+        if (!hWorker || WaitForSingleObject(hWorker, 100) != WAIT_TIMEOUT) {
+            break;
+        }
+    }
+    if (!enhancedContext->baseContext->completed) {
+        ThreadSafeDebugOutput(L"ExecuteYtDlpRequestMultithreaded: Worker ended without completing");
     }
 
     // Get result
@@ -2460,7 +2624,18 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     // Use the existing StartNonBlockingDownload which already uses enhanced execution
     if (!StartNonBlockingDownload(&context->config, context->request, context->hDialog)) {
         ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
-        PostMessageW(context->hDialog, WM_DOWNLOAD_COMPLETE, (WPARAM)NULL, (LPARAM)NULL);
+
+        // The request, the config and the temp directory created for this
+        // download are still ours
+        if (context->tempDir[0] != L'\0') {
+            CleanupTempDirectory(context->tempDir);
+        }
+        FreeYtDlpRequest(context->request);
+        CleanupYtDlpConfig(&context->config);
+
+        // WM_DOWNLOAD_COMPLETE ignores NULL arguments, so report the failure
+        // with the download-failed update, which returns the UI to idle
+        PostMessageW(context->hDialog, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0);
         SAFE_FREE(context);
         return 1;
     }
@@ -2476,6 +2651,11 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
 
 BOOL TestYtDlpFunctionality(const wchar_t* path) {
     VALIDATE_STRING_PARAM(path, L"path", 256, cleanup);
+
+    // Only launch a file type that CreateProcessW runs without cmd.exe
+    if (!ValidateYtDlpExecutable(path)) {
+        return FALSE;
+    }
 
     // Build command line to test yt-dlp version
     size_t cmdLineLen = wcslen(path) + 20;
@@ -2582,7 +2762,7 @@ cleanup:
     }
 
     // Validate custom arguments if present
-    if (config->defaultArgs[0] != L'\0') {
+    if (config->defaultArgs && config->defaultArgs[0] != L'\0') {
         if (!ValidateYtDlpArguments(config->defaultArgs)) {
             validationInfo->result = VALIDATION_PERMISSION_DENIED;
             validationInfo->errorDetails = SAFE_WCSDUP(L"Custom yt-dlp arguments contain potentially dangerous options");
@@ -2648,8 +2828,8 @@ SetupDefaultYtDlpConfiguration(YtDlpConfig* config) {
         wcscpy(config->defaultTempDir, L"C:\\Temp\\");
     }
 
-    // Set default arguments (empty)
-    config->defaultArgs[0] = L'\0';
+    // Set default arguments (none)
+    config->defaultArgs = NULL;
 
     // Set default timeout (5 minutes)
     config->timeoutSeconds = 300;
@@ -2766,10 +2946,12 @@ BOOL InitializeYtDlpSystem(HWND hMainWindow) {
         // Configuration validation failed - notify user
         NotifyConfigurationIssues(hMainWindow, &validationInfo);
         FreeValidationInfo(&validationInfo);
+        CleanupYtDlpConfig(&config);
         return FALSE;
     }
 
     FreeValidationInfo(&validationInfo);
+    CleanupYtDlpConfig(&config);
     return TRUE;
 }
 
