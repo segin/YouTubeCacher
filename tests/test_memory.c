@@ -149,11 +149,40 @@ void test_safe_malloc_tracking() {
     printf("Passed!\n");
 }
 
+void test_reused_address_not_double_free() {
+    printf("Running test_reused_address_not_double_free...\n");
+    if (g_memoryManager.initialized) CleanupMemoryManager();
+    InitializeMemoryManager();
+    EnableLeakDetection(TRUE);
+    int initial_count = GetActiveAllocationCount();
+    void* first = SafeMalloc(100, "test.c", 30);
+    assert(first != NULL);
+    SafeFree(first, "test.c", 31);
+    assert(IsFreedMemory(first));
+
+    // The heap usually hands the same address straight back
+    void* second = SafeMalloc(100, "test.c", 32);
+    assert(second != NULL);
+    assert(!IsFreedMemory(second));
+    if (second == first) {
+        g_ReportError_called = 0;
+        SafeFree(second, "test.c", 33);
+        assert(g_ReportError_called == 0);
+        assert(GetActiveAllocationCount() == initial_count);
+    } else {
+        printf("  (heap did not reuse the address; reuse path not exercised)\n");
+        SafeFree(second, "test.c", 33);
+    }
+    CleanupMemoryManager();
+    printf("Passed!\n");
+}
+
 int main() {
     test_safe_malloc_success();
     test_safe_malloc_zero();
     test_safe_malloc_failure();
     test_safe_malloc_tracking();
+    test_reused_address_not_double_free();
     printf("All SafeMalloc tests passed!\n");
     return 0;
 }

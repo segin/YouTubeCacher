@@ -41,6 +41,7 @@ static void InitializeErrorSystem(void);
 static void CleanupErrorSystem(void);
 static void AddFreedMemoryRecord(void* address, size_t size, const char* file, int line);
 static BOOL IsFreedMemory(void* address);
+static void RemoveFreedMemoryRecord(void* address);
 static void CleanupFreedMemoryList(void);
 #ifdef MEMORY_DEBUG
 static void FillMemoryPattern(void* ptr, size_t size, DWORD pattern);
@@ -224,6 +225,9 @@ void* SafeMalloc(size_t size, const char* file, int line)
     void* userPtr = rawPtr;
 #endif
 
+    // The heap may hand out an address it freed earlier; it is live again
+    RemoveFreedMemoryRecord(userPtr);
+
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
 
@@ -345,6 +349,9 @@ void* SafeCalloc(size_t count, size_t size, const char* file, int line)
     void* userPtr = rawPtr;
 #endif
 
+    // The heap may hand out an address it freed earlier; it is live again
+    RemoveFreedMemoryRecord(userPtr);
+
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
 
@@ -444,6 +451,9 @@ void* SafeRealloc(void* ptr, size_t size, const char* file, int line)
         return NULL;
     }
 #endif
+
+    // The heap may hand out an address it freed earlier; it is live again
+    RemoveFreedMemoryRecord(newPtr);
 
     if (g_memoryManager.initialized && g_memoryManager.leakDetectionEnabled) {
         EnterCriticalSection(&g_memoryManager.lock);
@@ -1719,6 +1729,35 @@ static BOOL IsFreedMemory(void* address)
 
     LeaveCriticalSection(&g_errorLock);
     return found;
+}
+
+static void RemoveFreedMemoryRecord(void* address)
+{
+    if (!address || !g_errorSystemInitialized) {
+        return;
+    }
+
+    EnterCriticalSection(&g_errorLock);
+
+    FreedMemoryInfo* prev = NULL;
+    FreedMemoryInfo* current = g_freedMemoryList;
+    while (current) {
+        FreedMemoryInfo* next = current->next;
+        if (current->address == address) {
+            if (prev) {
+                prev->next = next;
+            } else {
+                g_freedMemoryList = next;
+            }
+            free(current);
+            g_freedMemoryCount--;
+        } else {
+            prev = current;
+        }
+        current = next;
+    }
+
+    LeaveCriticalSection(&g_errorLock);
 }
 
 static void CleanupFreedMemoryList(void)
