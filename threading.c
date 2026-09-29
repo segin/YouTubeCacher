@@ -112,23 +112,27 @@ DWORD WINAPI IPCWorkerThread(LPVOID lpParam) {
 
                 case IPC_MSG_STATUS_UPDATE:
                     if (message.data.status.text) {
-                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)message.data.status.text);
-                        // Don't free here - the receiving window will free it
-                        message.data.status.text = NULL; // Prevent double-free
+                        // On success the receiving window owns and frees the string;
+                        // on failure FreeIPCMessage below frees it
+                        if (PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)message.data.status.text)) {
+                            message.data.status.text = NULL; // Prevent double-free
+                        }
                     }
                     break;
 
                 case IPC_MSG_TITLE_UPDATE:
                     if (message.data.title.title) {
-                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)message.data.title.title);
-                        message.data.title.title = NULL; // Prevent double-free
+                        if (PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)message.data.title.title)) {
+                            message.data.title.title = NULL; // Prevent double-free
+                        }
                     }
                     break;
 
                 case IPC_MSG_DURATION_UPDATE:
                     if (message.data.duration.duration) {
-                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)message.data.duration.duration);
-                        message.data.duration.duration = NULL; // Prevent double-free
+                        if (PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)message.data.duration.duration)) {
+                            message.data.duration.duration = NULL; // Prevent double-free
+                        }
                     }
                     break;
 
@@ -307,7 +311,12 @@ BOOL SendStatusUpdate(IPCContext* context, HWND targetWindow, const wchar_t* sta
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
 
-    return SendIPCMessage(context, &message);
+    if (!SendIPCMessage(context, &message)) {
+        // Not queued, so nothing else will free the copy
+        FreeIPCMessage(&message);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL SendTitleUpdate(IPCContext* context, HWND targetWindow, const wchar_t* title) {
@@ -320,7 +329,12 @@ BOOL SendTitleUpdate(IPCContext* context, HWND targetWindow, const wchar_t* titl
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
 
-    return SendIPCMessage(context, &message);
+    if (!SendIPCMessage(context, &message)) {
+        // Not queued, so nothing else will free the copy
+        FreeIPCMessage(&message);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL SendDurationUpdate(IPCContext* context, HWND targetWindow, const wchar_t* duration) {
@@ -333,7 +347,12 @@ BOOL SendDurationUpdate(IPCContext* context, HWND targetWindow, const wchar_t* d
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
 
-    return SendIPCMessage(context, &message);
+    if (!SendIPCMessage(context, &message)) {
+        // Not queued, so nothing else will free the copy
+        FreeIPCMessage(&message);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL SendMarqueeControl(IPCContext* context, HWND targetWindow, BOOL start) {
@@ -397,7 +416,10 @@ void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void
         // Fallback to direct PostMessage if IPC is not available
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
         if (status) {
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)SAFE_WCSDUP(status));
+            wchar_t* statusCopy = SAFE_WCSDUP(status);
+            if (statusCopy && !PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)statusCopy)) {
+                SAFE_FREE(statusCopy);
+            }
         }
     }
 }
@@ -418,7 +440,10 @@ void MainWindowProgressCallback(int percentage, const wchar_t* status, void* use
         // Fallback to direct PostMessage if IPC is not available
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
         if (status) {
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)SAFE_WCSDUP(status));
+            wchar_t* statusCopy = SAFE_WCSDUP(status);
+            if (statusCopy && !PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)statusCopy)) {
+                SAFE_FREE(statusCopy);
+            }
         }
     }
 }
