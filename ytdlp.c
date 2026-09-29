@@ -2237,6 +2237,7 @@ BOOL StartUnifiedDownload(HWND hDlg, const wchar_t* url) {
         REPORT_ERROR_MSG(YTC_SEVERITY_ERROR, YTC_ERROR_THREAD_CREATION,
                         L"Failed to create unified download worker thread (Error: %lu)", GetLastError());
         ThreadSafeDebugOutput(L"YouTubeCacher: StartUnifiedDownload - Failed to create worker thread");
+        CleanupTempDirectory(tempDir);
         SAFE_FREE(context);
         FreeYtDlpRequest(request);
         CleanupYtDlpConfig(&config);
@@ -2623,8 +2624,18 @@ DWORD WINAPI UnifiedDownloadWorkerThread(LPVOID lpParam) {
     // Use the existing StartNonBlockingDownload which already uses enhanced execution
     if (!StartNonBlockingDownload(&context->config, context->request, context->hDialog)) {
         ThreadSafeDebugOutput(L"YouTubeCacher: UnifiedDownloadWorkerThread - Failed to start enhanced download");
-        PostMessageW(context->hDialog, WM_DOWNLOAD_COMPLETE, (WPARAM)NULL, (LPARAM)NULL);
+
+        // The request, the config and the temp directory created for this
+        // download are still ours
+        if (context->tempDir[0] != L'\0') {
+            CleanupTempDirectory(context->tempDir);
+        }
+        FreeYtDlpRequest(context->request);
         CleanupYtDlpConfig(&context->config);
+
+        // WM_DOWNLOAD_COMPLETE ignores NULL arguments, so report the failure
+        // with the download-failed update, which returns the UI to idle
+        PostMessageW(context->hDialog, WM_UNIFIED_DOWNLOAD_UPDATE, 7, 0);
         SAFE_FREE(context);
         return 1;
     }
