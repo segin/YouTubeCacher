@@ -190,18 +190,31 @@ BOOL CreateDownloadDirectoryIfNeeded(const wchar_t* path) {
 }
 
 // Function to load a setting from the registry
+// On success the string is always NUL-terminated within bufferSize characters
 BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bufferSize) {
     HKEY hKey;
     DWORD dataType;
     DWORD dataSize = bufferSize * sizeof(wchar_t);
     BOOL result = FALSE;
-    
+
+    if (!buffer || bufferSize == 0) {
+        return FALSE;
+    }
+
     // Open the registry key
     if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
         // Query the value
         if (RegQueryValueExW(hKey, valueName, NULL, &dataType, (LPBYTE)buffer, &dataSize) == ERROR_SUCCESS) {
             if (dataType == REG_SZ) {
-                result = TRUE;
+                // REG_SZ data need not include a terminator, and may be empty
+                DWORD charCount = dataSize / sizeof(wchar_t);
+                if (charCount > 0 && buffer[charCount - 1] == L'\0') {
+                    result = TRUE;
+                } else if (charCount < bufferSize) {
+                    buffer[charCount] = L'\0';
+                    result = TRUE;
+                }
+                // Otherwise the value fills the buffer with no room for a terminator
             }
         }
         RegCloseKey(hKey);

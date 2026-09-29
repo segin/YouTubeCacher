@@ -2,7 +2,7 @@ CC ?= gcc
 CFLAGS ?= -Wall -Wextra -I. -I./include -DTEST_BUILD
 RM ?= rm -f
 
-all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc
+all: test_cache_duration test_parser_classify test_uri test_uri_mem test_base64 test_threadsafe test_settings test_memory test_ytdlp_cache test_parser_postprocess test_subproc test_settings_registry
 
 test_memory: test_memory.c ../memory.c
 	$(CC) $(CFLAGS) test_memory.c -o $@
@@ -15,6 +15,12 @@ test_parser_postprocess: test_parser_postprocess.c postprocess_logic.c
 
 test_settings: test_settings.c settings_logic.c
 	$(CC) $(CFLAGS) test_settings.c settings_logic.c -o $@
+
+test_settings_registry: test_settings_registry.c settings_registry_logic.c
+	$(CC) $(CFLAGS) test_settings_registry.c -o $@
+
+settings_registry_logic.c: ../settings.c
+	sed -n '/^BOOL LoadSettingFromRegistry/,/^}/p' ../settings.c > $@
 
 settings_logic.c: ../settings.c
 	echo '#include "mock_windows.h"' > $@
@@ -98,8 +104,9 @@ run: all
 	./test_ytdlp_cache
 	./test_parser_postprocess
 	./test_subproc
+	./test_settings_registry
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc test_settings_registry settings_registry_logic.c
 
 .PHONY: all run clean
