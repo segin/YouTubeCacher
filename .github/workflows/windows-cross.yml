@@ -7,6 +7,9 @@ name: Windows cross-build
 # PsyMP3 builds llvm-mingw from source because it carries a Windows XP patch;
 # nothing here needs that, so this uses the upstream prebuilt release of the
 # same tag. It is cached, so a warm run only downloads the repository.
+#
+# A tag push also creates a draft GitHub release from the release builds
+# (the release job at the end).
 
 on:
   push:
@@ -99,9 +102,66 @@ jobs:
         ls -la dist/
         file dist/*.exe
 
+    # Code signing of the release executables, for tag builds, goes here,
+    # before the upload, so the release job below publishes signed files.
+
     - name: Upload binary
       uses: actions/upload-artifact@v7
       with:
         name: YouTubeCacher-${{ matrix.arch }}-${{ matrix.config }}.exe
         path: dist/YouTubeCacher-${{ matrix.arch }}-${{ matrix.config }}.exe
         if-no-files-found: error
+
+  # A pushed tag becomes a draft GitHub release carrying the three release
+  # executables, under the names earlier releases used, with that version's
+  # ChangeLog section as its notes. Publishing the draft stays a manual step.
+  release:
+    name: Draft release
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Download release binaries
+      uses: actions/download-artifact@v7
+      with:
+        pattern: YouTubeCacher-*-release.exe
+        path: dist
+        merge-multiple: true
+
+    - name: Create draft release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ github.ref_name }}
+      run: |
+        set -euxo pipefail
+        cd dist
+        mv YouTubeCacher-i686-release.exe    YouTubeCacher-x86.exe
+        mv YouTubeCacher-x86_64-release.exe  YouTubeCacher-x64.exe
+        mv YouTubeCacher-aarch64-release.exe YouTubeCacher-arm64.exe
+        file YouTubeCacher-*.exe
+
+        # The notes are this version's ChangeLog section without its
+        # "# <version>" heading. A tag with no section fails here rather
+        # than producing a release with empty notes.
+        tr -d '\r' < ../ChangeLog \
+          | awk -v heading="# $TAG" '$0 == heading { found = 1; next } /^# / { found = 0 } found' \
+          | sed '1{/^$/d}' > notes.md
+        if ! grep -q '[^[:space:]]' notes.md; then
+          echo "::error::ChangeLog has no '# $TAG' section"
+          exit 1
+        fi
+
+        assets="YouTubeCacher-x86.exe YouTubeCacher-x64.exe YouTubeCacher-arm64.exe"
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          # Re-running for a tag that already has a release (draft or not)
+          # replaces its executables and leaves its notes as they are.
+          gh release upload "$TAG" $assets --clobber
+        else
+          gh release create "$TAG" --draft --verify-tag \
+            --title "$TAG" --notes-file notes.md $assets
+        fi
