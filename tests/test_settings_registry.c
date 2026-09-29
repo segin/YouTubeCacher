@@ -1,4 +1,4 @@
-// Tests for the registry readers in settings.c, run against a mocked registry
+// Tests for the registry readers in settings.c and dpi.c, run against a mocked registry
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +76,9 @@ static LONG RegQueryValueExW(HKEY hKey, LPCWSTR valueName, LPDWORD reserved, LPD
 }
 
 #include "settings_registry_logic.c"
+
+#define _snwprintf swprintf
+#include "dpi_position_logic.c"
 
 // Fill a buffer with non-zero garbage so a missing terminator is detectable
 static void FillGarbage(wchar_t* buffer, size_t count) {
@@ -183,8 +186,56 @@ static void test_load_bool_setting(void) {
     printf("All LoadBoolSettingFromRegistry tests passed!\n");
 }
 
+static void test_window_position_value(void) {
+    printf("Running QueryWindowPositionValue tests...\n");
+
+    // Guard words around the target catch any write past its 4 bytes
+    struct {
+        DWORD before;
+        DWORD value;
+        DWORD after;
+    } slot = {0xAAAAAAAAu, 7, 0xBBBBBBBBu};
+    HKEY hKey = (HKEY)(uintptr_t)1;
+
+    // A 4-byte REG_DWORD is read
+    DWORD dw = 1234;
+    SetMockValue(REG_DWORD, &dw, sizeof(dw));
+    assert(QueryWindowPositionValue(hKey, L"Main", L"_Left", &slot.value));
+    assert(slot.value == 1234);
+
+    // An oversized REG_BINARY is rejected without touching the target
+    BYTE big[64];
+    memset(big, 0xCC, sizeof(big));
+    SetMockValue(REG_BINARY, big, sizeof(big));
+    slot.value = 7;
+    assert(!QueryWindowPositionValue(hKey, L"Main", L"_Left", &slot.value));
+    assert(!QueryWindowPositionValue(hKey, L"Main", L"_Top", &slot.value));
+    assert(slot.value == 7 && slot.before == 0xAAAAAAAAu && slot.after == 0xBBBBBBBBu);
+
+    // The next value is still read correctly after an oversized one
+    SetMockValue(REG_DWORD, &dw, sizeof(dw));
+    assert(QueryWindowPositionValue(hKey, L"Main", L"_Right", &slot.value));
+    assert(slot.value == 1234);
+
+    // 4 bytes of the wrong type, and short data, are rejected
+    SetMockValue(REG_BINARY, &dw, sizeof(dw));
+    slot.value = 7;
+    assert(!QueryWindowPositionValue(hKey, L"Main", L"_Bottom", &slot.value));
+    SetMockValue(REG_DWORD, &dw, 2);
+    assert(!QueryWindowPositionValue(hKey, L"Main", L"_Bottom", &slot.value));
+    assert(slot.value == 7);
+
+    // A missing value leaves the default in place
+    g_valueExists = FALSE;
+    assert(!QueryWindowPositionValue(hKey, L"Main", L"_DPI", &slot.value));
+    assert(slot.value == 7);
+
+    printf("All QueryWindowPositionValue tests passed!\n");
+}
+
 int main(void) {
     test_load_string_setting();
     test_load_bool_setting();
+    test_window_position_value();
     return 0;
 }

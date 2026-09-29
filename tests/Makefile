@@ -16,8 +16,11 @@ test_parser_postprocess: test_parser_postprocess.c postprocess_logic.c
 test_settings: test_settings.c settings_logic.c
 	$(CC) $(CFLAGS) test_settings.c settings_logic.c -o $@
 
-test_settings_registry: test_settings_registry.c settings_registry_logic.c
+test_settings_registry: test_settings_registry.c settings_registry_logic.c dpi_position_logic.c
 	$(CC) $(CFLAGS) test_settings_registry.c -o $@
+
+dpi_position_logic.c: ../dpi.c
+	sed -n '/^static BOOL QueryWindowPositionValue/,/^}/p' ../dpi.c > $@
 
 settings_registry_logic.c: ../settings.c
 	sed -n '/^BOOL LoadSettingFromRegistry/,/^}/p' ../settings.c > $@
@@ -108,6 +111,6 @@ run: all
 	./test_settings_registry
 
 clean:
-	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc test_settings_registry settings_registry_logic.c
+	$(RM) *.o test_cache_duration cache_duration.c test_parser_classify parser_types.h classify_logic.c postprocess_logic.c test_parser_postprocess test_uri test_uri_mem uri_functions.c test_base64 test_threadsafe test_settings settings_logic.c test_memory test_ytdlp_cache ytdlp_cache_logic.c test_subproc test_settings_registry settings_registry_logic.c dpi_position_logic.c
 
 .PHONY: all run clean
