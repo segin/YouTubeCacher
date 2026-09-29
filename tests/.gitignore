@@ -20,3 +20,5 @@ test_error
 test_ytdlp_cache
 test_uri_mem
 test_subproc
+test_cmdline
+cmdline_logic.c
