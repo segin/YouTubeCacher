@@ -38,7 +38,46 @@ static void test_subtitle_count(void) {
     printf("All ParseSubtitleCount tests passed!\n");
 }
 
+static void test_path_containment(void) {
+    printf("Running IsPathWithinFolder tests...\n");
+    const wchar_t* folder = L"C:\\Users\\me\\Downloads";
+
+    // Files inside the folder, at any depth, in any case
+    assert(IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\a [abcdefghijk].mp4", folder));
+    assert(IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\sub\\b.srt", folder));
+    assert(IsPathWithinFolder(L"c:\\users\\ME\\downloads\\a.mp4", folder));
+    assert(IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\a.mp4", L"C:\\Users\\me\\Downloads\\"));
+    assert(IsPathWithinFolder(L"C:\\a.mp4", L"C:\\"));
+    assert(IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\..a.mp4", folder));
+
+    // Outside the folder
+    assert(!IsPathWithinFolder(L"C:\\Windows\\win.ini", folder));
+    assert(!IsPathWithinFolder(L"D:\\Users\\me\\Downloads\\a.mp4", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads2\\a.mp4", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Download", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\sub\\", folder));
+    assert(!IsPathWithinFolder(L"\\\\server\\share\\a.mp4", folder));
+
+    // Traversal and relative components are refused even if not canonicalized
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\..\\..\\x", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\sub\\..\\a.mp4", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads/../x", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\.\\a.mp4", folder));
+    assert(!IsPathWithinFolder(L"C:\\Users\\me\\Downloads\\..", folder));
+
+    // Degenerate input
+    assert(!IsPathWithinFolder(NULL, folder));
+    assert(!IsPathWithinFolder(L"C:\\a.mp4", NULL));
+    assert(!IsPathWithinFolder(L"C:\\a.mp4", L""));
+    assert(!IsPathWithinFolder(L"\\a.mp4", L"\\"));
+
+    printf("All IsPathWithinFolder tests passed!\n");
+}
+
 int main(void) {
     test_subtitle_count();
+    test_path_containment();
     return 0;
 }

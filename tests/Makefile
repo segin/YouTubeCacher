@@ -34,6 +34,7 @@ test_cache_validation: test_cache_validation.c cache_validation_logic.c
 cache_validation_logic.c: ../cache.c ../cache.h
 	grep '#define MAX_CACHE_SUBTITLES' ../cache.h > $@
 	sed -n '/static BOOL ParseSubtitleCount/,/^}/p' ../cache.c >> $@
+	sed -n '/static BOOL IsPathWithinFolder/,/^}/p' ../cache.c >> $@
 
 test_parser_classify: test_parser_classify.c parser_types.h classify_logic.c
 	$(CC) $(CFLAGS) test_parser_classify.c -o $@

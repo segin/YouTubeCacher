@@ -29,6 +29,87 @@ static BOOL ParseSubtitleCount(const wchar_t* token, int* count) {
     return TRUE;
 }
 
+// Check that a canonical path names something strictly inside a canonical folder.
+// The match is case-insensitive and must end at a path separator, so "C:\dl" does
+// not contain "C:\dl2\x"; "." and ".." components are refused outright.
+static BOOL IsPathWithinFolder(const wchar_t* path, const wchar_t* folder) {
+    if (!path || !folder) return FALSE;
+    
+    // Ignore trailing separators on the folder (e.g. "C:\")
+    size_t folderLen = wcslen(folder);
+    while (folderLen > 0 && (folder[folderLen - 1] == L'\\' || folder[folderLen - 1] == L'/')) {
+        folderLen--;
+    }
+    if (folderLen == 0) return FALSE;
+    
+    if (_wcsnicmp(path, folder, folderLen) != 0) return FALSE;
+    
+    const wchar_t* rest = path + folderLen;
+    if (*rest != L'\\' && *rest != L'/') return FALSE; // Not at a separator boundary
+    
+    // Every remaining component must be a real name
+    while (*rest) {
+        while (*rest == L'\\' || *rest == L'/') rest++;
+        if (!*rest) return FALSE; // Names the folder itself or ends in a separator
+    
+        const wchar_t* start = rest;
+        while (*rest && *rest != L'\\' && *rest != L'/') rest++;
+        size_t compLen = (size_t)(rest - start);
+        if ((compLen == 1 && start[0] == L'.') ||
+            (compLen == 2 && start[0] == L'.' && start[1] == L'.')) {
+            return FALSE;
+        }
+    }
+    
+    return TRUE;
+}
+
+// Return a heap-allocated absolute, normalized form of a path (NULL on failure)
+static wchar_t* GetCanonicalPath(const wchar_t* path) {
+    if (!path || !*path) return NULL;
+    
+    DWORD needed = GetFullPathNameW(path, 0, NULL, NULL);
+    if (needed == 0) return NULL;
+    
+    wchar_t* fullPath = (wchar_t*)SAFE_MALLOC(needed * sizeof(wchar_t));
+    if (!fullPath) return NULL;
+    
+    DWORD len = GetFullPathNameW(path, needed, fullPath, NULL);
+    if (len == 0 || len >= needed) {
+        SAFE_FREE(fullPath);
+        return NULL;
+    }
+    return fullPath;
+}
+
+// Return the canonical configured download folder (heap-allocated, NULL on failure)
+static wchar_t* GetCanonicalDownloadFolder(void) {
+    wchar_t* folder = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+    if (!folder) return NULL;
+    
+    if (!LoadSettingFromRegistry(REG_DOWNLOAD_PATH, folder, MAX_EXTENDED_PATH) || folder[0] == L'\0') {
+        GetDefaultDownloadPath(folder, MAX_EXTENDED_PATH);
+    }
+    
+    wchar_t* canonical = GetCanonicalPath(folder);
+    SAFE_FREE(folder);
+    return canonical;
+}
+
+// Check that a cache file path lies inside the canonical download folder
+static BOOL IsCacheFileAllowed(const wchar_t* filePath, const wchar_t* canonicalFolder) {
+    if (!filePath || !canonicalFolder) return FALSE;
+    
+    wchar_t* canonical = GetCanonicalPath(filePath);
+    BOOL allowed = canonical && IsPathWithinFolder(canonical, canonicalFolder);
+    SAFE_FREE(canonical);
+    
+    if (!allowed) {
+        ThreadSafeDebugOutputF(L"YouTubeCacher: Refusing cache file outside download folder: %ls", filePath);
+    }
+    return allowed;
+}
+
 // Enhanced file operation error handling macro for cache operations
 #define CHECK_FILE_OPERATION_WITH_CONTEXT(call, operation_name, file_path, cleanup_label) \
     do { \
@@ -329,6 +410,9 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     int totalLines = lineIndex;
     ThreadSafeDebugOutputF(L"YouTubeCacher: LoadCacheFromFile - Processed into %d lines", totalLines);
     
+    // Entries may only name files inside the download folder
+    wchar_t* downloadFolder = GetCanonicalDownloadFolder();
+    
     // Step 6: Process cache entries in-place
     EnterCriticalSection(&manager->lock);
     
@@ -438,6 +522,20 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
             }
         }
         
+        // Reject records naming files outside the download folder
+        BOOL pathsAllowed = IsCacheFileAllowed(entry->mainVideoFile, downloadFolder);
+        for (int j = 0; pathsAllowed && entry->subtitleFiles && j < entry->subtitleCount; j++) {
+            if (entry->subtitleFiles[j] && !IsCacheFileAllowed(entry->subtitleFiles[j], downloadFolder)) {
+                pathsAllowed = FALSE;
+            }
+        }
+        if (!pathsAllowed) {
+            FreeCacheEntry(entry);
+            SAFE_FREE(wideLine);
+            invalidEntries++;
+            continue;
+        }
+    
         // Skip duplicate IDs (older index files may hold several copies of each entry)
         if (!entry->videoId || FindCacheEntry(manager, entry->videoId)) {
             FreeCacheEntry(entry);
@@ -464,6 +562,7 @@ BOOL LoadCacheFromFile(CacheManager* manager) {
     LeaveCriticalSection(&manager->lock);
     
     // Cleanup
+    SAFE_FREE(downloadFolder);
     SAFE_FREE(lines);
     SAFE_FREE(fileBuffer);
     
@@ -768,11 +867,15 @@ CacheEntry* FindCacheEntry(CacheManager* manager, const wchar_t* videoId) {
 DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t* videoId) {
     if (!manager || !videoId) return NULL;
     
+    // Only files inside the download folder may be deleted
+    wchar_t* downloadFolder = GetCanonicalDownloadFolder();
+    
     EnterCriticalSection(&manager->lock);
     
     CacheEntry* entry = FindCacheEntry(manager, videoId);
     if (!entry) {
         LeaveCriticalSection(&manager->lock);
+        SAFE_FREE(downloadFolder);
         return NULL;
     }
     
@@ -780,6 +883,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     DeleteResult* result = (DeleteResult*)SAFE_MALLOC(sizeof(DeleteResult));
     if (!result) {
         LeaveCriticalSection(&manager->lock);
+        SAFE_FREE(downloadFolder);
         return NULL;
     }
     
@@ -794,6 +898,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
         if (!result->errors) {
             SAFE_FREE(result);
             LeaveCriticalSection(&manager->lock);
+            SAFE_FREE(downloadFolder);
             return NULL;
         }
         memset(result->errors, 0, result->totalFiles * sizeof(FileDeleteError));
@@ -801,8 +906,10 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     
     // Delete main video file with enhanced error handling
     if (entry->mainVideoFile) {
-        if (!DeleteFileW(entry->mainVideoFile)) {
-            DWORD error = GetLastError();
+        // A file outside the download folder is refused as access denied
+        BOOL allowed = IsCacheFileAllowed(entry->mainVideoFile, downloadFolder);
+        if (!allowed || !DeleteFileW(entry->mainVideoFile)) {
+            DWORD error = allowed ? GetLastError() : ERROR_ACCESS_DENIED;
             result->errors[result->errorCount].fileName = SAFE_WCSDUP(entry->mainVideoFile);
             result->errors[result->errorCount].errorCode = error;
             result->errorCount++;
@@ -847,8 +954,9 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     // Delete subtitle files with enhanced error handling
     for (int i = 0; i < entry->subtitleCount; i++) {
         if (entry->subtitleFiles && entry->subtitleFiles[i]) {
-            if (!DeleteFileW(entry->subtitleFiles[i])) {
-                DWORD error = GetLastError();
+            BOOL allowed = IsCacheFileAllowed(entry->subtitleFiles[i], downloadFolder);
+            if (!allowed || !DeleteFileW(entry->subtitleFiles[i])) {
+                DWORD error = allowed ? GetLastError() : ERROR_ACCESS_DENIED;
                 result->errors[result->errorCount].fileName = SAFE_WCSDUP(entry->subtitleFiles[i]);
                 result->errors[result->errorCount].errorCode = error;
                 result->errorCount++;
@@ -895,6 +1003,7 @@ DeleteResult* DeleteCacheEntryFilesDetailed(CacheManager* manager, const wchar_t
     }
     
     LeaveCriticalSection(&manager->lock);
+    SAFE_FREE(downloadFolder);
     
     // Remove from cache if all files were deleted successfully
     if (result->errorCount == 0) {
@@ -1011,10 +1120,16 @@ wchar_t* FormatDeleteErrorDetails(const DeleteResult* result) {
 BOOL PlayCacheEntry(CacheManager* manager, const wchar_t* videoId, const wchar_t* playerPath) {
     if (!manager || !videoId || !playerPath) return FALSE;
     
+    // Only files inside the download folder may be opened
+    wchar_t* downloadFolder = GetCanonicalDownloadFolder();
+    
     EnterCriticalSection(&manager->lock);
     
     CacheEntry* entry = FindCacheEntry(manager, videoId);
-    if (!entry || !entry->mainVideoFile) {
+    BOOL allowed = entry && entry->mainVideoFile &&
+                   IsCacheFileAllowed(entry->mainVideoFile, downloadFolder);
+    SAFE_FREE(downloadFolder);
+    if (!allowed) {
         LeaveCriticalSection(&manager->lock);
         return FALSE;
     }
