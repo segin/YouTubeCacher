@@ -1087,11 +1087,20 @@ static BOOL HandleEnhancedOutputLine(EnhancedSubprocessContext* enhancedContext,
     SubprocessContext* context = enhancedContext->baseContext;
     EnhancedProgressInfo* progress = enhancedContext->enhancedProgress;
 
-    if (lineLen == 0) return FALSE;
+    if (lineLen == 0 || lineLen > INT_MAX) return FALSE;
 
-    wchar_t wideLineBuffer[2048];
-    int converted = MultiByteToWideChar(CP_UTF8, 0, line, (int)lineLen, wideLineBuffer, 2047);
-    if (converted <= 0) return FALSE;
+    // Size the conversion buffer to the line, so no line is too long to convert
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, line, (int)lineLen, NULL, 0);
+    if (wideLen <= 0) return FALSE;
+
+    wchar_t* wideLineBuffer = (wchar_t*)SAFE_MALLOC(((size_t)wideLen + 1) * sizeof(wchar_t));
+    if (!wideLineBuffer) return FALSE;
+
+    int converted = MultiByteToWideChar(CP_UTF8, 0, line, (int)lineLen, wideLineBuffer, wideLen);
+    if (converted <= 0) {
+        SAFE_FREE(wideLineBuffer);
+        return FALSE;
+    }
     wideLineBuffer[converted] = L'\0';
 
     // Process the line with enhanced processing
@@ -1110,6 +1119,7 @@ static BOOL HandleEnhancedOutputLine(EnhancedSubprocessContext* enhancedContext,
         LeaveCriticalSection(&enhancedContext->progressLock);
     }
 
+    SAFE_FREE(wideLineBuffer);
     return TRUE;
 }
 
@@ -1272,8 +1282,12 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     DWORD bytesRead;
     BOOL processRunning = TRUE;
 
-    // Line accumulator for UTF-8 processing (private to this invocation)
-    char lineAccumulator[8192];
+    // Line accumulator for UTF-8 processing (private to this invocation).
+    // It starts on the stack and moves to the heap to hold a longer line.
+    char initialAccumulator[8192];
+    char* lineAccumulator = initialAccumulator;
+    size_t lineAccumulatorSize = sizeof(initialAccumulator);
+    const size_t MAX_LINE_ACCUMULATOR_SIZE = 1024 * 1024; // Longer lines are passed on in pieces
     size_t fillCounter = 0;
     lineAccumulator[0] = '\0';
 
@@ -1329,7 +1343,7 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                 // Feed the whole read through the accumulator, one chunk at a time
                 size_t offset = 0;
                 while (offset < bytesRead) {
-                    size_t spaceAvailable = sizeof(lineAccumulator) - fillCounter - 1;
+                    size_t spaceAvailable = lineAccumulatorSize - fillCounter - 1;
                     size_t bytesToCopy = (bytesRead - offset < spaceAvailable) ? bytesRead - offset : spaceAvailable;
 
                     memcpy(lineAccumulator + fillCounter, buffer + offset, bytesToCopy);
@@ -1370,9 +1384,30 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
                     fillCounter = remaining;
                     lineAccumulator[fillCounter] = '\0';
 
-                    // A line longer than the accumulator: pass on what we have as
-                    // a line, so that later input isn't discarded
-                    if (fillCounter == sizeof(lineAccumulator) - 1) {
+                    // The accumulator is full without a line terminator: grow it
+                    // so the line is passed on whole
+                    BOOL grown = FALSE;
+                    if (fillCounter == lineAccumulatorSize - 1 && lineAccumulatorSize < MAX_LINE_ACCUMULATOR_SIZE) {
+                        size_t newSize = lineAccumulatorSize * 2;
+                        char* newAccumulator;
+                        if (lineAccumulator == initialAccumulator) {
+                            newAccumulator = (char*)SAFE_MALLOC(newSize);
+                            if (newAccumulator) {
+                                memcpy(newAccumulator, lineAccumulator, fillCounter + 1);
+                            }
+                        } else {
+                            newAccumulator = (char*)SAFE_REALLOC(lineAccumulator, newSize);
+                        }
+                        if (newAccumulator) {
+                            lineAccumulator = newAccumulator;
+                            lineAccumulatorSize = newSize;
+                            grown = TRUE;
+                        }
+                    }
+
+                    // A line longer than the accumulator can hold: pass on what
+                    // we have as a line, so that later input isn't discarded
+                    if (!grown && fillCounter == lineAccumulatorSize - 1) {
                         size_t flushLen = Utf8CompletePrefixLength(lineAccumulator, fillCounter);
                         if (flushLen == 0) flushLen = fillCounter;
                         if (HandleEnhancedOutputLine(enhancedContext, lineAccumulator, flushLen, FALSE)) {
@@ -1402,6 +1437,9 @@ DWORD WINAPI EnhancedSubprocessWorkerThread(LPVOID lpParam) {
     if (fillCounter > 0) {
         HandleEnhancedOutputLine(enhancedContext, lineAccumulator, fillCounter, TRUE);
         fillCounter = 0;
+    }
+    if (lineAccumulator != initialAccumulator) {
+        SAFE_FREE(lineAccumulator);
     }
 
     // Wait for process completion and get exit code
