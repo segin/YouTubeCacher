@@ -109,8 +109,14 @@ BOOL InitializeApplicationState(ApplicationState* state) {
 void CleanupApplicationState(ApplicationState* state) {
     if (!state || !state->isInitialized) return;
 
-    // Enter critical section for cleanup
+    // Detach the cache manager and metadata under the lock, but tear them down
+    // after releasing it: CleanupCacheManager waits for the save thread, which
+    // logs, and nothing that waits on another thread may hold stateLock
     EnterCriticalSection(&state->stateLock);
+    CacheManager* cacheManager = state->cacheManager;
+    CachedVideoMetadata* cachedVideoMetadata = state->cachedVideoMetadata;
+    state->cacheManager = NULL;
+    state->cachedVideoMetadata = NULL;
 
     // Clean up UI brushes
     if (state->hBrushWhite) {
@@ -130,24 +136,25 @@ void CleanupApplicationState(ApplicationState* state) {
         state->hBrushLightTeal = NULL;
     }
     state->hCurrentBrush = NULL;
+    LeaveCriticalSection(&state->stateLock);
 
     // Clean up cache manager
-    if (state->cacheManager) {
+    if (cacheManager) {
         // Use direct debug output since logging system may be shutting down
         ThreadSafeDebugOutput(L"YouTubeCacher: CleanupApplicationState - Cleaning up cache manager");
-        CleanupCacheManager(state->cacheManager);
-        SAFE_FREE(state->cacheManager);
-        state->cacheManager = NULL;
+        CleanupCacheManager(cacheManager);
+        SAFE_FREE(cacheManager);
     }
 
     // Clean up cached video metadata
-    if (state->cachedVideoMetadata) {
+    if (cachedVideoMetadata) {
         // Use direct debug output since logging system may be shutting down
         ThreadSafeDebugOutput(L"YouTubeCacher: CleanupApplicationState - Cleaning up cached video metadata");
-        FreeCachedMetadata(state->cachedVideoMetadata);
-        SAFE_FREE(state->cachedVideoMetadata);
-        state->cachedVideoMetadata = NULL;
+        FreeCachedMetadata(cachedVideoMetadata);
+        SAFE_FREE(cachedVideoMetadata);
     }
+
+    EnterCriticalSection(&state->stateLock);
 
     // Clean up yt-dlp output buffer
     if (state->ytdlpOutputBuffer) {
@@ -267,10 +274,12 @@ void GetDebugState(BOOL* enableDebug, BOOL* enableLogfile) {
         return;
     }
 
-    EnterCriticalSection(&g_appState.stateLock);
-    *enableDebug = g_appState.enableDebug;
-    *enableLogfile = g_appState.enableLogfile;
-    LeaveCriticalSection(&g_appState.stateLock);
+    // Read without stateLock: DebugOutput calls this while holding the
+    // debug-output lock, and stateLock holders log, so taking stateLock here
+    // inverts the lock order and deadlocks (CON-002). Aligned BOOL reads are
+    // atomic on Windows; the two flags need not be read as a pair.
+    *enableDebug = *(volatile BOOL*)&g_appState.enableDebug;
+    *enableLogfile = *(volatile BOOL*)&g_appState.enableLogfile;
 }
 
 void SetDebugState(BOOL enableDebug, BOOL enableLogfile) {
