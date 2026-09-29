@@ -2985,13 +2985,26 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
                 SetOriginalTextFieldProc(NULL);
             }
 
+            // Stop worker threads before freeing anything they use: kill the
+            // running download so its worker returns, then join all workers
+            CancelActiveDownload();
+            BOOL workersStopped = WaitForWorkerThreads(1000);
+
             // Clean up ListView item data
             CleanupListViewItemData(GetDlgItem(hDlg, IDC_LIST));
 
             // Clean up application state (this includes cache manager cleanup)
             ApplicationState* state = GetApplicationState();
-            if (state) {
+            if (state && workersStopped) {
                 CleanupApplicationState(state);
+            } else if (state) {
+                // A worker is still running and may use the state; leave it for
+                // ExitProcess to reclaim, but still commit the cache index
+                ThreadSafeDebugOutput(L"YouTubeCacher: WM_DESTROY - Workers still running, skipping state cleanup");
+                CacheManager* cacheManager = GetCacheManager();
+                if (cacheManager) {
+                    SaveCacheToFileSync(cacheManager);
+                }
             }
 
             // Explicitly destroy all child windows to prevent third-party hook interference

@@ -9,6 +9,9 @@
 void DebugOutput(const wchar_t* msg) { (void)msg; }
 void AppendToYtDlpSessionLog(const wchar_t* msg) { (void)msg; }
 void* GetApplicationState(void) { return NULL; }
+HANDLE CreateWorkerThread(LPTHREAD_START_ROUTINE function, LPVOID param) {
+    return CreateThread(NULL, 0, function, param, 0, NULL);
+}
 void* GetYtDlpArgsForOperation(int op, const wchar_t* url, const wchar_t* path, void* config, wchar_t* args, int len) {
     (void)op; (void)url; (void)path; (void)config; (void)args; (void)len;
     return (void*)1;

@@ -63,6 +63,10 @@ BOOL InitializeApplicationState(ApplicationState* state);
 void CleanupApplicationState(ApplicationState* state);
 ApplicationState* GetApplicationState(void);
 
+// Worker thread tracking for shutdown
+HANDLE CreateWorkerThread(LPTHREAD_START_ROUTINE function, LPVOID param);
+BOOL WaitForWorkerThreads(DWORD timeoutMs);
+
 // Thread-safe state access functions
 BOOL SetDownloadingState(BOOL isDownloading);
 BOOL GetDownloadingState(void);

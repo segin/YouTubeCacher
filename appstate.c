@@ -198,6 +198,72 @@ ApplicationState* GetApplicationState(void) {
     return &g_appState;
 }
 
+// Worker thread tracking, so shutdown can join workers before freeing state
+typedef struct {
+    LPTHREAD_START_ROUTINE function;
+    LPVOID param;
+} WorkerThreadStart;
+
+static volatile LONG g_workerThreadCount = 0;
+
+static DWORD WINAPI WorkerThreadTrampoline(LPVOID lpParam) {
+    WorkerThreadStart start = *(WorkerThreadStart*)lpParam;
+    SAFE_FREE(lpParam);
+
+    DWORD result = start.function(start.param);
+
+    // Nothing after this point may touch application state
+    InterlockedDecrement(&g_workerThreadCount);
+    return result;
+}
+
+// Create a worker thread that WaitForWorkerThreads will wait for.
+// Returns the thread handle, which the caller must close, or NULL on failure.
+HANDLE CreateWorkerThread(LPTHREAD_START_ROUTINE function, LPVOID param) {
+    if (!function) return NULL;
+
+    WorkerThreadStart* start = (WorkerThreadStart*)SAFE_MALLOC(sizeof(WorkerThreadStart));
+    if (!start) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return NULL;
+    }
+    start->function = function;
+    start->param = param;
+
+    // Count the thread before it exists so a concurrent wait cannot miss it
+    InterlockedIncrement(&g_workerThreadCount);
+    HANDLE hThread = CreateThread(NULL, 0, WorkerThreadTrampoline, start, 0, NULL);
+    if (!hThread) {
+        DWORD error = GetLastError();
+        InterlockedDecrement(&g_workerThreadCount);
+        SAFE_FREE(start);
+        SetLastError(error);
+    }
+    return hThread;
+}
+
+// Wait up to timeoutMs for every worker thread to return. Must be called on
+// the UI thread: it services cross-thread SendMessage calls while it waits,
+// so a worker blocked in one can finish. Returns TRUE if no workers remain.
+BOOL WaitForWorkerThreads(DWORD timeoutMs) {
+    DWORD startTick = GetTickCount();
+
+    while (InterlockedCompareExchange(&g_workerThreadCount, 0, 0) > 0) {
+        DWORD elapsed = GetTickCount() - startTick;
+        if (elapsed >= timeoutMs) {
+            return FALSE;
+        }
+
+        DWORD remaining = timeoutMs - elapsed;
+        MsgWaitForMultipleObjects(0, NULL, FALSE, remaining < 10 ? remaining : 10, QS_SENDMESSAGE);
+
+        MSG msg;
+        PeekMessageW(&msg, NULL, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
+    }
+
+    return TRUE;
+}
+
 // Thread-safe downloading state functions
 BOOL SetDownloadingState(BOOL isDownloading) {
     ApplicationState* state = GetApplicationState();
