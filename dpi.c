@@ -99,7 +99,27 @@ void DestroyDPIManager(DPIManager* manager) {
     free(manager);
 }
 
+// Subclass that releases a window's DPI context when the window is destroyed
+#define DPI_CLEANUP_SUBCLASS_ID 1
+
+static LRESULT CALLBACK DPICleanupSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
+                                               UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    if (uMsg == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, DPICleanupSubclassProc, uIdSubclass);
+
+        // Child controls are already destroyed, so the context's fonts are no
+        // longer in use. Skip this if the manager itself has been destroyed.
+        DPIManager* manager = (DPIManager*)dwRefData;
+        if (manager && manager == g_dpiManager) {
+            UnregisterWindowForDPI(manager, hwnd);
+        }
+    }
+
+    return DefSubclassProc(hwnd, uMsg, wParam, lParam);
+}
+
 // Register window for DPI management
+// The context, its font manager and fonts are released when the window is destroyed
 DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
     if (!manager || !hwnd) {
         return NULL;
@@ -138,6 +158,7 @@ DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
                 DPIContext** newDialogs = (DPIContext**)realloc(manager->dialogs, 
                                                                 newCapacity * sizeof(DPIContext*));
                 if (!newDialogs) {
+                    DestroyFontManager(context->fontManager);
                     free(context);
                     LeaveCriticalSection(&manager->lock);
                     return NULL;
@@ -154,6 +175,7 @@ DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
             DPIContext** newDialogs = (DPIContext**)realloc(manager->dialogs, 
                                                             newCapacity * sizeof(DPIContext*));
             if (!newDialogs) {
+                DestroyFontManager(context->fontManager);
                 free(context);
                 LeaveCriticalSection(&manager->lock);
                 return NULL;
@@ -163,8 +185,12 @@ DPIContext* RegisterWindowForDPI(DPIManager* manager, HWND hwnd) {
         }
         manager->dialogs[manager->dialogCount++] = context;
     }
-    
+
     LeaveCriticalSection(&manager->lock);
+
+    // Release the context automatically when the window goes away
+    SetWindowSubclass(hwnd, DPICleanupSubclassProc, DPI_CLEANUP_SUBCLASS_ID, (DWORD_PTR)manager);
+
     return context;
 }
 
@@ -994,6 +1020,27 @@ BOOL SaveWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
     return success;
 }
 
+// Read one saved window position value (keyName + suffix) into a DWORD.
+// The size is reset for every query, and values that are not a 4-byte
+// REG_DWORD are rejected, so nothing larger is ever written into value.
+static BOOL QueryWindowPositionValue(HKEY hKey, const wchar_t* keyName, const wchar_t* suffix, DWORD* value) {
+    wchar_t valueName[256];
+    DWORD type = 0;
+    DWORD data = 0;
+    DWORD size = sizeof(DWORD);
+
+    _snwprintf(valueName, 256, L"%ls%ls", keyName, suffix);
+    valueName[255] = L'\0';
+
+    if (RegQueryValueExW(hKey, valueName, NULL, &type, (BYTE*)&data, &size) != ERROR_SUCCESS ||
+        type != REG_DWORD || size != sizeof(DWORD)) {
+        return FALSE;
+    }
+
+    *value = data;
+    return TRUE;
+}
+
 // Restore window position from logical coordinates
 BOOL RestoreWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
     if (!hwnd || !keyName) {
@@ -1010,32 +1057,16 @@ BOOL RestoreWindowPositionLogical(HWND hwnd, const wchar_t* keyName) {
     // Load logical coordinates with keyName prefix
     RECT logicalRect;
     DWORD savedDpi = 96;
-    DWORD size = sizeof(DWORD);
-    DWORD left, top, right, bottom;
-    wchar_t valueName[256];
-    
+    DWORD left = 0, top = 0, right = 0, bottom = 0;
+
     BOOL success = TRUE;
-    
-    _snwprintf(valueName, 256, L"%ls_Left", keyName);
-    valueName[255] = L'\0';
-    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&left, &size) == ERROR_SUCCESS);
-    
-    _snwprintf(valueName, 256, L"%ls_Top", keyName);
-    valueName[255] = L'\0';
-    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&top, &size) == ERROR_SUCCESS);
-    
-    _snwprintf(valueName, 256, L"%ls_Right", keyName);
-    valueName[255] = L'\0';
-    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&right, &size) == ERROR_SUCCESS);
-    
-    _snwprintf(valueName, 256, L"%ls_Bottom", keyName);
-    valueName[255] = L'\0';
-    success &= (RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&bottom, &size) == ERROR_SUCCESS);
-    
-    _snwprintf(valueName, 256, L"%ls_DPI", keyName);
-    valueName[255] = L'\0';
-    RegQueryValueExW(hKey, valueName, NULL, NULL, (BYTE*)&savedDpi, &size);  // Optional, defaults to 96
-    
+
+    success &= QueryWindowPositionValue(hKey, keyName, L"_Left", &left);
+    success &= QueryWindowPositionValue(hKey, keyName, L"_Top", &top);
+    success &= QueryWindowPositionValue(hKey, keyName, L"_Right", &right);
+    success &= QueryWindowPositionValue(hKey, keyName, L"_Bottom", &bottom);
+    QueryWindowPositionValue(hKey, keyName, L"_DPI", &savedDpi);  // Optional, defaults to 96
+
     RegCloseKey(hKey);
     
     if (!success) {

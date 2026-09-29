@@ -1,4 +1,5 @@
 #include "YouTubeCacher.h"
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM
 
 // Timer IDs
 #define IDT_PROGRESS_HIDE_TIMER 9998
@@ -903,7 +904,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 ytdlpBtnPt.x, buttonWidth, buttonHeight,
                 L"yt-dlp Executable Path:",
                 L"Executable Files\0*.exe;*.cmd;*.bat;*.py;*.ps1\0All Files\0*.*\0",
-                IDC_YTDLP_PATH
+                IDC_YTDLP_COMPONENT
             );
             if (components->ytdlpBrowser) {
                 RegisterComponent(components->registry, (UIComponent*)components->ytdlpBrowser);
@@ -915,7 +916,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 editWidth, editHeight,
                 folderBtnPt.x, buttonWidth, buttonHeight,
                 L"Download Folder:",
-                IDC_FOLDER_PATH
+                IDC_FOLDER_COMPONENT
             );
             if (components->downloadFolderBrowser) {
                 RegisterComponent(components->registry, (UIComponent*)components->downloadFolderBrowser);
@@ -928,7 +929,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 playerBtnPt.x, buttonWidth, buttonHeight,
                 L"Media Player Path:",
                 L"Executable Files\0*.exe\0All Files\0*.*\0",
-                IDC_PLAYER_PATH
+                IDC_PLAYER_COMPONENT
             );
             if (components->playerBrowser) {
                 RegisterComponent(components->registry, (UIComponent*)components->playerBrowser);
@@ -972,22 +973,22 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 SetFileBrowserPath(components->playerBrowser, playerPath);
             }
 
-            // Load other settings (checkboxes, etc.) using existing LoadSettings function
-            // But we need to load checkboxes manually since we're not using the old controls
-            if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-                DWORD enableDebug = 0, enableLogfile = 0, enableAutopaste = 0;
-                DWORD dataSize = sizeof(DWORD);
-
-                RegQueryValueExW(hKey, REG_ENABLE_DEBUG, NULL, NULL, (LPBYTE)&enableDebug, &dataSize);
-                RegQueryValueExW(hKey, REG_ENABLE_LOGFILE, NULL, NULL, (LPBYTE)&enableLogfile, &dataSize);
-                RegQueryValueExW(hKey, REG_ENABLE_AUTOPASTE, NULL, NULL, (LPBYTE)&enableAutopaste, &dataSize);
-
-                CheckDlgButton(hDlg, IDC_ENABLE_DEBUG, enableDebug ? BST_CHECKED : BST_UNCHECKED);
-                CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE, enableLogfile ? BST_CHECKED : BST_UNCHECKED);
-                CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE, enableAutopaste ? BST_CHECKED : BST_UNCHECKED);
-
-                RegCloseKey(hKey);
+            // Load custom yt-dlp arguments
+            wchar_t* customArgs = (wchar_t*)SAFE_MALLOC(MAX_EXTENDED_PATH * sizeof(wchar_t));
+            if (customArgs) {
+                if (LoadSettingFromRegistry(REG_CUSTOM_ARGS, customArgs, MAX_EXTENDED_PATH)) {
+                    SetDlgItemTextW(hDlg, IDC_CUSTOM_ARGS_FIELD, customArgs);
+                }
+                SAFE_FREE(customArgs);
             }
+
+            // Load checkbox settings with the same reader and defaults that startup uses
+            CheckDlgButton(hDlg, IDC_ENABLE_DEBUG,
+                           LoadBoolSettingFromRegistry(REG_ENABLE_DEBUG, FALSE) ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_LOGFILE,
+                           LoadBoolSettingFromRegistry(REG_ENABLE_LOGFILE, FALSE) ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_AUTOPASTE,
+                           LoadBoolSettingFromRegistry(REG_ENABLE_AUTOPASTE, TRUE) ? BST_CHECKED : BST_UNCHECKED);
 
             // Set accessible names for controls
             SetControlAccessibility(GetDlgItem(hDlg, IDC_ENABLE_DEBUG), L"Enable debug mode", L"Show debug information in the main window");
@@ -996,30 +997,27 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
             SetControlAccessibility(GetDlgItem(hDlg, IDOK), L"OK", L"Save settings and close dialog");
             SetControlAccessibility(GetDlgItem(hDlg, IDCANCEL), L"Cancel", L"Close dialog without saving");
 
-            // Configure tab order
+            // Configure tab order over the visible controls (component edits and
+            // buttons, not the hidden resource controls they replace)
+            static const int tabOrderIds[] = {
+                IDC_YTDLP_EDIT, IDC_YTDLP_BUTTON,
+                IDC_FOLDER_EDIT, IDC_FOLDER_BUTTON,
+                IDC_PLAYER_EDIT, IDC_PLAYER_BUTTON,
+                IDC_CUSTOM_ARGS_FIELD,
+                IDC_ENABLE_DEBUG, IDC_ENABLE_LOGFILE, IDC_ENABLE_AUTOPASTE,
+                IDOK, IDCANCEL
+            };
+            const int tabOrderCount = (int)(sizeof(tabOrderIds) / sizeof(tabOrderIds[0]));
             TabOrderConfig tabConfig;
-            TabOrderEntry entries[6];
-            entries[0].controlId = IDC_YTDLP_PATH + 1; // Edit control of first component
-            entries[0].tabOrder = 0;
-            entries[0].isTabStop = TRUE;
-            entries[1].controlId = IDC_FOLDER_PATH + 1; // Edit control of second component
-            entries[1].tabOrder = 1;
-            entries[1].isTabStop = TRUE;
-            entries[2].controlId = IDC_PLAYER_PATH + 1; // Edit control of third component
-            entries[2].tabOrder = 2;
-            entries[2].isTabStop = TRUE;
-            entries[3].controlId = IDC_ENABLE_DEBUG;
-            entries[3].tabOrder = 3;
-            entries[3].isTabStop = TRUE;
-            entries[4].controlId = IDOK;
-            entries[4].tabOrder = 4;
-            entries[4].isTabStop = TRUE;
-            entries[5].controlId = IDCANCEL;
-            entries[5].tabOrder = 5;
-            entries[5].isTabStop = TRUE;
+            TabOrderEntry entries[sizeof(tabOrderIds) / sizeof(tabOrderIds[0])];
+            for (int i = 0; i < tabOrderCount; i++) {
+                entries[i].controlId = tabOrderIds[i];
+                entries[i].tabOrder = i;
+                entries[i].isTabStop = TRUE;
+            }
 
             tabConfig.entries = entries;
-            tabConfig.count = 6;
+            tabConfig.count = tabOrderCount;
             SetDialogTabOrder(hDlg, &tabConfig);
 
             // Apply DPI-aware positioning (similar to error dialog)
@@ -1095,7 +1093,8 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         return TRUE;
                     }
 
-                    // Validate all components before saving
+                    // Validate all components before saving. The component paths
+                    // follow their edit boxes (EN_CHANGE), so typed paths are checked.
                     UIComponent* componentArray[3];
                     int componentCount = 0;
 
@@ -1103,23 +1102,44 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         componentArray[componentCount++] = (UIComponent*)components->ytdlpBrowser;
                     }
                     if (components->downloadFolderBrowser) {
+                        // Create the download folder if it is new (as downloads do), so it validates
+                        const wchar_t* folderPath = GetFolderBrowserPath(components->downloadFolderBrowser);
+                        if (folderPath && folderPath[0] != L'\0') {
+                            CreateDownloadDirectoryIfNeeded(folderPath);
+                        }
                         componentArray[componentCount++] = (UIComponent*)components->downloadFolderBrowser;
                     }
                     if (components->playerBrowser) {
-                        componentArray[componentCount++] = (UIComponent*)components->playerBrowser;
+                        // The media player is optional; validate it only when one is given
+                        const wchar_t* playerPathToCheck = GetFileBrowserPath(components->playerBrowser);
+                        if (playerPathToCheck && playerPathToCheck[0] != L'\0') {
+                            componentArray[componentCount++] = (UIComponent*)components->playerBrowser;
+                        }
                     }
 
-                    // Validate all components
-                    ComponentValidationSummary* validationSummary = ValidateDialog(componentArray, componentCount);
-                    if (validationSummary && !validationSummary->allValid) {
-                        // Show validation errors
-                        ShowValidationErrors(hDlg, validationSummary);
-                        FreeValidationSummary(validationSummary);
+                    // Validate all components; on failure show the errors and focus the first one
+                    if (!ValidateDialogBeforeClose(hDlg, componentArray, componentCount)) {
                         return TRUE;
                     }
-                    if (validationSummary) {
-                        FreeValidationSummary(validationSummary);
+
+                    // Read and validate the custom yt-dlp arguments
+                    HWND hCustomArgs = GetDlgItem(hDlg, IDC_CUSTOM_ARGS_FIELD);
+                    int customArgsLen = GetWindowTextLengthW(hCustomArgs);
+                    wchar_t* customArgs = (wchar_t*)SAFE_MALLOC((size_t)(customArgsLen + 1) * sizeof(wchar_t));
+                    if (!customArgs) {
+                        return TRUE;
                     }
+                    GetWindowTextW(hCustomArgs, customArgs, customArgsLen + 1);
+                    if (!ValidateYtDlpArguments(customArgs)) {
+                        MessageBoxW(hDlg,
+                                    L"The custom yt-dlp arguments contain options that are not allowed, such as --exec or --batch-file.\n\n"
+                                    L"Remove them and try again.",
+                                    L"Invalid Arguments", MB_OK | MB_ICONWARNING);
+                        SetFocus(hCustomArgs);
+                        SAFE_FREE(customArgs);
+                        return TRUE;
+                    }
+                    SanitizeYtDlpArguments(customArgs, (size_t)customArgsLen + 1);
 
                     // Get values from components and save to registry
                     const wchar_t* ytdlpPath = GetFileBrowserPath(components->ytdlpBrowser);
@@ -1137,6 +1157,9 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         }
                         if (playerPath && wcslen(playerPath) > 0) {
                             RegSetValueExW(hKey, REG_PLAYER_PATH, 0, REG_SZ, (const BYTE*)playerPath, (DWORD)((wcslen(playerPath) + 1) * sizeof(wchar_t)));
+                        } else {
+                            // An emptied player field clears the configured player
+                            RegDeleteValueW(hKey, REG_PLAYER_PATH);
                         }
 
                         // Save checkbox settings
@@ -1144,16 +1167,17 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         BOOL enableLogfile = (IsDlgButtonChecked(hDlg, IDC_ENABLE_LOGFILE) == BST_CHECKED);
                         BOOL enableAutopaste = (IsDlgButtonChecked(hDlg, IDC_ENABLE_AUTOPASTE) == BST_CHECKED);
 
-                        DWORD debugValue = enableDebug ? 1 : 0;
-                        DWORD logfileValue = enableLogfile ? 1 : 0;
-                        DWORD autopasteValue = enableAutopaste ? 1 : 0;
-
-                        RegSetValueExW(hKey, REG_ENABLE_DEBUG, 0, REG_DWORD, (const BYTE*)&debugValue, sizeof(DWORD));
-                        RegSetValueExW(hKey, REG_ENABLE_LOGFILE, 0, REG_DWORD, (const BYTE*)&logfileValue, sizeof(DWORD));
-                        RegSetValueExW(hKey, REG_ENABLE_AUTOPASTE, 0, REG_DWORD, (const BYTE*)&autopasteValue, sizeof(DWORD));
+                        // Booleans are stored as REG_DWORD, the type every reader expects
+                        SaveBoolSettingToRegistry(REG_ENABLE_DEBUG, enableDebug);
+                        SaveBoolSettingToRegistry(REG_ENABLE_LOGFILE, enableLogfile);
+                        SaveBoolSettingToRegistry(REG_ENABLE_AUTOPASTE, enableAutopaste);
 
                         RegCloseKey(hKey);
                     }
+
+                    // Save custom yt-dlp arguments as REG_SZ (an empty field clears them)
+                    SaveSettingToRegistry(REG_CUSTOM_ARGS, customArgs);
+                    SAFE_FREE(customArgs);
 
                     EndDialog(hDlg, IDOK);
                     return TRUE;
@@ -1391,19 +1415,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
             HWND hListView = GetDlgItem(hDlg, IDC_LIST);
             InitializeCacheListView(hListView);
 
-            // Load debug settings from registry
-            wchar_t buffer[MAX_EXTENDED_PATH];
-            BOOL enableDebug = FALSE, enableLogfile = FALSE, enableAutopaste = TRUE;
-
-            if (LoadSettingFromRegistry(REG_ENABLE_DEBUG, buffer, MAX_EXTENDED_PATH)) {
-                enableDebug = (wcscmp(buffer, L"1") == 0);
-            }
-            if (LoadSettingFromRegistry(REG_ENABLE_LOGFILE, buffer, MAX_EXTENDED_PATH)) {
-                enableLogfile = (wcscmp(buffer, L"1") == 0);
-            }
-            if (LoadSettingFromRegistry(REG_ENABLE_AUTOPASTE, buffer, MAX_EXTENDED_PATH)) {
-                enableAutopaste = (wcscmp(buffer, L"1") == 0);
-            }
+            // Load debug settings from registry (REG_DWORD, or REG_SZ "0"/"1" from older versions)
+            BOOL enableDebug = LoadBoolSettingFromRegistry(REG_ENABLE_DEBUG, FALSE);
+            BOOL enableLogfile = LoadBoolSettingFromRegistry(REG_ENABLE_LOGFILE, FALSE);
+            BOOL enableAutopaste = LoadBoolSettingFromRegistry(REG_ENABLE_AUTOPASTE, TRUE);
 
             // Set the state using the application state functions
             SetDebugState(enableDebug, enableLogfile);
@@ -1719,10 +1734,31 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 
             // Check if right-click was on the ListView
             if ((HWND)wParam == hListView) {
-                // Get cursor position
+                // Get the menu position in screen coordinates
                 POINT pt;
-                pt.x = LOWORD(lParam);
-                pt.y = HIWORD(lParam);
+                if (lParam == -1) {
+                    // Opened from the keyboard (Shift+F10 or the Menu key): place the
+                    // menu at the selected item, or at the list's corner if none
+                    pt.x = 0;
+                    pt.y = 0;
+                    int item = ListView_GetNextItem(hListView, -1, LVNI_FOCUSED | LVNI_SELECTED);
+                    if (item == -1) {
+                        item = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+                    }
+                    if (item != -1) {
+                        RECT itemRect;
+                        ListView_EnsureVisible(hListView, item, FALSE);
+                        if (ListView_GetItemRect(hListView, item, &itemRect, LVIR_LABEL)) {
+                            pt.x = itemRect.left;
+                            pt.y = itemRect.bottom;
+                        }
+                    }
+                    ClientToScreen(hListView, &pt);
+                } else {
+                    // Read signed coordinates, which are negative on monitors left of or above the primary
+                    pt.x = GET_X_LPARAM(lParam);
+                    pt.y = GET_Y_LPARAM(lParam);
+                }
 
                 // Load and show context menu
                 HMENU hMenu = LoadMenuW(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_LISTVIEW_CONTEXT));

@@ -6,6 +6,8 @@
 // Registry operations
 BOOL LoadSettingFromRegistry(const wchar_t* valueName, wchar_t* buffer, DWORD bufferSize);
 BOOL SaveSettingToRegistry(const wchar_t* valueName, const wchar_t* value);
+BOOL LoadBoolSettingFromRegistry(const wchar_t* valueName, BOOL defaultValue);
+BOOL SaveBoolSettingToRegistry(const wchar_t* valueName, BOOL value);
 
 // Settings management
 void LoadSettings(HWND hDlg);
