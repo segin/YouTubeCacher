@@ -44,10 +44,12 @@ void CleanupThreadContext(ThreadContext* threadContext) {
         // Wait for graceful shutdown with timeout handling
         DWORD waitResult = WaitForSingleObject(threadContext->hThread, timeout);
         if (waitResult == WAIT_TIMEOUT) {
-            // Log timeout and force terminate if thread doesn't respond
-            ThreadSafeDebugOutputF(L"Thread '%ls' (ID: %lu) timed out during cleanup, forcing termination", threadContext->threadName, threadContext->threadId);
+            // Never use TerminateThread: it can leave the heap or a lock held and
+            // deadlock the whole process. The caller frees state this thread still
+            // uses once we return, so keep waiting for it to finish on its own.
+            ThreadSafeDebugOutputF(L"Thread '%ls' (ID: %lu) timed out during cleanup, still waiting for it to exit", threadContext->threadName, threadContext->threadId);
 
-            TerminateThread(threadContext->hThread, 1);
+            WaitForSingleObject(threadContext->hThread, INFINITE);
         }
 
         // Proper resource cleanup for thread handles
@@ -112,23 +114,27 @@ DWORD WINAPI IPCWorkerThread(LPVOID lpParam) {
 
                 case IPC_MSG_STATUS_UPDATE:
                     if (message.data.status.text) {
-                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)message.data.status.text);
-                        // Don't free here - the receiving window will free it
-                        message.data.status.text = NULL; // Prevent double-free
+                        // On success the receiving window owns and frees the string;
+                        // on failure FreeIPCMessage below frees it
+                        if (PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)message.data.status.text)) {
+                            message.data.status.text = NULL; // Prevent double-free
+                        }
                     }
                     break;
 
                 case IPC_MSG_TITLE_UPDATE:
                     if (message.data.title.title) {
-                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)message.data.title.title);
-                        message.data.title.title = NULL; // Prevent double-free
+                        if (PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 1, (LPARAM)message.data.title.title)) {
+                            message.data.title.title = NULL; // Prevent double-free
+                        }
                     }
                     break;
 
                 case IPC_MSG_DURATION_UPDATE:
                     if (message.data.duration.duration) {
-                        PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)message.data.duration.duration);
-                        message.data.duration.duration = NULL; // Prevent double-free
+                        if (PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 2, (LPARAM)message.data.duration.duration)) {
+                            message.data.duration.duration = NULL; // Prevent double-free
+                        }
                     }
                     break;
 
@@ -152,10 +158,6 @@ DWORD WINAPI IPCWorkerThread(LPVOID lpParam) {
 
                 case IPC_MSG_OPERATION_CANCELLED:
                     PostMessageW(message.targetWindow, WM_UNIFIED_DOWNLOAD_UPDATE, 8, 0);
-                    break;
-
-                case IPC_MSG_VIDEO_INFO_COMPLETE:
-                    PostMessageW(message.targetWindow, WM_USER + 101, 0, (LPARAM)message.data.completion.context);
                     break;
 
                 case IPC_MSG_METADATA_COMPLETE:
@@ -311,7 +313,12 @@ BOOL SendStatusUpdate(IPCContext* context, HWND targetWindow, const wchar_t* sta
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
 
-    return SendIPCMessage(context, &message);
+    if (!SendIPCMessage(context, &message)) {
+        // Not queued, so nothing else will free the copy
+        FreeIPCMessage(&message);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL SendTitleUpdate(IPCContext* context, HWND targetWindow, const wchar_t* title) {
@@ -324,7 +331,12 @@ BOOL SendTitleUpdate(IPCContext* context, HWND targetWindow, const wchar_t* titl
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
 
-    return SendIPCMessage(context, &message);
+    if (!SendIPCMessage(context, &message)) {
+        // Not queued, so nothing else will free the copy
+        FreeIPCMessage(&message);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL SendDurationUpdate(IPCContext* context, HWND targetWindow, const wchar_t* duration) {
@@ -337,7 +349,12 @@ BOOL SendDurationUpdate(IPCContext* context, HWND targetWindow, const wchar_t* d
     message.timestamp = GetTickCount();
     message.autoFreeStrings = TRUE;
 
-    return SendIPCMessage(context, &message);
+    if (!SendIPCMessage(context, &message)) {
+        // Not queued, so nothing else will free the copy
+        FreeIPCMessage(&message);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL SendMarqueeControl(IPCContext* context, HWND targetWindow, BOOL start) {
@@ -401,7 +418,10 @@ void UnifiedDownloadProgressCallback(int percentage, const wchar_t* status, void
         // Fallback to direct PostMessage if IPC is not available
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
         if (status) {
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)SAFE_WCSDUP(status));
+            wchar_t* statusCopy = SAFE_WCSDUP(status);
+            if (statusCopy && !PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)statusCopy)) {
+                SAFE_FREE(statusCopy);
+            }
         }
     }
 }
@@ -422,7 +442,10 @@ void MainWindowProgressCallback(int percentage, const wchar_t* status, void* use
         // Fallback to direct PostMessage if IPC is not available
         PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 3, percentage);
         if (status) {
-            PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)SAFE_WCSDUP(status));
+            wchar_t* statusCopy = SAFE_WCSDUP(status);
+            if (statusCopy && !PostMessageW(hDlg, WM_UNIFIED_DOWNLOAD_UPDATE, 5, (LPARAM)statusCopy)) {
+                SAFE_FREE(statusCopy);
+            }
         }
     }
 }
@@ -922,9 +945,10 @@ BOOL SendBatchMetadataUpdate(IPCContext* context, HWND targetWindow, const wchar
 BOOL CreateManagedThread(ThreadContext* context, LPTHREAD_START_ROUTINE function, LPVOID data, const wchar_t* name, DWORD timeoutMs) {
     if (!context || !function) return FALSE;
 
-    // Initialize the thread context if not already done
-    if (!InitializeThreadContext(context)) {
-        return FALSE;
+    // The caller must already have called InitializeThreadContext on this context;
+    // initializing it again would re-create (and leak) its critical section
+    if (context->hThread) {
+        return FALSE; // Already has a thread
     }
 
     // Set thread name and timeout
@@ -977,26 +1001,4 @@ BOOL WaitForThreadCompletion(ThreadContext* context, DWORD timeoutMs) {
         // Wait failed for some other reason
         return FALSE;
     }
-}
-
-// Force terminate an unresponsive thread
-void ForceTerminateThread(ThreadContext* context) {
-    if (!context || !context->hThread) return;
-
-    // Log the forced termination
-    ThreadSafeDebugOutputF(L"Force terminating unresponsive thread '%ls' (ID: %lu)", context->threadName, context->threadId);
-
-    // Terminate the thread forcefully
-    TerminateThread(context->hThread, 1);
-
-    // Update state
-    EnterCriticalSection(&context->criticalSection);
-    context->isRunning = FALSE;
-    context->cancelRequested = TRUE;
-    LeaveCriticalSection(&context->criticalSection);
-
-    // Clean up thread handle
-    CloseHandle(context->hThread);
-    context->hThread = NULL;
-    context->threadId = 0;
 }

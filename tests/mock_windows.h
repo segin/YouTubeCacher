@@ -132,10 +132,12 @@ static inline HANDLE CreateEventW(void* sa, BOOL manual, BOOL initial, LPCWSTR n
     return (HANDLE)1;
 }
 
+#ifndef CloseHandle
 static inline BOOL CloseHandle(HANDLE h) {
     (void)h;
     return TRUE;
 }
+#endif
 
 static inline BOOL ResetEvent(HANDLE h) {
     (void)h;
@@ -163,6 +165,8 @@ static inline DWORD GetLastError(void) {
 #define CP_UTF8 65001
 #define STILL_ACTIVE 259
 #define WAIT_OBJECT_0 0
+#define WAIT_TIMEOUT 258
+#define INFINITE 0xFFFFFFFF
 #define ERROR_BROKEN_PIPE 109
 
 #define GENERIC_READ 0x80000000
@@ -264,15 +268,19 @@ static inline BOOL GetExitCodeProcess(HANDLE h, DWORD* code) {
     return TRUE;
 }
 
+#ifndef TerminateProcess
 static inline BOOL TerminateProcess(HANDLE h, DWORD code) {
     (void)h; (void)code;
     return TRUE;
 }
+#endif
 
+#ifndef WaitForSingleObject
 static inline DWORD WaitForSingleObject(HANDLE h, DWORD ms) {
     (void)h; (void)ms;
     return WAIT_OBJECT_0;
 }
+#endif
 
 static inline BOOL CreatePipe(HANDLE* read, HANDLE* write, LPSECURITY_ATTRIBUTES sa, DWORD size) {
     (void)read; (void)write; (void)sa; (void)size;
@@ -295,20 +303,28 @@ static inline BOOL DuplicateHandle(HANDLE hsrc, HANDLE hsh, HANDLE hdst, HANDLE*
     return TRUE;
 }
 
+// A test can supply its own pipe and conversion behaviour by defining these
+// names as macros before including this header
+#ifndef PeekNamedPipe
 static inline BOOL PeekNamedPipe(HANDLE h, LPVOID buf, DWORD bufsz, DWORD* read, DWORD* avail, DWORD* message) {
     (void)h; (void)buf; (void)bufsz; (void)read; (void)avail; (void)message;
     return TRUE;
 }
+#endif
 
+#ifndef ReadFile
 static inline BOOL ReadFile(HANDLE h, LPVOID buf, DWORD bufsz, DWORD* read, LPVOID overlap) {
     (void)h; (void)buf; (void)bufsz; (void)read; (void)overlap;
     return TRUE;
 }
+#endif
 
+#ifndef MultiByteToWideChar
 static inline int MultiByteToWideChar(uint32_t cp, DWORD flags, const char* src, int srclen, wchar_t* dst, int dstlen) {
     (void)cp; (void)flags; (void)src; (void)srclen; (void)dst; (void)dstlen;
     return 0;
 }
+#endif
 
 static inline int WideCharToMultiByte(uint32_t cp, DWORD flags, const wchar_t* src, int srclen, char* dst, int dstlen, const char* def, BOOL* used) {
     (void)cp; (void)flags; (void)src; (void)srclen; (void)dst; (void)dstlen; (void)def; (void)used;

@@ -19,7 +19,7 @@ typedef enum {
     IPC_MSG_DOWNLOAD_COMPLETE = 7,
     IPC_MSG_DOWNLOAD_FAILED = 8,
     IPC_MSG_OPERATION_CANCELLED = 9,
-    IPC_MSG_VIDEO_INFO_COMPLETE = 10,
+    IPC_MSG_VIDEO_INFO_COMPLETE = 10,   // Reserved: never sent or handled; kept so the numbering stays stable
     IPC_MSG_METADATA_COMPLETE = 11
 } IPCMessageType;
 
@@ -114,9 +114,9 @@ BOOL InitializeThreadContext(ThreadContext* threadContext);
 void CleanupThreadContext(ThreadContext* threadContext);
 
 // Enhanced thread management functions
+// context must already be initialized with InitializeThreadContext
 BOOL CreateManagedThread(ThreadContext* context, LPTHREAD_START_ROUTINE function, LPVOID data, const wchar_t* name, DWORD timeoutMs);
 BOOL WaitForThreadCompletion(ThreadContext* context, DWORD timeoutMs);
-void ForceTerminateThread(ThreadContext* context);
 
 // Thread synchronization functions
 BOOL SetCancellationFlag(ThreadContext* threadContext);
@@ -182,6 +182,7 @@ typedef struct {
     // Output management (protected by outputLock)
     HANDLE hOutputRead;
     HANDLE hOutputWrite;
+    HANDLE hReaderThread;   // Output reader thread; joined and closed by cleanup
     wchar_t* outputBuffer;
     size_t outputBufferSize;
     size_t outputLength;
@@ -208,7 +209,9 @@ typedef struct {
 
 // Thread-safe subprocess management functions
 BOOL InitializeThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
-void CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
+// Returns FALSE if the output reader thread could not be stopped; the context
+// is then left allocated for that thread and the caller must not free it
+BOOL CleanupThreadSafeSubprocessContext(ThreadSafeSubprocessContext* context);
 BOOL SetSubprocessExecutable(ThreadSafeSubprocessContext* context, const wchar_t* path);
 BOOL SetSubprocessArguments(ThreadSafeSubprocessContext* context, const wchar_t* args);
 BOOL SetSubprocessWorkingDirectory(ThreadSafeSubprocessContext* context, const wchar_t* dir);

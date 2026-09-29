@@ -1,5 +1,71 @@
 #define TEST_THREADSAFE_C
+
+// Scripted pipe and ASCII conversion for the output reader tests
+#define PeekNamedPipe Test_PeekNamedPipe
+#define ReadFile Test_ReadFile
+#define MultiByteToWideChar Test_MultiByteToWideChar
+
+// Observable process kill and a reader thread that can be made to hang
+#define TerminateProcess Test_TerminateProcess
+#define WaitForSingleObject Test_WaitForSingleObject
+#define CloseHandle Test_CloseHandle
+
 #include "mock_windows.h"
+
+// Close counts for the small fake handle values 0x10-0x1F
+static int g_closeCounts[16];
+
+static BOOL Test_CloseHandle(HANDLE h) {
+    uintptr_t v = (uintptr_t)h;
+    if (v >= 0x10 && v < 0x20) g_closeCounts[v - 0x10]++;
+    return TRUE;
+}
+
+#define TEST_READER_THREAD ((HANDLE)0x77)
+#define TEST_HUNG_PROCESS ((HANDLE)0x55)
+static int g_terminateCalls = 0;
+static BOOL g_readerStuck = FALSE;
+
+static BOOL Test_TerminateProcess(HANDLE h, DWORD code) {
+    (void)h; (void)code;
+    g_terminateCalls++;
+    return TRUE;
+}
+
+static DWORD Test_WaitForSingleObject(HANDLE h, DWORD ms) {
+    (void)ms;
+    if (h == TEST_READER_THREAD && g_readerStuck) return WAIT_TIMEOUT;
+    if (h == TEST_HUNG_PROCESS && g_terminateCalls == 0) return WAIT_TIMEOUT;
+    return WAIT_OBJECT_0;
+}
+
+static const char* g_pipeData = NULL;
+static size_t g_pipeSize = 0;
+static size_t g_pipePos = 0;
+
+static BOOL Test_PeekNamedPipe(HANDLE h, LPVOID buf, DWORD bufsz, DWORD* read, DWORD* avail, DWORD* message) {
+    (void)h; (void)buf; (void)bufsz; (void)read; (void)message;
+    if (avail) *avail = (DWORD)(g_pipeSize - g_pipePos);
+    return TRUE;
+}
+
+static BOOL Test_ReadFile(HANDLE h, LPVOID buf, DWORD bufsz, DWORD* read, LPVOID overlap) {
+    (void)h; (void)overlap;
+    size_t count = g_pipeSize - g_pipePos;
+    if (count > bufsz) count = bufsz;
+    memcpy(buf, g_pipeData + g_pipePos, count);
+    g_pipePos += count;
+    *read = (DWORD)count;
+    return TRUE;
+}
+
+static int Test_MultiByteToWideChar(uint32_t cp, DWORD flags, const char* src, int srclen, wchar_t* dst, int dstlen) {
+    (void)cp; (void)flags;
+    if (!dst) return srclen;
+    if (dstlen < srclen) return 0;
+    for (int i = 0; i < srclen; i++) dst[i] = (wchar_t)(unsigned char)src[i];
+    return srclen;
+}
 
 // Define macros to prevent inclusion of real headers
 #define THREADSAFE_H
@@ -83,6 +149,7 @@ typedef struct {
     DWORD threadId;
     HANDLE hOutputRead;
     HANDLE hOutputWrite;
+    HANDLE hReaderThread;
 } ThreadSafeSubprocessContext;
 
 // Forward declarations of functions in threadsafe.c that are used before they are defined
@@ -336,11 +403,150 @@ int test_exit_code() {
     return 0;
 }
 
+int test_output_reader() {
+    printf("Starting SubprocessOutputReaderThread tests...\n");
+
+    // A 5000-character line (longer than one 4 KB read), a short line that
+    // crosses the 8 KB read boundary, and a final line with no terminator.
+    // The mocked process has already exited, so all of it must be drained.
+    size_t longLen = 5000;
+    size_t padLen = 8192 - (longLen + 2) - 3;
+    size_t dataSize = longLen + 2 + padLen + 1 + 12 + 11;
+    char* data = (char*)malloc(dataSize + 1);
+    size_t pos = 0;
+    memset(data + pos, 'a', longLen); pos += longLen;
+    memcpy(data + pos, "\r\n", 2); pos += 2;
+    memset(data + pos, 'b', padLen); pos += padLen;
+    data[pos++] = '\n';
+    memcpy(data + pos, "cross-line\r\n", 12); pos += 12;
+    memcpy(data + pos, "ERROR: tail", 11); pos += 11;
+    data[pos] = '\0';
+
+    size_t expectedLen = longLen + 2 + padLen + 2 + 12 + 13;
+    wchar_t* expected = (wchar_t*)malloc((expectedLen + 1) * sizeof(wchar_t));
+    size_t e = 0;
+    for (size_t i = 0; i < longLen; i++) expected[e++] = L'a';
+    expected[e++] = L'\r'; expected[e++] = L'\n';
+    for (size_t i = 0; i < padLen; i++) expected[e++] = L'b';
+    expected[e++] = L'\r'; expected[e++] = L'\n';
+    wcscpy(expected + e, L"cross-line\r\nERROR: tail\r\n");
+
+    g_pipeData = data;
+    g_pipeSize = pos;
+    g_pipePos = 0;
+
+    ThreadSafeSubprocessContext context;
+    InitializeThreadSafeSubprocessContext(&context);
+    context.hProcess = (HANDLE)1;
+    context.hOutputRead = (HANDLE)1;
+    context.processRunning = TRUE;
+
+    printf("Testing long lines, 4 KB boundaries and drain after exit... ");
+    SubprocessOutputReaderThread(&context);
+    if (g_pipePos != g_pipeSize) {
+        printf("FAILED (pipe not drained: %zu of %zu bytes read)\n", g_pipePos, g_pipeSize);
+        return 1;
+    }
+    if (!context.outputComplete) {
+        printf("FAILED (outputComplete not set)\n");
+        return 1;
+    }
+    if (context.outputLength != expectedLen || wcscmp(context.outputBuffer, expected) != 0) {
+        printf("FAILED (output mismatch: got %zu characters, expected %zu)\n", context.outputLength, expectedLen);
+        return 1;
+    }
+    printf("Passed.\n");
+
+    CleanupThreadSafeSubprocessContext(&context);
+    free(expected);
+    free(data);
+
+    printf("All SubprocessOutputReaderThread tests passed successfully!\n");
+    return 0;
+}
+
+int test_cleanup_running() {
+    printf("Starting CleanupThreadSafeSubprocessContext tests...\n");
+
+    // A running child with a reader thread: cleanup must kill the child and
+    // join the reader before it marks the context uninitialized
+    printf("Testing cleanup kills the child and joins the reader... ");
+    ThreadSafeSubprocessContext context;
+    InitializeThreadSafeSubprocessContext(&context);
+    context.hProcess = TEST_HUNG_PROCESS; // Exits only once terminated
+    context.hOutputRead = (HANDLE)1;
+    context.processRunning = TRUE;
+    context.hReaderThread = TEST_READER_THREAD;
+    g_terminateCalls = 0;
+    g_readerStuck = FALSE;
+    if (!CleanupThreadSafeSubprocessContext(&context)) {
+        printf("FAILED (cleanup returned FALSE)\n");
+        return 1;
+    }
+    if (g_terminateCalls == 0) {
+        printf("FAILED (child was not terminated)\n");
+        return 1;
+    }
+    if (context.initialized || context.hReaderThread != NULL) {
+        printf("FAILED (context not cleaned up)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    // A reader that never exits: the context must stay allocated for it
+    printf("Testing cleanup leaves the context to a hung reader... ");
+    InitializeThreadSafeSubprocessContext(&context);
+    context.hProcess = (HANDLE)1;
+    context.processRunning = TRUE;
+    context.hReaderThread = TEST_READER_THREAD;
+    g_readerStuck = TRUE;
+    if (CleanupThreadSafeSubprocessContext(&context)) {
+        printf("FAILED (cleanup returned TRUE with the reader still running)\n");
+        return 1;
+    }
+    if (!context.initialized || context.outputBuffer == NULL || !context.cancellationRequested) {
+        printf("FAILED (context was torn down under the reader)\n");
+        return 1;
+    }
+    g_readerStuck = FALSE;
+    if (!CleanupThreadSafeSubprocessContext(&context) || context.initialized) {
+        printf("FAILED (cleanup did not finish once the reader exited)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    // A completed run: its process, thread and pipe handles are closed once
+    printf("Testing cleanup closes the run's handles exactly once... ");
+    InitializeThreadSafeSubprocessContext(&context);
+    context.hProcess = (HANDLE)0x11;
+    context.hThread = (HANDLE)0x12;
+    context.hOutputRead = (HANDLE)0x13;
+    context.processCompleted = TRUE;
+    memset(g_closeCounts, 0, sizeof(g_closeCounts));
+    CleanupThreadSafeSubprocessContext(&context);
+    CleanupThreadSafeSubprocessContext(&context); // A second call must not close again
+    if (g_closeCounts[1] != 1 || g_closeCounts[2] != 1 || g_closeCounts[3] != 1) {
+        printf("FAILED (close counts %d/%d/%d, expected 1/1/1)\n",
+               g_closeCounts[1], g_closeCounts[2], g_closeCounts[3]);
+        return 1;
+    }
+    if (context.hProcess || context.hThread || context.hOutputRead) {
+        printf("FAILED (handles not cleared)\n");
+        return 1;
+    }
+    printf("Passed.\n");
+
+    printf("All CleanupThreadSafeSubprocessContext tests passed successfully!\n");
+    return 0;
+}
+
 int main() {
     if (test_initialization() != 0) return 1;
     if (test_set_executable() != 0) return 1;
     if (test_debug_output() != 0) return 1;
     if (test_clear_and_dir_null() != 0) return 1;
     if (test_exit_code() != 0) return 1;
+    if (test_output_reader() != 0) return 1;
+    if (test_cleanup_running() != 0) return 1;
     return 0;
 }

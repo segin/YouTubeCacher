@@ -23,23 +23,26 @@ ThreadSafeSubprocessContext* CreateThreadSafeSubprocessFromYtDlp(const YtDlpConf
 
     // Set executable path
     if (!SetSubprocessExecutable(context, config->ytDlpPath)) {
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         return NULL;
     }
 
     // Build arguments for the operation
     wchar_t arguments[4096];
     if (!GetYtDlpArgsForOperation(request->operation, request->url, request->outputPath, config, arguments, 4096)) {
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         return NULL;
     }
 
     // Set arguments
     if (!SetSubprocessArguments(context, arguments)) {
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         return NULL;
     }
 
@@ -77,8 +80,9 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     // Execute subprocess with output collection
     if (!ExecuteThreadSafeSubprocessWithOutput(context)) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Failed to execute subprocess");
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         return NULL;
     }
 
@@ -87,13 +91,10 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     if (!WaitForThreadSafeSubprocessWithOutputCompletion(context, timeoutMs)) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Subprocess did not complete within timeout");
 
-        // Try to cancel and cleanup
-        CancelThreadSafeSubprocess(context);
-        WaitForThreadSafeSubprocessCompletion(context, 5000); // Wait 5 seconds for graceful shutdown
-        ForceKillThreadSafeSubprocess(context); // Force kill if needed
-
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        // Cleanup terminates the process, waits for it and joins the reader
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         return NULL;
     }
 
@@ -101,8 +102,9 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     YtDlpResult* result = (YtDlpResult*)SAFE_MALLOC(sizeof(YtDlpResult));
     if (!result) {
         ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Failed to allocate result structure");
-        CleanupThreadSafeSubprocessContext(context);
-        SAFE_FREE(context);
+        if (CleanupThreadSafeSubprocessContext(context)) {
+            SAFE_FREE(context);
+        }
         return NULL;
     }
 
@@ -152,8 +154,9 @@ YtDlpResult* ExecuteYtDlpRequestThreadSafe(const YtDlpConfig* config, const YtDl
     }
 
     // Cleanup context
-    CleanupThreadSafeSubprocessContext(context);
-    SAFE_FREE(context);
+    if (CleanupThreadSafeSubprocessContext(context)) {
+        SAFE_FREE(context);
+    }
 
     ThreadSafeDebugOutput(L"ExecuteYtDlpRequestThreadSafe: Execution completed");
     return result;
@@ -208,8 +211,9 @@ BOOL StartThreadSafeSubprocessFromLegacyContext(SubprocessContext* legacyContext
 
     if (!success) {
         ThreadSafeDebugOutput(L"StartThreadSafeSubprocessFromLegacyContext: Failed to start thread-safe execution");
-        CleanupThreadSafeSubprocessContext(threadSafeContext);
-        SAFE_FREE(threadSafeContext);
+        if (CleanupThreadSafeSubprocessContext(threadSafeContext)) {
+            SAFE_FREE(threadSafeContext);
+        }
         legacyContext->threadSafeContext = NULL;
         return FALSE;
     }
@@ -301,8 +305,9 @@ void CleanupLegacySubprocessContext(SubprocessContext* legacyContext) {
         // Validate the context pointer before cleanup
         // Check if it looks like a valid context by checking if initialized flag is reasonable
         if (threadSafeContext) {
-            CleanupThreadSafeSubprocessContext(threadSafeContext);
-            SAFE_FREE(threadSafeContext);
+            if (CleanupThreadSafeSubprocessContext(threadSafeContext)) {
+                SAFE_FREE(threadSafeContext);
+            }
         }
 
         legacyContext->threadSafeContext = NULL;
